@@ -1,55 +1,94 @@
 import * as THREE from 'three'
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js'
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js'
 
 import { AcTrPointSymbolCreator } from '../geometry/AcTrPointSymbolCreator'
 import { AcTrEntity } from '../object'
 import { AcTrMaterialUtil } from '../util'
 import { AcTrBatchGeometryUserData } from './AcTrBatchedGeometryInfo'
 import { AcTrBatchedLine } from './AcTrBatchedLine'
+import { AcTrBatchedLine2 } from './AcTrBatchedLine2'
 import { AcTrBatchedMesh } from './AcTrBatchedMesh'
 import { AcTrBatchedPoint } from './AcTrBatchedPoint'
 
-export type AcTrBatchedObject = AcTrBatchedLine | AcTrBatchedMesh
+export type AcTrBatchedObject =
+  | AcTrBatchedLine
+  | AcTrBatchedLine2
+  | AcTrBatchedMesh
 
 export interface AcTrEntityInBatchedObject {
+  /** Three.js object id of the target batched container. */
   batchedObjectId: number
+  /** Geometry id inside that batched container. */
   batchId: number
 }
 
 export interface AcTrGeometrySize {
+  /** Number of batch containers in this category. */
   count: number
+  /** Estimated GPU geometry memory in bytes. */
   geometrySize: number
+  /** Estimated CPU-side mapping metadata size in bytes. */
   mappingSize: number
 }
 
 export interface AcTrGeometryInfo {
+  /** Statistics for indexed geometry containers. */
   indexed: AcTrGeometrySize
+  /** Statistics for non-indexed geometry containers. */
   nonIndexed: AcTrGeometrySize
 }
 
 export interface AcTrUnbatchedGroupStats {
+  /** Number of unbatched render objects. */
   count: number
+  /** Estimated geometry memory of unbatched objects in bytes. */
   geometrySize: number
   byType: {
+    /** Count of line-like unbatched objects. */
     line: number
+    /** Count of mesh unbatched objects. */
     mesh: number
+    /** Count of point unbatched objects. */
     point: number
+    /** Count of other unbatched objects. */
     other: number
   }
 }
 
 export interface AcTrBatchedGroupStats {
   summary: {
+    /** Total number of entities currently tracked by this group. */
     entityCount: number
+    /** Total estimated geometry memory in bytes (batched + unbatched). */
     totalGeometrySize: number
+    /** Total estimated metadata mapping memory in bytes. */
     totalMappingSize: number
   }
+  /** Mesh batch statistics. */
   mesh: AcTrGeometryInfo
+  /** Line batch statistics. */
   line: AcTrGeometryInfo
+  /** Point batch statistics. */
   point: AcTrGeometryInfo
+  /** Unbatched object statistics. */
   unbatched: AcTrUnbatchedGroupStats
 }
 
+/**
+ * Aggregates and manages all batched render objects belonging to one CAD
+ * layer/layout group.
+ *
+ * Entities are distributed into per-material batch containers (line/mesh/point
+ * and wide-line variants), while unsupported render paths are stored in a
+ * dedicated unbatched group.
+ */
 export class AcTrBatchedGroup extends THREE.Group {
+  private static readonly INITIAL_LINE_VERTEX_CAPACITY = 128
+  private static readonly INITIAL_LINE_INDEX_CAPACITY = 256
+  private static readonly INITIAL_MESH_VERTEX_CAPACITY = 128
+  private static readonly INITIAL_MESH_INDEX_CAPACITY = 256
+  private static readonly INITIAL_POINT_VERTEX_CAPACITY = 16
   /**
    * Batched line map for line segments without vertex index.
    * - the key is material id
@@ -62,6 +101,12 @@ export class AcTrBatchedGroup extends THREE.Group {
    * - the value is one batched map
    */
   private _lineWithIndexBatches: Map<number, AcTrBatchedLine>
+  /**
+   * Batched line map for wide lines rendered as THREE.LineSegments2.
+   * - the key is material id
+   * - the value is one batched line2
+   */
+  private _line2Batches: Map<number, AcTrBatchedLine2>
   /**
    * Batched mesh map for meshes without vertex index.
    * - the key is material id
@@ -98,6 +143,7 @@ export class AcTrBatchedGroup extends THREE.Group {
    * Non-batched objects (for render paths that cannot be merged, e.g. fat lines).
    */
   private _unbatchedObjects: THREE.Group
+  /** Per-entity list of unbatched cloned objects, allocated lazily. */
   private _unbatchedEntities: Map<string, THREE.Object3D[]>
   /**
    * All entities added in this group.
@@ -112,6 +158,7 @@ export class AcTrBatchedGroup extends THREE.Group {
     this._pointSymbolBatches = new Map()
     this._lineBatches = new Map()
     this._lineWithIndexBatches = new Map()
+    this._line2Batches = new Map()
     this._meshBatches = new Map()
     this._meshWithIndexBatches = new Map()
     this._entitiesMap = new Map()
@@ -165,9 +212,13 @@ export class AcTrBatchedGroup extends THREE.Group {
           )
         },
         nonIndexed: {
-          count: this._lineBatches.size,
-          geometrySize: this.getBatchedGeometrySize(this._lineBatches),
-          mappingSize: this.getBatchedGeometryMappingSize(this._lineBatches)
+          count: this._lineBatches.size + this._line2Batches.size,
+          geometrySize:
+            this.getBatchedGeometrySize(this._lineBatches) +
+            this.getBatchedGeometrySize(this._line2Batches),
+          mappingSize:
+            this.getBatchedGeometryMappingSize(this._lineBatches) +
+            this.getBatchedGeometryMappingSize(this._line2Batches)
         }
       },
       point: {
@@ -204,6 +255,9 @@ export class AcTrBatchedGroup extends THREE.Group {
     return stats
   }
 
+  /**
+   * Rebuilds point-symbol batches for a new point display mode.
+   */
   rerenderPoints(displayMode: number) {
     const creator = AcTrPointSymbolCreator.instance
     const pointSymbol = creator.create(displayMode)
@@ -220,13 +274,19 @@ export class AcTrBatchedGroup extends THREE.Group {
     })
   }
 
+  /**
+   * Clears all batched/unbatched data and disposes owned resources.
+   */
   clear() {
     this.groups.forEach(group => {
       group.forEach(value => {
         value.dispose()
+        value.removeFromParent()
       })
       group.clear()
     })
+    this.clearHighlightGroup(this._selectedObjects)
+    this.clearHighlightGroup(this._hoverObjects)
     this._unbatchedObjects.children.forEach(object => {
       this.disposeObject(object)
     })
@@ -270,48 +330,71 @@ export class AcTrBatchedGroup extends THREE.Group {
     return this._entitiesMap.has(objectId)
   }
 
+  /**
+   * Adds one converted entity into batch/unbatched containers.
+   */
   addEntity(entity: AcTrEntity) {
+    const objectId = entity.objectId
     const entityInfo: AcTrEntityInBatchedObject[] = []
-    this._entitiesMap.set(entity.objectId, entityInfo)
+    this._entitiesMap.set(objectId, entityInfo)
+    this._unbatchedEntities.delete(objectId)
     const unbatchedObjects: THREE.Object3D[] = []
-    this._unbatchedEntities.set(entity.objectId, unbatchedObjects)
+    let hasUnbatched = false
 
     entity.updateMatrixWorld(true)
     entity.traverse(object => {
       const bboxIntersectionCheck = !!object.userData.bboxIntersectionCheck
+      if (object instanceof LineSegments2) {
+        entityInfo.push(
+          this.addLine2(object, {
+            objectId,
+            bboxIntersectionCheck: bboxIntersectionCheck
+          })
+        )
+        return
+      }
+
       if (object.userData.noBatch) {
         const cloned = this.cloneUnbatchedObject(object)
         cloned.userData.bboxIntersectionCheck = bboxIntersectionCheck
         this._unbatchedObjects.add(cloned)
         unbatchedObjects.push(cloned)
+        hasUnbatched = true
         return
       }
       if (object instanceof THREE.LineSegments) {
         entityInfo.push(
           this.addLine(object, {
             position: object.userData.position,
-            objectId: entity.objectId,
+            objectId,
             bboxIntersectionCheck: bboxIntersectionCheck
           })
         )
       } else if (object instanceof THREE.Mesh) {
         entityInfo.push(
           this.addMesh(object, {
-            objectId: entity.objectId,
+            objectId,
             bboxIntersectionCheck: bboxIntersectionCheck
           })
         )
       } else if (object instanceof THREE.Points) {
         entityInfo.push(
           this.addPoint(object, {
-            objectId: entity.objectId,
+            objectId,
             bboxIntersectionCheck: bboxIntersectionCheck
           })
         )
       }
     })
+
+    if (hasUnbatched) {
+      this._unbatchedEntities.set(objectId, unbatchedObjects)
+    }
   }
 
+  /**
+   * Removes one entity from batch/unbatched containers.
+   */
   removeEntity(objectId: string) {
     let result = false
     const entityInfo = this._entitiesMap.get(objectId)
@@ -378,26 +461,42 @@ export class AcTrBatchedGroup extends THREE.Group {
     return result
   }
 
+  /**
+   * Adds hover highlight for one entity id.
+   */
   hover(objectId: string) {
     this.highlight(objectId, this._hoverObjects)
   }
 
+  /**
+   * Removes hover highlight for one entity id.
+   */
   unhover(objectId: string) {
     this.unhighlight(objectId, this._hoverObjects)
   }
 
+  /**
+   * Adds selection highlight for one entity id.
+   */
   select(objectId: string) {
     this.highlight(objectId, this._selectedObjects)
   }
 
+  /**
+   * Removes selection highlight for one entity id.
+   */
   unselect(objectId: string) {
     this.unhighlight(objectId, this._selectedObjects)
   }
 
+  /**
+   * Returns all batch maps managed by this group.
+   */
   protected get groups() {
     return [
       this._lineBatches,
       this._lineWithIndexBatches,
+      this._line2Batches,
       this._meshBatches,
       this._meshWithIndexBatches,
       this._pointBatches,
@@ -405,6 +504,9 @@ export class AcTrBatchedGroup extends THREE.Group {
     ]
   }
 
+  /**
+   * Creates highlight draw objects for one entity id.
+   */
   protected highlight(objectId: string, containerGroup: THREE.Group) {
     const entityInfo = this._entitiesMap.get(objectId)
     // TODO:
@@ -422,6 +524,8 @@ export class AcTrBatchedGroup extends THREE.Group {
         object.material = clonedMaterial
 
         object.userData.objectId = objectId
+        object.userData.disposeGeometryOnRemove =
+          batchedObject instanceof AcTrBatchedLine2
         containerGroup.add(object)
       })
     }
@@ -443,14 +547,21 @@ export class AcTrBatchedGroup extends THREE.Group {
     }
   }
 
+  /**
+   * Removes and disposes highlight objects for one entity id.
+   */
   protected unhighlight(objectId: string, containerGroup: THREE.Group) {
     const objects: THREE.Object3D[] = []
     containerGroup.children.forEach(obj => {
       if (obj.userData.objectId === objectId) objects.push(obj)
     })
+    objects.forEach(obj => this.disposeHighlightObject(obj))
     containerGroup.remove(...objects)
   }
 
+  /**
+   * Adds one `THREE.LineSegments` object into matching line batch.
+   */
   private addLine(
     object: THREE.LineSegments,
     userData: AcTrBatchGeometryUserData
@@ -459,7 +570,11 @@ export class AcTrBatchedGroup extends THREE.Group {
     const batches = this.getMatchedLineBatches(object)
     let batchedLine = batches.get(material.id)
     if (batchedLine == null) {
-      batchedLine = new AcTrBatchedLine(1000, 2000, material)
+      batchedLine = new AcTrBatchedLine(
+        AcTrBatchedGroup.INITIAL_LINE_VERTEX_CAPACITY,
+        AcTrBatchedGroup.INITIAL_LINE_INDEX_CAPACITY,
+        material
+      )
       batches.set(material.id, batchedLine)
       this.add(batchedLine)
     }
@@ -473,6 +588,38 @@ export class AcTrBatchedGroup extends THREE.Group {
     }
   }
 
+  /**
+   * Adds one `LineSegments2` object into wide-line batch.
+   */
+  private addLine2(
+    object: LineSegments2,
+    userData: AcTrBatchGeometryUserData
+  ): AcTrEntityInBatchedObject {
+    const material = object.material as THREE.Material
+    let batchedLine = this._line2Batches.get(material.id)
+    if (batchedLine == null) {
+      batchedLine = new AcTrBatchedLine2(
+        AcTrBatchedGroup.INITIAL_LINE_VERTEX_CAPACITY,
+        material
+      )
+      this._line2Batches.set(material.id, batchedLine)
+      this.add(batchedLine)
+    }
+
+    const geometry = this.cloneLineSegments2GeometryInWorld(object)
+    const geometryId = batchedLine.addGeometry(geometry)
+    batchedLine.setGeometryInfo(geometryId, userData)
+    geometry.dispose()
+
+    return {
+      batchedObjectId: batchedLine.id,
+      batchId: geometryId
+    }
+  }
+
+  /**
+   * Adds one `THREE.Mesh` object into matching mesh batch.
+   */
   private addMesh(
     object: THREE.Mesh,
     userData: AcTrBatchGeometryUserData
@@ -482,7 +629,11 @@ export class AcTrBatchedGroup extends THREE.Group {
     const batches = this.getMatchedMeshBatches(object)
     let batchedMesh = batches.get(material.id)
     if (batchedMesh == null) {
-      batchedMesh = new AcTrBatchedMesh(1000, 2000, material)
+      batchedMesh = new AcTrBatchedMesh(
+        AcTrBatchedGroup.INITIAL_MESH_VERTEX_CAPACITY,
+        AcTrBatchedGroup.INITIAL_MESH_INDEX_CAPACITY,
+        material
+      )
       batches.set(material.id, batchedMesh)
       this.add(batchedMesh)
     }
@@ -496,6 +647,9 @@ export class AcTrBatchedGroup extends THREE.Group {
     }
   }
 
+  /**
+   * Adds one `THREE.Points` object into matching point batch.
+   */
   private addPoint(
     object: THREE.Points,
     userData: AcTrBatchGeometryUserData
@@ -503,7 +657,10 @@ export class AcTrBatchedGroup extends THREE.Group {
     const material = object.material as THREE.Material
     let batchedPoint = this._pointBatches.get(material.id)
     if (batchedPoint == null) {
-      batchedPoint = new AcTrBatchedPoint(100, material)
+      batchedPoint = new AcTrBatchedPoint(
+        AcTrBatchedGroup.INITIAL_POINT_VERTEX_CAPACITY,
+        material
+      )
       batchedPoint.visible = object.visible
       this._pointBatches.set(material.id, batchedPoint)
       this.add(batchedPoint)
@@ -518,6 +675,9 @@ export class AcTrBatchedGroup extends THREE.Group {
     }
   }
 
+  /**
+   * Resolves matching line batch map by geometry/index mode.
+   */
   private getMatchedLineBatches(object: THREE.LineSegments) {
     if (object.userData.isPoint) {
       return this._pointSymbolBatches
@@ -531,6 +691,9 @@ export class AcTrBatchedGroup extends THREE.Group {
     }
   }
 
+  /**
+   * Resolves matching mesh batch map by geometry/index mode.
+   */
   private getMatchedMeshBatches(object: THREE.Mesh) {
     const hasIndex = object.geometry.getIndex() !== null
     let batches = this._meshBatches
@@ -540,10 +703,14 @@ export class AcTrBatchedGroup extends THREE.Group {
     return batches
   }
 
+  /**
+   * Estimates geometry memory size for all objects in one batch map.
+   */
   private getBatchedGeometrySize(
     batch:
       | Map<number, AcTrBatchedPoint>
       | Map<number, AcTrBatchedLine>
+      | Map<number, AcTrBatchedLine2>
       | Map<number, AcTrBatchedMesh>
   ) {
     let memory = 0
@@ -553,10 +720,14 @@ export class AcTrBatchedGroup extends THREE.Group {
     return memory
   }
 
+  /**
+   * Estimates mapping metadata memory size for all objects in one batch map.
+   */
   private getBatchedGeometryMappingSize(
     batch:
       | Map<number, AcTrBatchedPoint>
       | Map<number, AcTrBatchedLine>
+      | Map<number, AcTrBatchedLine2>
       | Map<number, AcTrBatchedMesh>
   ) {
     let memory = 0
@@ -566,6 +737,9 @@ export class AcTrBatchedGroup extends THREE.Group {
     return memory
   }
 
+  /**
+   * Estimates geometry memory usage for one render object.
+   */
   private getGeometrySize(object: THREE.Object3D) {
     const visitedBuffers = new Set<ArrayBufferLike>()
     let memory = 0
@@ -596,6 +770,9 @@ export class AcTrBatchedGroup extends THREE.Group {
     return memory
   }
 
+  /**
+   * Computes summary stats for objects that were not batched.
+   */
   private getUnbatchedStats(): AcTrUnbatchedGroupStats {
     const stats: AcTrUnbatchedGroupStats = {
       count: 0,
@@ -623,6 +800,9 @@ export class AcTrBatchedGroup extends THREE.Group {
     return stats
   }
 
+  /**
+   * Clones an unbatched object into world space for group ownership.
+   */
   private cloneUnbatchedObject(source: THREE.Object3D) {
     const cloned = source.clone() as THREE.Object3D
     if (this.hasGeometry(source) && this.hasGeometry(cloned)) {
@@ -644,6 +824,47 @@ export class AcTrBatchedGroup extends THREE.Group {
     return cloned
   }
 
+  /**
+   * Clones `LineSegments2` geometry into world space for wide-line batching.
+   */
+  private cloneLineSegments2GeometryInWorld(object: LineSegments2) {
+    const source = object.geometry as LineSegmentsGeometry
+    const instanceStart = source.getAttribute('instanceStart')
+    const instanceEnd = source.getAttribute('instanceEnd')
+    const count = instanceStart.count
+    const segmentPositions = new Float32Array(count * 6)
+
+    for (let i = 0, p = 0; i < count; i++) {
+      _v1.fromBufferAttribute(instanceStart, i).applyMatrix4(object.matrixWorld)
+      _v2.fromBufferAttribute(instanceEnd, i).applyMatrix4(object.matrixWorld)
+      segmentPositions[p++] = _v1.x
+      segmentPositions[p++] = _v1.y
+      segmentPositions[p++] = _v1.z
+      segmentPositions[p++] = _v2.x
+      segmentPositions[p++] = _v2.y
+      segmentPositions[p++] = _v2.z
+    }
+
+    const geometry = new LineSegmentsGeometry()
+    geometry.setPositions(segmentPositions)
+    if (source.hasAttribute('instanceColorStart')) {
+      geometry.setAttribute(
+        'instanceColorStart',
+        source.getAttribute('instanceColorStart').clone()
+      )
+      geometry.setAttribute(
+        'instanceColorEnd',
+        source.getAttribute('instanceColorEnd').clone()
+      )
+    }
+    geometry.computeBoundingBox()
+    geometry.computeBoundingSphere()
+    return geometry
+  }
+
+  /**
+   * Recursively disposes one object subtree owned by this group.
+   */
   private disposeObject(object: THREE.Object3D) {
     object.removeFromParent()
     if (this.hasGeometry(object)) {
@@ -652,18 +873,53 @@ export class AcTrBatchedGroup extends THREE.Group {
     object.children.forEach(child => this.disposeObject(child))
   }
 
+  /**
+   * Disposes all highlight children of one highlight container.
+   */
+  private clearHighlightGroup(group: THREE.Group) {
+    const objects = [...group.children]
+    objects.forEach(obj => this.disposeHighlightObject(obj))
+    group.clear()
+  }
+
+  /**
+   * Disposes highlight object resources (cloned material and optional geometry).
+   */
+  private disposeHighlightObject(object: THREE.Object3D) {
+    if (this.hasMaterial(object)) {
+      const material = object.material as THREE.Material | THREE.Material[]
+      if (Array.isArray(material)) {
+        material.forEach(m => m.dispose())
+      } else {
+        material.dispose()
+      }
+    }
+    if (this.hasGeometry(object) && object.userData.disposeGeometryOnRemove) {
+      object.geometry.dispose()
+    }
+  }
+
+  /**
+   * Type guard for objects that expose `material`.
+   */
   private hasMaterial(
     object: THREE.Object3D
   ): object is THREE.Mesh | THREE.Line | THREE.Points {
     return 'material' in object
   }
 
+  /**
+   * Type guard for objects that expose `geometry`.
+   */
   private hasGeometry(
     object: THREE.Object3D
   ): object is THREE.Mesh | THREE.Line | THREE.Points {
     return 'geometry' in object
   }
 
+  /**
+   * Returns typed array backing one geometry attribute.
+   */
   private getAttributeArray(
     attribute: THREE.BufferAttribute | THREE.InterleavedBufferAttribute
   ):
@@ -678,12 +934,18 @@ export class AcTrBatchedGroup extends THREE.Group {
     return null
   }
 
+  /**
+   * Returns true when object should be counted as line-like for stats.
+   */
   private isLineObject(object: THREE.Object3D): boolean {
     if (object instanceof THREE.Line) return true
     return !!(object as THREE.Object3D & { isLineSegments2?: boolean })
       .isLineSegments2
   }
 
+  /**
+   * Gets deterministic material id from single/multi-material values.
+   */
   private getMaterialId(material: THREE.Material | THREE.Material[]) {
     if (Array.isArray(material)) {
       return material[0]?.id ?? -1
@@ -691,3 +953,6 @@ export class AcTrBatchedGroup extends THREE.Group {
     return material.id
   }
 }
+
+const _v1 = /*@__PURE__*/ new THREE.Vector3()
+const _v2 = /*@__PURE__*/ new THREE.Vector3()

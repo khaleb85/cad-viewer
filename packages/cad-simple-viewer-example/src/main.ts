@@ -1,6 +1,6 @@
 import {
   AcApDocManager,
-  AcApSettingManager,
+  AcApSettingManager
 } from '@mlightcad/cad-simple-viewer'
 import { AcDbOpenDatabaseOptions } from '@mlightcad/data-model'
 
@@ -23,7 +23,6 @@ class CadViewerApp {
   private initialize() {
     if (!this.isInitialized) {
       try {
-
         AcApSettingManager.instance.isShowToolbar = true
         AcApSettingManager.instance.isShowCommandLine = false
         AcApSettingManager.instance.isShowCoordinate = true
@@ -53,7 +52,6 @@ class CadViewerApp {
   }
 
   private setupToolbarActions() {
-
     const toolbarContainer = document.createElement('div')
     toolbarContainer.className = 'toolbar-container'
 
@@ -114,8 +112,8 @@ class CadViewerApp {
     this.initialize()
 
     try {
-      const res = await fetch(fileUrl);
-      const blob = await res.blob();
+      const res = await fetch(fileUrl)
+      const blob = await res.blob()
 
       const fileContent = await this.readBlob(blob)
       const options: AcDbOpenDatabaseOptions = {
