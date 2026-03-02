@@ -11,6 +11,18 @@
         box-sizing: border-box;
       }
 
+      .toolbar-container {
+        z-index: 1000;
+        position: absolute;
+        bottom: 20px;
+        left: 20vw;
+        width: 60vw;
+        height: 48px;
+        background: #0b1220;
+        border-bottom: 1px solid #1f2937;
+        padding: 0 0.75rem;
+      }
+
       body {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         background: #111827;
@@ -25,95 +37,11 @@
         height: 100vh;
       }
 
-      .file-sidebar {
-        flex: 0 0 20%;
-        min-width: 220px;
-        max-width: 360px;
-        background: #0f172a;
-        border-right: 1px solid #1f2937;
-        padding: 1rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.8rem;
-        overflow: auto;
-      }
-
-      .sidebar-title {
-        font-size: 0.95rem;
-        font-weight: 600;
-        color: #93c5fd;
-      }
-
-      .sidebar-help {
-        font-size: 0.82rem;
-        color: #9ca3af;
-        line-height: 1.4;
-      }
-
-      .file-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-      }
-
-      .file-list-item {
-        width: 100%;
-        border: 1px solid #374151;
-        border-radius: 8px;
-        background: #1f2937;
-        color: #e5e7eb;
-        text-align: left;
-        padding: 0.65rem 0.7rem;
-        font-size: 0.88rem;
-        cursor: pointer;
-        transition: background 0.2s ease, border-color 0.2s ease;
-      }
-
-      .file-list-item:hover {
-        background: #273447;
-        border-color: #60a5fa;
-      }
-
-      .file-list-item.active {
-        border-color: #60a5fa;
-        background: #1d4f91;
-      }
-
       .viewer-pane {
         flex: 1;
         display: flex;
         flex-direction: column;
         min-width: 0;
-        background: #111827;
-      }
-
-      .viewer-toolbar {
-        height: 48px;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0 0.75rem;
-        border-bottom: 1px solid #1f2937;
-        background: #0b1220;
-      }
-
-      .toolbar-button {
-        border: 1px solid #374151;
-        border-radius: 6px;
-        background: #1f2937;
-        color: #e5e7eb;
-        padding: 0.35rem 0.7rem;
-        font-size: 0.82rem;
-        cursor: pointer;
-      }
-
-      .toolbar-button:hover {
-        background: #273447;
-      }
-
-      .toolbar-button:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
         background: #111827;
       }
 
@@ -126,40 +54,6 @@
       #cad-container {
         position: absolute;
         inset: 0;
-      }
-
-      .empty-state {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 20;
-        pointer-events: none;
-      }
-
-      .empty-state.hidden {
-        display: none;
-      }
-
-      .open-main-button {
-        pointer-events: auto;
-        border: 1px solid #60a5fa;
-        background: #2563eb;
-        color: #ffffff;
-        border-radius: 10px;
-        padding: 0.7rem 1.2rem;
-        font-size: 0.95rem;
-        font-weight: 600;
-        cursor: pointer;
-      }
-
-      .open-main-button:hover {
-        background: #1d4ed8;
-      }
-
-      #fileInputElement {
-        display: none;
       }
 
       @media (max-width: 960px) {
@@ -184,7 +78,7 @@
   </head>
   <body>
     <div class="app-shell">
-      <aside class="file-sidebar">
+      <!-- <aside class="file-sidebar">
         <h2 class="sidebar-title">Predefined Files</h2>
         <p class="sidebar-help">Select one file below or open a local DXF/DWG file.</p>
         <div class="file-list" id="predefinedFileList">
@@ -231,10 +125,10 @@
             patient-chairs.dwg
           </button>
         </div>
-      </aside>
+      </aside> -->
 
       <main class="viewer-pane">
-        <header class="viewer-toolbar">
+        <!-- <header class="viewer-toolbar">
           <button type="button" class="toolbar-button" id="toolbarOpenButton">Open</button>
           <button
             type="button"
@@ -255,13 +149,13 @@
           <button type="button" class="toolbar-button" id="toolbarBgButton" disabled>
             Switch BG
           </button>
-        </header>
+        </header> -->
 
         <section class="viewer-canvas-area">
-          <div class="empty-state" id="emptyState">
+          <!-- <div class="empty-state" id="emptyState">
             <button type="button" class="open-main-button" id="centerOpenButton">Open File</button>
-          </div>
-          <input type="file" id="fileInputElement" accept=".dxf,.dwg" />
+          </div> -->
+          <!-- <input type="file" id="fileInputElement" accept=".dxf,.dwg" /> -->
           <div id="cad-container"></div>
         </section>
       </main>
