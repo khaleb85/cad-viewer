@@ -1,23 +1,17 @@
 import {
   AcApDocManager,
-  AcApSettingManager
+  AcApOpenDatabaseOptions,
+  AcApSettingManager,
+  AcEdOpenMode
 } from '@mlightcad/cad-simple-viewer'
-import { AcDbOpenDatabaseOptions } from '@mlightcad/data-model'
 
 class CadViewerApp {
   private container: HTMLDivElement
-  private toolbarZoomButton?: HTMLButtonElement
-  private toolbarZoomWindowButton?: HTMLButtonElement
-  private toolbarBgButton?: HTMLButtonElement
   private isInitialized: boolean = false
-  private hasLoadedDocument: boolean = false
 
   constructor() {
     this.container = document.getElementById('cad-container') as HTMLDivElement
-
     this.loadFile('<!FILE_NAME!>', '<!FILE_URL!>')
-    this.setupToolbarActions()
-    this.updateToolbarButtonsState()
   }
 
   private initialize() {
@@ -44,68 +38,16 @@ class CadViewerApp {
           }
         )
 
+        // Expose command API for host application (e.g. Coordly React)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(window as any).cadExec = (cmd: string) =>
+          AcApDocManager.instance.sendStringToExecute(cmd)
+
         this.isInitialized = true
       } catch (error) {
         console.error('Failed to initialize CAD viewer:', error)
       }
     }
-  }
-
-  private setupToolbarActions() {
-    const toolbarContainer = document.createElement('div')
-    toolbarContainer.className = 'toolbar-container'
-
-    const zoomFitButton = document.createElement('button')
-    zoomFitButton.className = 'toolbar-button'
-    zoomFitButton.id = 'toolbarZoomButton'
-    zoomFitButton.textContent = 'Zoom Fit'
-
-    const zoomWindowButton = document.createElement('button')
-    zoomWindowButton.className = 'toolbar-button'
-    zoomWindowButton.id = 'toolbarZoomWindowButton'
-    zoomWindowButton.textContent = 'Zoom to Window'
-
-    const bgButton = document.createElement('button')
-    bgButton.className = 'toolbar-button'
-    bgButton.id = 'toolbarBgButton'
-    bgButton.textContent = 'Switch BG'
-
-    toolbarContainer.appendChild(zoomFitButton)
-    toolbarContainer.appendChild(zoomWindowButton)
-    toolbarContainer.appendChild(bgButton)
-
-    this.container.appendChild(toolbarContainer)
-
-    this.toolbarZoomButton = document.getElementById(
-      'toolbarZoomButton'
-    ) as HTMLButtonElement
-    this.toolbarZoomWindowButton = document.getElementById(
-      'toolbarZoomWindowButton'
-    ) as HTMLButtonElement
-    this.toolbarBgButton = document.getElementById(
-      'toolbarBgButton'
-    ) as HTMLButtonElement
-
-    this.toolbarZoomButton.addEventListener('click', () => {
-      if (!this.hasLoadedDocument || !this.isInitialized) {
-        return
-      }
-      AcApDocManager.instance.sendStringToExecute('zoom')
-    })
-
-    this.toolbarZoomWindowButton.addEventListener('click', () => {
-      if (!this.hasLoadedDocument || !this.isInitialized) {
-        return
-      }
-      AcApDocManager.instance.sendStringToExecute('zoomw')
-    })
-
-    this.toolbarBgButton.addEventListener('click', () => {
-      if (!this.hasLoadedDocument || !this.isInitialized) {
-        return
-      }
-      AcApDocManager.instance.sendStringToExecute('switchbg')
-    })
   }
 
   private async loadFile(fileName: string, fileUrl: string) {
@@ -116,9 +58,10 @@ class CadViewerApp {
       const blob = await res.blob()
 
       const fileContent = await this.readBlob(blob)
-      const options: AcDbOpenDatabaseOptions = {
+      const mode = this.resolveMode('<!VIEWER_MODE!>')
+      const options: AcApOpenDatabaseOptions = {
         minimumChunkSize: 1000,
-        readOnly: true
+        mode
       }
 
       const success = await AcApDocManager.instance.openDocument(
@@ -128,8 +71,8 @@ class CadViewerApp {
       )
 
       if (success) {
-        this.onFileOpened()
         console.log(`Successfully loaded: ${fileName}`)
+        window.dispatchEvent(new CustomEvent('cad-file-loaded'))
       } else {
         console.error(`Failed to load: ${fileName}`)
       }
@@ -138,20 +81,14 @@ class CadViewerApp {
     }
   }
 
-  private onFileOpened() {
-    this.hasLoadedDocument = true
-    this.updateToolbarButtonsState()
-  }
-
-  private updateToolbarButtonsState() {
-    if (this.toolbarZoomButton) {
-      this.toolbarZoomButton.disabled = !this.hasLoadedDocument
-    }
-    if (this.toolbarZoomWindowButton) {
-      this.toolbarZoomWindowButton.disabled = !this.hasLoadedDocument
-    }
-    if (this.toolbarBgButton) {
-      this.toolbarBgButton.disabled = !this.hasLoadedDocument
+  private resolveMode(modeStr: string): AcEdOpenMode {
+    switch (modeStr) {
+      case 'write':
+        return AcEdOpenMode.Write
+      case 'review':
+        return AcEdOpenMode.Review
+      default:
+        return AcEdOpenMode.Read
     }
   }
 

@@ -11,18 +11,6 @@
         box-sizing: border-box;
       }
 
-      .toolbar-container {
-        z-index: 1000;
-        position: absolute;
-        bottom: 20px;
-        left: 20vw;
-        width: 60vw;
-        height: 48px;
-        background: #0b1220;
-        border-bottom: 1px solid #1f2937;
-        padding: 0 0.75rem;
-      }
-
       body {
         font-family:
           -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -56,124 +44,12 @@
         position: absolute;
         inset: 0;
       }
-
-      @media (max-width: 960px) {
-        .app-shell {
-          flex-direction: column;
-        }
-
-        .file-sidebar {
-          flex: 0 0 auto;
-          max-width: none;
-          min-width: 0;
-          height: 35%;
-          border-right: none;
-          border-bottom: 1px solid #1f2937;
-        }
-
-        .viewer-pane {
-          height: 65%;
-        }
-      }
     </style>
   </head>
   <body>
     <div class="app-shell">
-      <!-- <aside class="file-sidebar">
-        <h2 class="sidebar-title">Predefined Files</h2>
-        <p class="sidebar-help">Select one file below or open a local DXF/DWG file.</p>
-        <div class="file-list" id="predefinedFileList">
-          <button
-            type="button"
-            class="file-list-item"
-            data-file-url="https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/data/canteen.dwg"
-          >
-            canteen.dwg
-          </button>
-          <button
-            type="button"
-            class="file-list-item"
-            data-file-url="https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/data/baseline-sample.dwg"
-          >
-            baseline-sample.dwg
-          </button>
-          <button
-            type="button"
-            class="file-list-item"
-            data-file-url="https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/data/hatch.dxf"
-          >
-            hatch.dxf
-          </button>
-          <button
-            type="button"
-            class="file-list-item"
-            data-file-url="https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/data/lockers.dwg"
-          >
-            lockers.dwg
-          </button>
-          <button
-            type="button"
-            class="file-list-item"
-            data-file-url="https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/data/map-of-uae.dwg"
-          >
-            map-of-uae.dwg
-          </button>
-          <button
-            type="button"
-            class="file-list-item"
-            data-file-url="https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/data/patient-chairs.dwg"
-          >
-            patient-chairs.dwg
-          </button>
-        </div>
-      </aside> -->
-
       <main class="viewer-pane">
-        <!-- <header class="viewer-toolbar">
-          <button type="button" class="toolbar-button" id="toolbarOpenButton">Open</button>
-          <button
-            type="button"
-            class="toolbar-button"
-            id="toolbarZoomButton"
-            disabled
-          >
-            Zoom Fit
-          </button>
-          <button
-            type="button"
-            class="toolbar-button"
-            id="toolbarZoomWindowButton"
-            disabled
-          >
-            Zoom to Window
-          </button>
-          <button type="button" class="toolbar-button" id="toolbarBgButton" disabled>
-            Switch BG
-          </button>
-        </header> -->
-        <!-- <button
-            type="button"
-            class="toolbar-button"
-            id="toolbarPickboxButton"
-            disabled
-          >
-            Set Pickbox
-          </button>
-          <button
-            type="button"
-            class="toolbar-button"
-            id="toolbarLineWeightButton"
-            disabled
-          >
-            LineWeight: On
-          </button>
-        </header> -->
-
         <section class="viewer-canvas-area">
-          <!-- <div class="empty-state" id="emptyState">
-            <button type="button" class="open-main-button" id="centerOpenButton">Open File</button>
-          </div> -->
-          <!-- <input type="file" id="fileInputElement" accept=".dxf,.dwg" /> -->
           <div id="cad-container"></div>
         </section>
       </main>
