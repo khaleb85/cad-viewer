@@ -13,16 +13,20 @@ import {
   AcGeBox2d,
   AcGeBox3d,
   AcGePoint2d,
-  AcGePoint2dLike
+  AcGePoint2dLike,
+  log
 } from '@mlightcad/data-model'
+import { AcDbSystemVariables } from '@mlightcad/data-model'
 import {
   AcTrEntity,
   AcTrGroup,
+  AcTrHtmlTransientManager,
   AcTrRenderer,
   AcTrViewportView
 } from '@mlightcad/three-renderer'
 import * as THREE from 'three'
 import Stats from 'three/examples/jsm/libs/stats.module'
+import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 
 import { AcApDocManager, AcApSettingManager } from '../app'
 import {
@@ -111,6 +115,8 @@ export class AcTrView2d extends AcEdBaseView {
   private _missedImages: Map<AcDbObjectId, string>
   /** The number of entities waiting for processing */
   private _numOfEntitiesToProcess: number
+  /** CSS2D renderer for HTML transient overlays */
+  private _css2dRenderer: CSS2DRenderer
 
   /**
    * Creates a new 2D CAD viewer instance.
@@ -159,7 +165,7 @@ export class AcTrView2d extends AcEdBaseView {
     this._stats = this.createStats(AcApSettingManager.instance.isShowStats)
 
     AcDbSysVarManager.instance().events.sysVarChanged.addEventListener(args => {
-      if (args.name === 'whitebkcolor') {
+      if (args.name === AcDbSystemVariables.WHITEBKCOLOR.toLowerCase()) {
         const useWhiteBackgroundColor = args.newVal as boolean
         this.backgroundColor = useWhiteBackgroundColor ? 0xffffff : 0
       }
@@ -199,6 +205,14 @@ export class AcTrView2d extends AcEdBaseView {
         this._isDirty = true
       }
     )
+
+    this._css2dRenderer = new CSS2DRenderer()
+    this._css2dRenderer.setSize(this.width, this.height)
+    this._css2dRenderer.domElement.style.position = 'absolute'
+    this._css2dRenderer.domElement.style.top = '0px'
+    this._css2dRenderer.domElement.style.left = '0px'
+    this._css2dRenderer.domElement.style.pointerEvents = 'none'
+    container.appendChild(this._css2dRenderer.domElement)
 
     this._missedImages = new Map()
     this._layoutViewManager = new AcTrLayoutViewManager()
@@ -306,6 +320,7 @@ export class AcTrView2d extends AcEdBaseView {
    */
   set backgroundColor(value: number) {
     this._renderer.setClearColor(value)
+    this._renderer.changeForeground(value == 0 ? 0xffffff : 0)
     this._isDirty = true
   }
 
@@ -343,6 +358,27 @@ export class AcTrView2d extends AcEdBaseView {
    */
   get stats() {
     return this._scene.stats
+  }
+
+  /**
+   * The internal THREE scene used by this view.
+   */
+  get internalScene() {
+    return this._scene.internalScene
+  }
+
+  /**
+   * The HTML transient elements manager for placing overlays anchored to world coordinates.
+   */
+  get htmlTransientManager(): AcTrHtmlTransientManager {
+    return this._scene.htmlTransientManager
+  }
+
+  /**
+   * The internal THREE camera used by current active layout.
+   */
+  get internalCamera() {
+    return this.activeLayoutView?.internalCamera
   }
 
   /**
@@ -712,6 +748,7 @@ export class AcTrView2d extends AcEdBaseView {
   protected onWindowResize() {
     super.onWindowResize()
     this._renderer.setSize(this.width, this.height)
+    this._css2dRenderer.setSize(this.width, this.height)
     this._layoutViewManager.resize(this.width, this.height)
     this._isDirty = true
   }
@@ -719,9 +756,16 @@ export class AcTrView2d extends AcEdBaseView {
   private animate = () => {
     this._rafId = requestAnimationFrame(this.animate)
 
-    if (!this._isDirty) return
+    this.events.renderFrame.dispatch({
+      render: this._renderer,
+      camera: this.internalCamera
+    })
 
+    if (!this._isDirty) return
     this._layoutViewManager.render(this._scene)
+    if (this.internalCamera) {
+      this._css2dRenderer.render(this._scene.internalScene, this.internalCamera)
+    }
     this._stats?.update()
     this._isDirty = false
   }
@@ -769,13 +813,8 @@ export class AcTrView2d extends AcEdBaseView {
       }
 
       const layout = this._scene.activeLayout
-      if (layout) {
-        // Check if layout has any entities by checking if bounding box is not empty
-        const box = layout.box
-        if (box && !box.isEmpty()) {
-          // Layout exists and has entities (bounding box is not empty), no need to reload
-          return
-        }
+      if (layout && layout.isLoaded) {
+        return
       }
 
       // Collect all entities from this layout
@@ -792,10 +831,14 @@ export class AcTrView2d extends AcEdBaseView {
         this._numOfEntitiesToProcess += entities.length
         setTimeout(async () => {
           await this.batchConvert(entities)
+          const layout = this._scene.layouts.get(layoutBtrId)
+          if (layout) {
+            layout.isLoaded = true
+          }
         })
       }
     } catch (error) {
-      console.error('[AcTrView2d] Error loading layout entities:', error)
+      log.error('[AcTrView2d] Error loading layout entities:', error)
     }
   }
 
@@ -834,7 +877,7 @@ export class AcTrView2d extends AcEdBaseView {
       if (entity instanceof AcDbViewport) {
         if (entity.number === 0) {
           entity.number = AcTrView2d.viewportIdCounter++
-          console.warn(
+          log.warn(
             `Viewport id for handle ${entity.objectId} is 0! Set it to ${entity.number}`
           )
         }
@@ -857,13 +900,13 @@ export class AcTrView2d extends AcEdBaseView {
       }
 
       // First, try to ignore viewport with number === 1
-      let filtered = viewports.filter(vp => vp.number !== 1)
+      const filtered = viewports.filter(vp => vp.number !== 1)
 
       // If nothing was filtered (i.e., no viewport with number === 1),
       // then ignore the first viewport in this layout
-      if (filtered.length === viewports.length && viewports.length > 0) {
-        filtered = viewports.slice(1)
-      }
+      // if (filtered.length === viewports.length && viewports.length > 0) {
+      //   filtered = viewports.slice(1)
+      // }
 
       filtered.forEach(vp => {
         validViewportIds.add(vp.objectId)
@@ -989,7 +1032,7 @@ export class AcTrView2d extends AcEdBaseView {
     this._numOfEntitiesToProcess--
     if (this._numOfEntitiesToProcess < 0) {
       this._numOfEntitiesToProcess = 0
-      console.warn(
+      log.warn(
         'Something wrong! The number of entities to process should not be less than 0.'
       )
     }

@@ -1,4 +1,5 @@
 import {
+  AcCmColor,
   AcCmEventManager,
   AcDbDatabaseConverterManager,
   AcDbDxfConverter,
@@ -6,7 +7,8 @@ import {
   acdbHostApplicationServices,
   AcDbProgressdEventArgs,
   AcDbSysVarManager,
-  AcGeBox2d
+  AcGeBox2d,
+  log
 } from '@mlightcad/data-model'
 import { AcDbLibreDwgConverter } from '@mlightcad/libredwg-converter'
 import { AcTrMTextRenderer } from '@mlightcad/three-renderer'
@@ -19,9 +21,11 @@ import {
   AcApEraseCmd,
   AcApLineCmd,
   AcApLogCmd,
+  AcApMeasureAngleCmd,
   AcApMeasureArcCmd,
   AcApMeasureAreaCmd,
   AcApMeasureDistanceCmd,
+  AcApMTextCmd,
   AcApOpenCmd,
   AcApPanCmd,
   AcApQNewCmd,
@@ -305,7 +309,7 @@ export class AcApDocManager {
     this.registerWorkers(options.webworkerFileUrls)
     // Load plugins asynchronously (don't await to avoid blocking initialization)
     this.loadPlugins(options.plugins).catch(error => {
-      console.error('[AcApDocManager] Error loading plugins:', error)
+      log.error('[AcApDocManager] Error loading plugins:', error)
     })
   }
 
@@ -423,6 +427,56 @@ export class AcApDocManager {
   }
 
   /**
+   * Resolves colors for creating new entities.
+   *
+   * Returns:
+   * - `entityColor`: the resolved RGB color (24-bit) to use for newly created entities.
+   * - `layerColor`: the current layer's resolved RGB color (24-bit).
+   */
+  resolveColors(): { entityColor: number; layerColor: number } {
+    const db = this.curDocument.database
+    const layer = db.tables.layerTable.getAt(db.clayer)
+    const layerColorValue = this.resolveColorToRgb(layer?.color)
+
+    let resolved: AcCmColor | undefined = db.cecolor
+    if (resolved?.isByLayer) {
+      resolved = layer?.color
+    }
+
+    return {
+      entityColor: this.resolveColorToRgb(resolved),
+      layerColor: layerColorValue
+    }
+  }
+
+  /**
+   * Resolves an AcCmColor into a 24-bit RGB number.
+   * Falls back to ACI 7 when the color is ByLayer/ByBlock or undefined.
+   */
+  private resolveColorToRgb(color?: AcCmColor): number {
+    if (
+      !color ||
+      color.isByLayer ||
+      color.isByBlock ||
+      (color.isByACI && color.colorIndex === 7)
+    ) {
+      return this.resolveAci7ForBackground()
+    }
+    const rgbValue = color.RGB
+    return rgbValue ?? this.resolveAci7ForBackground()
+  }
+
+  /**
+   * Resolves ACI 7 based on the current viewer background color.
+   * - Light background (white): use black.
+   * - Dark background: use white.
+   */
+  private resolveAci7ForBackground(): number {
+    const bg = this.curView.backgroundColor
+    return bg === 0xffffff ? 0x000000 : 0xffffff
+  }
+
+  /**
    * Gets the list of available fonts that can be loaded.
    *
    * Note: These fonts are available for loading but may not be loaded yet.
@@ -499,7 +553,7 @@ export class AcApDocManager {
    * ```typescript
    * const success = await docManager.openUrl('https://example.com/drawing.dwg');
    * if (success) {
-   *   console.log('Document opened successfully');
+   *   log.info('Document opened successfully');
    * }
    * ```
    */
@@ -670,6 +724,12 @@ export class AcApDocManager {
     )
     register.addCommand(
       AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
+      'measureangle',
+      'measureangle',
+      new AcApMeasureAngleCmd()
+    )
+    register.addCommand(
+      AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
       'measurearc',
       'measurearc',
       new AcApMeasureArcCmd()
@@ -685,6 +745,12 @@ export class AcApDocManager {
       'line',
       'line',
       new AcApLineCmd()
+    )
+    register.addCommand(
+      AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
+      'mtext',
+      'mtext',
+      new AcApMTextCmd()
     )
     register.addCommand(
       AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
@@ -974,7 +1040,7 @@ export class AcApDocManager {
         converter
       )
     } catch (error) {
-      console.error('Failed to register dxf converter: ', error)
+      log.error('Failed to register dxf converter: ', error)
     }
 
     // Register DWG converter
@@ -992,7 +1058,7 @@ export class AcApDocManager {
         converter
       )
     } catch (error) {
-      console.error('Failed to register dwg converter: ', error)
+      log.error('Failed to register dwg converter: ', error)
     }
   }
 
@@ -1039,22 +1105,19 @@ export class AcApDocManager {
           { continueOnError: true }
         )
         if (result.loaded.length > 0) {
-          console.log(
+          log.info(
             `[AcApDocManager] Loaded ${result.loaded.length} plugin(s) from config:`,
             result.loaded
           )
         }
         if (result.failed.length > 0) {
-          console.warn(
+          log.warn(
             `[AcApDocManager] Failed to load ${result.failed.length} plugin(s):`,
             result.failed.map(f => `${f.name}: ${f.error.message}`)
           )
         }
       } catch (error) {
-        console.error(
-          '[AcApDocManager] Error loading plugins from config:',
-          error
-        )
+        log.error('[AcApDocManager] Error loading plugins from config:', error)
       }
     }
 
@@ -1069,22 +1132,19 @@ export class AcApDocManager {
           }
         )
         if (result.loaded.length > 0) {
-          console.log(
+          log.info(
             `[AcApDocManager] Loaded ${result.loaded.length} plugin(s) from folder:`,
             result.loaded
           )
         }
         if (result.failed.length > 0) {
-          console.warn(
+          log.warn(
             `[AcApDocManager] Failed to load ${result.failed.length} plugin(s) from folder:`,
             result.failed.map(f => `${f.name}: ${f.error.message}`)
           )
         }
       } catch (error) {
-        console.error(
-          '[AcApDocManager] Error loading plugins from folder:',
-          error
-        )
+        log.error('[AcApDocManager] Error loading plugins from folder:', error)
       }
     }
   }

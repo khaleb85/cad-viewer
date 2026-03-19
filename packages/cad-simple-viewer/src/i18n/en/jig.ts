@@ -11,6 +11,11 @@ export default {
     firstPoint: 'Specify first point:',
     nextPoint: 'Specify next point (or press Enter to finish):'
   },
+  measureAngle: {
+    vertex: 'Specify vertex point:',
+    arm1: 'Specify point on first arm:',
+    arm2: 'Specify point on second arm:'
+  },
   measureArc: {
     startPoint: 'Specify arc start point:',
     throughPoint: 'Specify a point on the arc:',
@@ -24,6 +29,9 @@ export default {
   line: {
     firstPoint: 'Specify the first point:',
     nextPoint: 'Specify the next point:'
+  },
+  mtext: {
+    point: 'Specify mtext insertion point:'
   },
   rect: {
     firstPoint: 'Specify the first point:',

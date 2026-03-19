@@ -1,14 +1,22 @@
-import { AcDbArc, AcDbCircle, AcDbLine, AcGePoint3dLike } from '@mlightcad/data-model'
+import {
+  AcCmColor,
+  AcDbArc,
+  AcDbCircle,
+  AcDbLine,
+  AcGePoint3dLike
+} from '@mlightcad/data-model'
 
 import { AcApContext, AcApDocManager } from '../app'
 import {
+  AcEdBaseView,
   AcEdCommand,
   AcEdOpenMode,
   AcEdPreviewJig,
   AcEdPromptPointOptions
 } from '../editor'
-import { eventBus } from '../editor/global/eventBus'
 import { AcApI18n } from '../i18n'
+import { colorToCss, makeBadge, makeDot, measurementColor } from '../util'
+import { registerMeasurementCleanup } from './AcApClearMeasurementsCmd'
 
 interface CircleGeom {
   cx: number
@@ -22,7 +30,11 @@ function snapToCircle(
   g: CircleGeom
 ): { x: number; y: number; z: number } {
   const angle = Math.atan2(p.y - g.cy, p.x - g.cx)
-  return { x: g.cx + g.r * Math.cos(angle), y: g.cy + g.r * Math.sin(angle), z: 0 }
+  return {
+    x: g.cx + g.r * Math.cos(angle),
+    y: g.cy + g.r * Math.sin(angle),
+    z: 0
+  }
 }
 
 /** Returns the shorter arc length between two points on a circle */
@@ -33,7 +45,8 @@ function shortArcLength(
 ): number {
   const a1 = Math.atan2(p1.y - g.cy, p1.x - g.cx)
   const a2 = Math.atan2(p2.y - g.cy, p2.x - g.cx)
-  const norm = (a: number) => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
+  const norm = (a: number) =>
+    ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
   const span = norm(a2 - a1)
   return Math.min(span, 2 * Math.PI - span) * g.r
 }
@@ -46,7 +59,8 @@ function shortArcMid(
 ): { x: number; y: number; z: number } {
   const a1 = Math.atan2(p1.y - g.cy, p1.x - g.cx)
   const a2 = Math.atan2(p2.y - g.cy, p2.x - g.cx)
-  const norm = (a: number) => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
+  const norm = (a: number) =>
+    ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
   const ccwSpan = norm(a2 - a1)
   const mid =
     ccwSpan <= Math.PI ? a1 + ccwSpan / 2 : a1 - (2 * Math.PI - ccwSpan) / 2
@@ -59,12 +73,13 @@ function shortArcMid(
  */
 function drawArcOnCanvas(
   canvas: HTMLCanvasElement,
-  context: AcApContext,
+  view: AcEdBaseView,
   g: CircleGeom,
   p1: { x: number; y: number },
-  p2: { x: number; y: number }
+  p2: { x: number; y: number },
+  color: AcCmColor
 ) {
-  const rect = context.view.canvas.getBoundingClientRect()
+  const rect = view.canvas.getBoundingClientRect()
   const dpr = window.devicePixelRatio || 1
   const w = Math.round(rect.width)
   const h = Math.round(rect.height)
@@ -86,21 +101,22 @@ function drawArcOnCanvas(
   ctx.save()
   ctx.scale(dpr, dpr)
 
-  const sc = context.view.worldToScreen({ x: g.cx, y: g.cy })
-  const ss = context.view.worldToScreen(p1)
-  const se = context.view.worldToScreen(p2)
+  const sc = view.worldToScreen({ x: g.cx, y: g.cy })
+  const ss = view.worldToScreen(p1)
+  const se = view.worldToScreen(p2)
   const screenR = Math.hypot(ss.x - sc.x, ss.y - sc.y)
 
   const sa = Math.atan2(ss.y - sc.y, ss.x - sc.x)
   const ea = Math.atan2(se.y - sc.y, se.x - sc.x)
 
-  const norm = (a: number) => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
+  const norm = (a: number) =>
+    ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
   const cwSpan = norm(ea - sa)
   const antiClockwise = cwSpan > Math.PI
 
   ctx.beginPath()
   ctx.arc(sc.x, sc.y, screenR, sa, ea, antiClockwise)
-  ctx.strokeStyle = '#60a5fa'
+  ctx.strokeStyle = colorToCss(color)
   ctx.lineWidth = 4
   ctx.stroke()
 
@@ -115,10 +131,14 @@ class AcApArcSnapJig extends AcEdPreviewJig<AcGePoint3dLike> {
   private _dummy: AcDbLine
   private _indicator: HTMLDivElement
   private _ctx: AcApContext
-  private _onSnap: (geom: CircleGeom | null, snapped: AcGePoint3dLike | null) => void
+  private _onSnap: (
+    geom: CircleGeom | null,
+    snapped: AcGePoint3dLike | null
+  ) => void
 
   constructor(
     context: AcApContext,
+    color: AcCmColor,
     onSnap: (geom: CircleGeom | null, snapped: AcGePoint3dLike | null) => void
   ) {
     super(context.view)
@@ -130,7 +150,7 @@ class AcApArcSnapJig extends AcEdPreviewJig<AcGePoint3dLike> {
 
     this._indicator = document.createElement('div')
     this._indicator.style.cssText =
-      'position:fixed;width:10px;height:10px;border:2px solid #60a5fa;' +
+      `position:fixed;width:10px;height:10px;border:2px solid ${colorToCss(color)};` +
       'background:transparent;pointer-events:none;box-sizing:border-box;' +
       'transform:translate(-50%,-50%);z-index:99998;display:none;'
     document.body.appendChild(this._indicator)
@@ -190,6 +210,7 @@ class AcApArcEndSnapJig extends AcEdPreviewJig<AcGePoint3dLike> {
   constructor(
     context: AcApContext,
     geom: CircleGeom,
+    color: AcCmColor,
     onMove: (snapped: AcGePoint3dLike) => void
   ) {
     super(context.view)
@@ -202,7 +223,7 @@ class AcApArcEndSnapJig extends AcEdPreviewJig<AcGePoint3dLike> {
 
     this._indicator = document.createElement('div')
     this._indicator.style.cssText =
-      'position:fixed;width:10px;height:10px;border:2px solid #60a5fa;' +
+      `position:fixed;width:10px;height:10px;border:2px solid ${colorToCss(color)};` +
       'background:transparent;pointer-events:none;box-sizing:border-box;' +
       'transform:translate(-50%,-50%);z-index:99998;'
     document.body.appendChild(this._indicator)
@@ -241,10 +262,9 @@ class AcApArcEndSnapJig extends AcEdPreviewJig<AcGePoint3dLike> {
  *    arc between the start and current position in real time, together with a
  *    live badge showing the arc length.
  *
- * Both the construction-phase canvas and live badge are removed before this
- * method returns. After the second click a `measurement-added` event is emitted
- * so the `useMeasurements` composable in `cad-viewer` renders the persistent
- * DOM overlay (arc canvas + badge + endpoint dots) that tracks zoom and pan.
+ * Persistent overlays are placed via {@link AcTrHtmlTransientManager} for dots
+ * and badge. The arc canvas is managed with a viewChanged listener cleaned up
+ * via {@link registerMeasurementCleanup}.
  */
 export class AcApMeasureArcCmd extends AcEdCommand {
   constructor() {
@@ -254,17 +274,19 @@ export class AcApMeasureArcCmd extends AcEdCommand {
 
   async execute(context: AcApContext) {
     const editor = AcApDocManager.instance.editor
+    const color = measurementColor(context.doc.database)
 
     // Construction-phase canvas — removed before this method returns
     const arcCanvas = document.createElement('canvas')
-    arcCanvas.style.cssText = 'position:fixed;pointer-events:none;z-index:99997;'
+    arcCanvas.style.cssText =
+      'position:fixed;pointer-events:none;z-index:99997;'
     document.body.appendChild(arcCanvas)
 
     // ── Phase 1: snap to circle/arc entity ──────────────────────────────────
     let snapGeom: CircleGeom | null = null
     let snappedStart: AcGePoint3dLike | null = null
 
-    const snapJig = new AcApArcSnapJig(context, (geom, snapped) => {
+    const snapJig = new AcApArcSnapJig(context, color, (geom, snapped) => {
       snapGeom = geom
       snappedStart = snapped
     })
@@ -290,15 +312,16 @@ export class AcApMeasureArcCmd extends AcEdCommand {
     const start = snappedStart
 
     // ── Phase 2: end point with live arc preview ─────────────────────────────
+    const css = colorToCss(color)
     // dot1 and liveBadge are short-lived during construction
     const dot1 = document.createElement('div')
     dot1.style.cssText =
       'position:fixed;width:12px;height:12px;border-radius:50%;' +
-      'background:#60a5fa;border:2px solid white;box-sizing:border-box;' +
+      `background:${css};border:2px solid white;box-sizing:border-box;` +
       'pointer-events:none;transform:translate(-50%,-50%);z-index:99999;'
     const liveBadge = document.createElement('div')
     liveBadge.style.cssText =
-      'position:fixed;background:rgba(255,255,255,0.95);color:#1e40af;' +
+      `position:fixed;background:rgba(255,255,255,0.95);color:${css};` +
       'font-size:13px;font-family:sans-serif;font-weight:500;' +
       'padding:3px 14px;border-radius:20px;pointer-events:none;' +
       'transform:translate(-50%,-50%);white-space:nowrap;' +
@@ -314,7 +337,8 @@ export class AcApMeasureArcCmd extends AcEdCommand {
     }
     reposDot1()
 
-    const redrawPreview = () => drawArcOnCanvas(arcCanvas, context, geom, start, start)
+    const redrawPreview = () =>
+      drawArcOnCanvas(arcCanvas, context.view, geom, start, start, color)
     const onViewChangedPreview = () => {
       reposDot1()
       redrawPreview()
@@ -322,7 +346,7 @@ export class AcApMeasureArcCmd extends AcEdCommand {
     context.view.events.viewChanged.addEventListener(onViewChangedPreview)
 
     const onMove = (snapped: AcGePoint3dLike) => {
-      drawArcOnCanvas(arcCanvas, context, geom, start, snapped)
+      drawArcOnCanvas(arcCanvas, context.view, geom, start, snapped, color)
 
       const len = shortArcLength(start, snapped, geom)
       liveBadge.textContent = `~ ${len.toFixed(4)} m`
@@ -340,7 +364,7 @@ export class AcApMeasureArcCmd extends AcEdCommand {
     const p2Prompt = new AcEdPromptPointOptions(
       AcApI18n.t('jig.measureArc.endPoint')
     )
-    p2Prompt.jig = new AcApArcEndSnapJig(context, geom, onMove)
+    p2Prompt.jig = new AcApArcEndSnapJig(context, geom, color, onMove)
 
     let p2Raw: AcGePoint3dLike
     try {
@@ -353,7 +377,7 @@ export class AcApMeasureArcCmd extends AcEdCommand {
       return
     }
 
-    // Clean up construction-phase elements before returning
+    // Clean up construction-phase elements
     liveBadge.remove()
     dot1.remove()
     context.view.events.viewChanged.removeEventListener(onViewChangedPreview)
@@ -363,7 +387,36 @@ export class AcApMeasureArcCmd extends AcEdCommand {
     const arcLen = shortArcLength(start, end, geom)
     const mid = shortArcMid(start, end, geom)
 
-    // Notify the useMeasurements composable to render the persistent DOM overlay
-    eventBus.emit('measurement-added', { type: 'arc', geom, start, end, arcLen, mid })
+    // Persistent arc canvas — redrawn on viewChanged, cleaned up by Clear
+    const persistCanvas = document.createElement('canvas')
+    persistCanvas.style.cssText =
+      'position:fixed;pointer-events:none;z-index:99997;'
+    document.body.appendChild(persistCanvas)
+    drawArcOnCanvas(persistCanvas, context.view, geom, start, end, color)
+
+    const redrawPersist = () =>
+      drawArcOnCanvas(persistCanvas, context.view, geom, start, end, color)
+    context.view.events.viewChanged.addEventListener(redrawPersist)
+
+    // Persistent badge + dots via htmlTransientManager
+    const htManager = AcApDocManager.instance.curView.htmlTransientManager
+    const id = `arc-${Date.now()}`
+
+    htManager.add(`${id}-dot1`, makeDot(color), start, 'measurement')
+    htManager.add(`${id}-dot2`, makeDot(color), end, 'measurement')
+    htManager.add(
+      `${id}-badge`,
+      makeBadge(color, `~ ${arcLen.toFixed(4)} m`),
+      mid,
+      'measurement'
+    )
+
+    registerMeasurementCleanup(() => {
+      persistCanvas.remove()
+      context.view.events.viewChanged.removeEventListener(redrawPersist)
+      htManager.remove(`${id}-dot1`)
+      htManager.remove(`${id}-dot2`)
+      htManager.remove(`${id}-badge`)
+    })
   }
 }
