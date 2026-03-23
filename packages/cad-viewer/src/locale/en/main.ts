@@ -2,7 +2,7 @@ export default {
   mainMenu: {
     new: 'New Drawing',
     open: 'Open Drawing',
-    export: 'Export to SVG'
+    export: 'Export to DXF'
   },
   verticalToolbar: {
     measure: {
@@ -15,7 +15,8 @@ export default {
     },
     measureAngle: {
       text: 'Angle',
-      description: 'Measures the angle between two lines sharing a common vertex'
+      description:
+        'Measures the angle between two lines sharing a common vertex'
     },
     measureArea: {
       text: 'Area',

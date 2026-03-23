@@ -212,6 +212,7 @@ export class AcTrView2d extends AcEdBaseView {
     this._css2dRenderer.domElement.style.top = '0px'
     this._css2dRenderer.domElement.style.left = '0px'
     this._css2dRenderer.domElement.style.pointerEvents = 'none'
+    this._css2dRenderer.domElement.style.zIndex = '99998'
     container.appendChild(this._css2dRenderer.domElement)
 
     this._missedImages = new Map()
@@ -321,6 +322,7 @@ export class AcTrView2d extends AcEdBaseView {
   set backgroundColor(value: number) {
     this._renderer.setClearColor(value)
     this._renderer.changeForeground(value == 0 ? 0xffffff : 0)
+    this.editor.setCursorColor(value == 0 ? 'white' : 'black')
     this._isDirty = true
   }
 
