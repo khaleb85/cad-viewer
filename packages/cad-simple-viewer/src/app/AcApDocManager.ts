@@ -350,6 +350,10 @@ export class AcApDocManager {
     AcApDocManager._instance = undefined
   }
 
+  get progress() {
+    return this._progress
+  }
+
   /**
    * Gets the current application context.
    *

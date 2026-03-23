@@ -32,6 +32,8 @@ class CadViewerApp {
           }
         })
 
+        AcApDocManager.instance.progress.show()
+
         AcApDocManager.instance.events.documentActivated.addEventListener(
           args => {
             document.title = args.doc.docTitle
