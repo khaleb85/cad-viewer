@@ -4,6 +4,7 @@ import {
   AcApSettingManager,
   AcEdOpenMode
 } from '@mlightcad/cad-simple-viewer'
+import { acdbHostApplicationServices } from '@mlightcad/data-model'
 
 class CadViewerApp {
   private container: HTMLDivElement
@@ -44,6 +45,30 @@ class CadViewerApp {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ; (window as any).cadExec = (cmd: string) =>
             AcApDocManager.instance.sendStringToExecute(cmd)
+          // Expose viewer instance for host application (e.g. Coordly React)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ; (window as any).viewerInstance = AcApDocManager.instance
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ; (window as any).helpers = {
+            switchLayout: (layoutName: string) => {
+              acdbHostApplicationServices().layoutManager.setCurrentLayout(layoutName)
+            },
+            getLayouts: () => {
+
+              const db = acdbHostApplicationServices().workingDatabase
+              const layoutDict = db.objects.layout
+
+              const layouts = []
+              for (const layout of layoutDict.newIterator()) {
+                console.log(layout.layoutName, layout.tabOrder, layout.blockTableRecordId)
+                layouts.push(layout.layoutName)
+              }
+
+              return layouts
+            }
+          }
+
 
         this.isInitialized = true
       } catch (error) {
