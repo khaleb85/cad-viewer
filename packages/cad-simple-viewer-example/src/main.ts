@@ -38,10 +38,10 @@ class CadViewerApp {
           }
         )
 
-        // Expose command API for host application (e.g. Coordly React)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(window as any).cadExec = (cmd: string) =>
-          AcApDocManager.instance.sendStringToExecute(cmd)
+          // Expose command API for host application (e.g. Coordly React)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ; (window as any).cadExec = (cmd: string) =>
+            AcApDocManager.instance.sendStringToExecute(cmd)
 
         this.isInitialized = true
       } catch (error) {
