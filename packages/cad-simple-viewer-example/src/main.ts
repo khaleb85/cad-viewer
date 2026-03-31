@@ -98,6 +98,18 @@ class CadViewerApp {
       )
 
       if (success) {
+        // WORKAROUND: hide Defpoints layer (non-plottable in AutoCAD)
+        // Remove when mlightcad/cad-viewer#167 is fixed
+        const db = AcApDocManager.instance.curDocument.database
+        const defpoints = db.tables.layerTable.getAt('Defpoints')
+        if (defpoints && !defpoints.isOff) {
+          defpoints.isOff = true
+          const view = AcApDocManager.instance.curView
+          if (view) {
+            view.updateLayer(defpoints, { isOff: true })
+          }
+        }
+
         console.log(`Successfully loaded: ${fileName}`)
         window.dispatchEvent(new CustomEvent('cad-file-loaded'))
       } else {
