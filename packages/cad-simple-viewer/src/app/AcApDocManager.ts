@@ -7,6 +7,7 @@ import {
   acdbHostApplicationServices,
   AcDbProgressdEventArgs,
   AcDbSysVarManager,
+  AcGeBox2d,
   log
 } from '@mlightcad/data-model'
 import { AcDbLibreDwgConverter } from '@mlightcad/libredwg-converter'
@@ -28,6 +29,7 @@ import {
   AcApMTextCmd,
   AcApOpenCmd,
   AcApPanCmd,
+  AcApPolylineCmd,
   AcApQNewCmd,
   AcApRectCmd,
   AcApRegenCmd,
@@ -37,6 +39,7 @@ import {
   AcApRevVisibilityCmd,
   AcApSelectCmd,
   AcApSketchCmd,
+  AcApSplineCmd,
   AcApSwitchBgCmd,
   AcApSysVarCmd,
   AcApZoomCmd,
@@ -264,6 +267,7 @@ export class AcApDocManager {
       if (args.subStage === 'HEADER') {
         this.curView.ltscale = doc.database.ltscale
         this.curView.celtscale = doc.database.celtscale
+        this.curView.renderer.showLineWeight = doc.database.lwdisplay
       }
     })
 
@@ -783,6 +787,12 @@ export class AcApDocManager {
     )
     register.addCommand(
       AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
+      'pline',
+      'pline',
+      new AcApPolylineCmd()
+    )
+    register.addCommand(
+      AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
       'qnew',
       'qnew',
       new AcApQNewCmd()
@@ -834,6 +844,12 @@ export class AcApDocManager {
       'sketch',
       'sketch',
       new AcApSketchCmd()
+    )
+    register.addCommand(
+      AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
+      'spline',
+      'spline',
+      new AcApSplineCmd()
     )
     register.addCommand(
       AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
@@ -970,11 +986,14 @@ export class AcApDocManager {
       const doc = this.context.doc
       this.events.documentActivated.dispatch({ doc })
       this.setActiveLayout()
+      const db = doc.database
 
-      // The initial zoom is handled after batchConvert completes, so the
-      // camera goes directly to the viewport area without a visible jump.
-      // For files without viewports, zoomToFitDrawing provides the fallback.
-      this.curView.zoomToFitDrawing()
+      // The extents of drawing database may be empty. Espically dxf files.
+      if (db.extents.isEmpty()) {
+        this.curView.zoomToFitDrawing()
+      } else {
+        this.curView.zoomTo(new AcGeBox2d(db.extmin, db.extmax))
+      }
     }
   }
 

@@ -344,6 +344,7 @@ export class AcTrBatchedGroup extends THREE.Group {
     entity.updateMatrixWorld(true)
     entity.traverse(object => {
       const bboxIntersectionCheck = !!object.userData.bboxIntersectionCheck
+
       if (object instanceof LineSegments2) {
         entityInfo.push(
           this.addLine2(object, {
@@ -354,7 +355,7 @@ export class AcTrBatchedGroup extends THREE.Group {
         return
       }
 
-      if (object.userData.noBatch) {
+      if (object.userData[AcTrEntity.NO_BATCH_FLAG]) {
         const cloned = this.cloneUnbatchedObject(object)
         cloned.userData.bboxIntersectionCheck = bboxIntersectionCheck
         this._unbatchedObjects.add(cloned)
@@ -547,6 +548,16 @@ export class AcTrBatchedGroup extends THREE.Group {
     }
   }
 
+  private applyHighlightMaterial(object: THREE.Object3D) {
+    if (this.hasMaterial(object)) {
+      const clonedMaterial = AcTrMaterialUtil.cloneMaterial(object.material)
+      AcTrMaterialUtil.setMaterialColor(clonedMaterial)
+      object.material = clonedMaterial
+    }
+
+    object.children.forEach(child => this.applyHighlightMaterial(child))
+  }
+
   /**
    * Removes and disposes highlight objects for one entity id.
    */
@@ -578,9 +589,19 @@ export class AcTrBatchedGroup extends THREE.Group {
       batches.set(material.id, batchedLine)
       this.add(batchedLine)
     }
-    object.geometry.applyMatrix4(object.matrixWorld)
-    const geometryId = batchedLine.addGeometry(object.geometry)
+
+    // Bake rotation/scale into geometry, but keep world translation as offset.
+    // This preserves block reference transforms while avoiding large Float32 coords.
+    const geometry = object.geometry.clone()
+    const matrixNoTranslation = object.matrixWorld.clone()
+    const worldOffset = new THREE.Vector3().setFromMatrixPosition(
+      object.matrixWorld
+    )
+    matrixNoTranslation.setPosition(0, 0, 0)
+    geometry.applyMatrix4(matrixNoTranslation)
+    const geometryId = batchedLine.addGeometry(geometry, -1, -1, worldOffset)
     batchedLine.setGeometryInfo(geometryId, userData)
+    geometry.dispose()
 
     return {
       batchedObjectId: batchedLine.id,
@@ -606,8 +627,16 @@ export class AcTrBatchedGroup extends THREE.Group {
       this.add(batchedLine)
     }
 
-    const geometry = this.cloneLineSegments2GeometryInWorld(object)
-    const geometryId = batchedLine.addGeometry(geometry)
+    const matrixNoTranslation = object.matrixWorld.clone()
+    const worldOffset = new THREE.Vector3().setFromMatrixPosition(
+      object.matrixWorld
+    )
+    matrixNoTranslation.setPosition(0, 0, 0)
+    const geometry = this.cloneLineSegments2Geometry(
+      object,
+      matrixNoTranslation
+    )
+    const geometryId = batchedLine.addGeometry(geometry, -1, worldOffset)
     batchedLine.setGeometryInfo(geometryId, userData)
     geometry.dispose()
 
@@ -637,9 +666,16 @@ export class AcTrBatchedGroup extends THREE.Group {
       batches.set(material.id, batchedMesh)
       this.add(batchedMesh)
     }
-    object.geometry.applyMatrix4(object.matrixWorld)
-    const geometryId = batchedMesh.addGeometry(object.geometry)
+    const geometry = object.geometry.clone()
+    const matrixNoTranslation = object.matrixWorld.clone()
+    const worldOffset = new THREE.Vector3().setFromMatrixPosition(
+      object.matrixWorld
+    )
+    matrixNoTranslation.setPosition(0, 0, 0)
+    geometry.applyMatrix4(matrixNoTranslation)
+    const geometryId = batchedMesh.addGeometry(geometry, -1, -1, worldOffset)
     batchedMesh.setGeometryInfo(geometryId, userData)
+    geometry.dispose()
 
     return {
       batchedObjectId: batchedMesh.id,
@@ -665,9 +701,16 @@ export class AcTrBatchedGroup extends THREE.Group {
       this._pointBatches.set(material.id, batchedPoint)
       this.add(batchedPoint)
     }
-    object.geometry.applyMatrix4(object.matrixWorld)
-    const geometryId = batchedPoint.addGeometry(object.geometry)
+    const geometry = object.geometry.clone()
+    const matrixNoTranslation = object.matrixWorld.clone()
+    const worldOffset = new THREE.Vector3().setFromMatrixPosition(
+      object.matrixWorld
+    )
+    matrixNoTranslation.setPosition(0, 0, 0)
+    geometry.applyMatrix4(matrixNoTranslation)
+    const geometryId = batchedPoint.addGeometry(geometry, -1, worldOffset)
     batchedPoint.setGeometryInfo(geometryId, userData)
+    geometry.dispose()
 
     return {
       batchedObjectId: batchedPoint.id,
@@ -825,9 +868,12 @@ export class AcTrBatchedGroup extends THREE.Group {
   }
 
   /**
-   * Clones `LineSegments2` geometry into world space for wide-line batching.
+   * Clones `LineSegments2` geometry and bakes non-translation transforms.
    */
-  private cloneLineSegments2GeometryInWorld(object: LineSegments2) {
+  private cloneLineSegments2Geometry(
+    object: LineSegments2,
+    transform: THREE.Matrix4
+  ) {
     const source = object.geometry as LineSegmentsGeometry
     const instanceStart = source.getAttribute('instanceStart')
     const instanceEnd = source.getAttribute('instanceEnd')
@@ -835,8 +881,8 @@ export class AcTrBatchedGroup extends THREE.Group {
     const segmentPositions = new Float32Array(count * 6)
 
     for (let i = 0, p = 0; i < count; i++) {
-      _v1.fromBufferAttribute(instanceStart, i).applyMatrix4(object.matrixWorld)
-      _v2.fromBufferAttribute(instanceEnd, i).applyMatrix4(object.matrixWorld)
+      _v1.fromBufferAttribute(instanceStart, i).applyMatrix4(transform)
+      _v2.fromBufferAttribute(instanceEnd, i).applyMatrix4(transform)
       segmentPositions[p++] = _v1.x
       segmentPositions[p++] = _v1.y
       segmentPositions[p++] = _v1.z

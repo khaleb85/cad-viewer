@@ -33,6 +33,17 @@
   "engines": {
     "pnpm": ">=8"
   },
+  "pnpm": {
+    "overrides": {
+      "@mlightcad/data-model": "^1.7.15",
+      "@mlightcad/libredwg-converter": "^3.5.15",
+      "@mlightcad/mtext-renderer": "^0.10.7",
+      "element-plus": "^2.12.0",
+      "three": "^0.172.0",
+      "vue": "^3.4.21",
+      "vue-i18n": "^10.0.1"
+    }
+  },
   "devDependencies": {
     "@changesets/cli": "^2.29.5",
     "@eslint/js": "^9.9.1",
@@ -57,7 +68,7 @@
     "rollup-plugin-peer-deps-external": "^2.2.4",
     "rollup-plugin-visualizer": "^5.12.0",
     "ts-jest": "^29.1.5",
-    "typedoc": "^0.27.4",
+    "typedoc": "^0.28.18",
     "typescript": "^5.5.2",
     "typescript-eslint": "^8.4.0",
     "vite": "^5.4.19",

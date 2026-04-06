@@ -277,7 +277,11 @@ class CadViewerApp {
       const mode = this.resolveMode('<!VIEWER_MODE!>')
       const options: AcApOpenDatabaseOptions = {
         minimumChunkSize: 1000,
-        mode
+        mode,
+        // Override line weight display setting to false so that line weights are not displayed by default
+        sysVars: {
+          lwdisplay: false
+        }
       }
 
       const success = await AcApDocManager.instance.openDocument(
