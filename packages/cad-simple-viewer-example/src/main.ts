@@ -100,10 +100,26 @@ class CadViewerApp {
 
             const layouts: CadLayoutInfo[] = []
             for (const layout of layoutDict.newIterator()) {
+              const isActive = layout.blockTableRecordId === currentSpaceId
+
+              let hasEntities = false
+              const btr = db.tables.blockTable.getIdAt(
+                layout.blockTableRecordId
+              )
+              if (btr) {
+                for (const _entity of btr.newIterator()) {
+                  hasEntities = true
+                  break
+                }
+              }
+
+              // mantém o layout ativo mesmo se vazio, pra nunca ficar sem seleção
+              if (!hasEntities && !isActive) continue
+
               layouts.push({
                 name: layout.layoutName,
                 tabOrder: layout.tabOrder,
-                isActive: layout.blockTableRecordId === currentSpaceId
+                isActive
               })
             }
 
