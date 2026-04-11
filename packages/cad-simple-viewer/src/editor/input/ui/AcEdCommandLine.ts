@@ -41,6 +41,7 @@ export class AcEdCommandLine {
   private autoCompleteIndex: number
   private activeSession?: AcEdKeywordSession
   private resizeObserver?: ResizeObserver
+  private isPromptActive: boolean = false
 
   constructor(container: HTMLElement = document.body) {
     this.container = container
@@ -73,6 +74,7 @@ export class AcEdCommandLine {
   }
 
   setPrompt(message?: string) {
+    this.isPromptActive = true
     this.promptEl.innerHTML = message ?? ''
     this.textInput.placeholder = ''
   }
@@ -84,19 +86,64 @@ export class AcEdCommandLine {
 
   clearPrompt() {
     this.promptEl.innerHTML = ''
+    this.isPromptActive = false
   }
 
   clearInput() {
     this.textInput.value = ''
-    this.textInput.placeholder = this.localize('main.commandLine.placeholder')
+    this.textInput.placeholder = this.isPromptActive
+      ? ''
+      : this.localize('main.commandLine.placeholder')
   }
 
   focusInput() {
     this.textInput.focus()
   }
 
-  async getKeywords(options: AcEdPromptKeywordOptions): Promise<string> {
-    this.activeSession = new AcEdKeywordSession(this, options)
+  setInputReadOnly(readOnly: boolean) {
+    this.textInput.readOnly = readOnly
+  }
+
+  /**
+   * Displays a non-error message in the command line history panel.
+   *
+   * This is a lightweight public wrapper around the internal history/message
+   * rendering pipeline so other editor components can surface prompt feedback
+   * without needing direct access to the private printing helpers.
+   *
+   * @param message - Message text to append to the command line message panel
+   * @param msgKey - Optional localization key stored with the rendered entry
+   */
+  showMessage(message: string, msgKey?: string) {
+    this.printMessage(message, msgKey)
+  }
+
+  /**
+   * Displays an error message in the command line history panel.
+   *
+   * Prompt workflows such as entity picking use this to report rejected input
+   * while keeping the current interaction active. The rendered line is styled
+   * as an error entry so it is visually distinct from normal informational
+   * messages.
+   *
+   * @param message - Error text to append to the command line message panel
+   * @param msgKey - Optional localization key stored with the rendered entry
+   */
+  showError(message: string, msgKey?: string) {
+    this.printError(message, msgKey)
+  }
+
+  cancelActiveSession() {
+    if (!this.activeSession) return
+    this.activeSession.handleEscape()
+    this.activeSession = undefined
+  }
+
+  async getKeywords(
+    options: AcEdPromptKeywordOptions,
+    allowTyping: boolean = true
+  ): Promise<string> {
+    this.activeSession = new AcEdKeywordSession(this, options, allowTyping)
     const result = await this.activeSession.start()
     this.activeSession = undefined
     return result
@@ -140,6 +187,9 @@ export class AcEdCommandLine {
       'data-placeholder',
       this.localize('main.commandLine.placeholder')
     )
+    if (!this.isPromptActive && !this.textInput.value) {
+      this.textInput.placeholder = this.localize('main.commandLine.placeholder')
+    }
 
     // Refresh button titles
     this.downBtn.title = this.localize('main.commandLine.showHistory')
@@ -202,9 +252,9 @@ export class AcEdCommandLine {
         align-items: center;
         gap: 6px;
         border-radius: 6px;
-        background: linear-gradient(#ededed, #e0e0e0);
-        border: 1px solid rgba(0, 0, 0, 0.35);
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+        background: var(--ml-ui-bg, linear-gradient(#ededed, #e0e0e0));
+        border: 1px solid var(--ml-ui-border, rgba(0, 0, 0, 0.35));
+        box-shadow: var(--ml-ui-shadow, 0 2px 6px rgba(0, 0, 0, 0.25));
         min-width: 300px;
         height: 30px;
       }
@@ -213,9 +263,9 @@ export class AcEdCommandLine {
         display: flex;
         align-items: center;
         gap: 4px;
-        background: rgba(0, 0, 0, 0.06);
+        background: var(--ml-ui-bg, rgba(0, 0, 0, 0.06));
         border-radius: 4px;
-        border: 1px solid rgba(0, 0, 0, 0.08);
+        border: 1px solid var(--ml-ui-border, rgba(0, 0, 0, 0.08));
         height: 100%;
       }
 
@@ -226,7 +276,7 @@ export class AcEdCommandLine {
         align-items: center;
         justify-content: center;
         font-weight: 700;
-        color: #222;
+        color: var(--ml-ui-text, #222);
         font-size: 12px;
         background: transparent;
         cursor: pointer;
@@ -234,7 +284,7 @@ export class AcEdCommandLine {
       }
 
       .ml-cli-close-btn:hover {
-        background: rgba(0,0,0,0.10);
+        background: var(--ml-ui-border, rgba(0, 0, 0, 0.10));
       }
 
       .ml-cli-down,
@@ -249,7 +299,7 @@ export class AcEdCommandLine {
         border: none;
         cursor: pointer;
         font-size: 16px;
-        color: #222;
+        color: var(--ml-ui-text, #222);
         padding: 0;
       }
 
@@ -262,9 +312,9 @@ export class AcEdCommandLine {
         display: flex;
         align-items: center;
         justify-content: center;
-        background: rgba(0, 0, 0, 0.06);
+        background: var(--ml-ui-bg, rgba(0, 0, 0, 0.06));
         border-radius: 4px;
-        border: 1px solid rgba(0, 0, 0, 0.08);
+        border: 1px solid var(--ml-ui-border, rgba(0, 0, 0, 0.08));
         height: 100%;
       }
 
@@ -273,13 +323,8 @@ export class AcEdCommandLine {
         align-items: center;
         flex: 1;
         min-width: 0;
-        color: #333;
+        color: var(--ml-ui-text-muted, #333);
         height: 100%; 
-      }
-
-      .ml-cli-prompt,
-      .ml-cli-text {
-        font-family: Consolas, "Courier New", monospace;
       }
 
       .ml-cli-prompt {
@@ -289,6 +334,10 @@ export class AcEdCommandLine {
         user-select: none;
         margin-right: 4px;
         line-height: 1;
+        font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", Arial, sans-serif;
+        font-size: 12px;
+        letter-spacing: 0;
+        word-spacing: 0;
       }
 
       .ml-cli-text {
@@ -298,29 +347,35 @@ export class AcEdCommandLine {
         outline: none;
         background: transparent;
 
+        font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", Arial, sans-serif;
         font-size: 13px;
         line-height: 1;
+        letter-spacing: 0;
+        word-spacing: 0;
         padding: 0;
         margin: 0;
 
         display: flex;
         align-items: center;
-        color: #333;
+        color: var(--ml-ui-text-muted, #333);
       }
 
       .ml-cli-option {
         display: inline-block;
-        background: #f7f7f7;
-        border: 1px solid rgba(0, 0, 0, 0.06);
-        padding: 2px 6px;
+        background: var(--ml-ui-bg, #f7f7f7);
+        border: 1px solid var(--ml-ui-border, rgba(0, 0, 0, 0.06));
+        padding: 1px 4px;
         border-radius: 3px;
-        margin: 0 4px;
+        margin: 0 1px;
         cursor: pointer;
         font-size: 12px;
+        line-height: 1.1;
+        letter-spacing: 0;
+        word-spacing: 0;
       }
 
       .ml-cli-option:hover {
-        background: #eaeaea;
+        background: var(--ml-ui-border, #eaeaea);
       }
 
       .ml-cli-cmd-popup {
@@ -330,23 +385,23 @@ export class AcEdCommandLine {
         transform: translate(0, 0);
         max-height: 220px;
         overflow-y: auto;
-        background: #333;
-        border: 1px solid rgba(0, 0, 0, 0.5);
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+        background: var(--ml-ui-bg, #333);
+        border: 1px solid var(--ml-ui-border, rgba(0, 0, 0, 0.5));
+        box-shadow: var(--ml-ui-shadow, 0 6px 18px rgba(0, 0, 0, 0.35));
         border-radius: 4px;
         padding: 6px 0;
-        color: #fff;
+        color: var(--ml-ui-text, #fff);
       }
 
       .ml-cli-cmd-popup .item {
         padding: 8px 14px;
         cursor: pointer;
-        color: #fff;
+        color: var(--ml-ui-text, #fff);
         font-size: 14px;
       }
 
       .ml-cli-cmd-popup .item:hover {
-        background: #444;
+        background: var(--ml-ui-border, #444);
       }
 
       .ml-cli-msg-panel {
@@ -356,13 +411,13 @@ export class AcEdCommandLine {
         transform: translate(0, 0);
         max-height: 340px;
         overflow-y: auto;
-        background: #333;
-        border: 1px solid rgba(0, 0, 0, 0.5);
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+        background: var(--ml-ui-bg, #333);
+        border: 1px solid var(--ml-ui-border, rgba(0, 0, 0, 0.5));
+        box-shadow: var(--ml-ui-shadow, 0 6px 18px rgba(0, 0, 0, 0.35));
         border-radius: 4px;
         padding: 6px 0;
         font-family: "Microsoft YaHei", Arial, sans-serif;
-        color: #fff;
+        color: var(--ml-ui-text, #fff);
         font-size: 14px;
         white-space: pre-wrap;
         line-height: 1.35;
@@ -370,11 +425,11 @@ export class AcEdCommandLine {
 
       .ml-cli-history-line {
         padding: 4px 6px;
-        color: #fff;
+        color: var(--ml-ui-text, #fff);
       }
 
       .ml-cli-msg-error {
-        color: #ff5555;
+        color: var(--ml-ui-danger, #ff5555);
       }
 
       .ml-cli-wrapper {
@@ -393,7 +448,7 @@ export class AcEdCommandLine {
 
       .ml-cli-cmd-popup::-webkit-scrollbar-thumb,
       .ml-cli-msg-panel::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.2);
+        background: var(--ml-ui-border, rgba(255, 255, 255, 0.2));
         border-radius: 6px;
       }
     `
@@ -575,6 +630,15 @@ export class AcEdCommandLine {
         else this.navigateHistory(1)
         return
       }
+
+      case 'Backspace':
+      case 'Delete': {
+        // Let the input handle deletion, but do not bubble to global handlers
+        // that might delete selected entities.
+        e.stopPropagation()
+        e.stopImmediatePropagation()
+        return
+      }
     }
   }
 
@@ -598,7 +662,13 @@ export class AcEdCommandLine {
           item.commandGroup,
           item.command.globalName
         )
-        div.innerHTML = `<strong>${item.command.globalName} - ${description}</strong>`
+        const aliases =
+          AcApDocManager.instance.commandManager.getCommandAliases(
+            item.command,
+            item.commandGroup
+          )
+        const aliasText = aliases.length ? `(${aliases.join(', ')})` : ''
+        div.innerHTML = `<strong>${item.command.globalName}${aliasText} - ${description}</strong>`
         if (idx === this.autoCompleteIndex) div.classList.add('selected')
         this.cmdPopup.appendChild(div)
       })
@@ -663,13 +733,18 @@ export class AcEdCommandLine {
     onClick: (kw: string) => void
   ) {
     this.promptEl.innerHTML = ''
+    this.isPromptActive = true
+    // Hide default placeholder when showing a prompt/keyword message.
+    this.textInput.placeholder = ''
 
     if (options.message) {
       this.promptEl.append(options.message.trim() + ' ')
     }
 
-    const keywords = options.keywords?.toArray().filter(k => k.visible) ?? []
-    if (!keywords.length) return
+    const promptFormat = options.getKeywordPromptFormat()
+    if (!promptFormat.visibleKeywords.length) return
+    const keywords = options.keywords?.toArray().filter(k => k.visible)
+    if (!keywords?.length) return
 
     this.promptEl.append('[')
 
@@ -690,7 +765,13 @@ export class AcEdCommandLine {
       this.promptEl.append(span)
     })
 
-    this.promptEl.append(']: ')
+    this.promptEl.append(']')
+
+    if (promptFormat.defaultKeyword) {
+      this.promptEl.append(` <${promptFormat.defaultKeyword}>`)
+    }
+
+    this.promptEl.append(': ')
   }
 
   /** Resolve command name */

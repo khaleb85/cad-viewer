@@ -36,6 +36,7 @@ import {
   AcEdCorsorType,
   AcEdSpatialQueryResultItemEx,
   AcEdViewMode,
+  applyUiThemeFromBackground,
   eventBus
 } from '../editor'
 import { AcTrGeometryUtil } from '../util'
@@ -177,15 +178,111 @@ export class AcTrView2d extends AcEdBaseView {
       }
     })
 
-    this.canvas.addEventListener('click', () => {
-      if (this.mode == AcEdViewMode.SELECTION) {
-        this.select()
+    let selectionStartWcs: AcGePoint2dLike | null = null
+    let selectionStartCanvas: AcGePoint2dLike | null = null
+    let selectionPreviewEl: HTMLDivElement | null = null
+
+    const canHandleSelectionGesture = () => {
+      return this.mode === AcEdViewMode.SELECTION && !this.editor.isActive
+    }
+
+    const clearSelectionPreview = () => {
+      selectionPreviewEl?.remove()
+      selectionPreviewEl = null
+    }
+
+    this.canvas.addEventListener('mousedown', e => {
+      if (e.button !== 0) return
+      if (!canHandleSelectionGesture()) return
+
+      selectionStartCanvas = this.viewportToCanvas({
+        x: e.clientX,
+        y: e.clientY
+      })
+      selectionStartWcs = this.screenToWorld(selectionStartCanvas)
+
+      selectionPreviewEl = document.createElement('div')
+      selectionPreviewEl.className = 'ml-jig-preview-rect'
+      this.container.appendChild(selectionPreviewEl)
+    })
+
+    this.canvas.addEventListener('mousemove', e => {
+      if (!selectionStartWcs || !selectionPreviewEl || !selectionStartCanvas) {
+        return
       }
+
+      const curCanvas = this.viewportToCanvas({ x: e.clientX, y: e.clientY })
+      const curWcs = this.screenToWorld(curCanvas)
+
+      const p1 = this.worldToScreen(selectionStartWcs)
+      const p2 = this.worldToScreen(curWcs)
+
+      const left = Math.min(p1.x, p2.x)
+      const top = Math.min(p1.y, p2.y)
+      const width = Math.abs(p1.x - p2.x)
+      const height = Math.abs(p1.y - p2.y)
+
+      const mode = this.getSelectionMode(selectionStartCanvas, curCanvas)
+      const action = this.getSelectionActionFromEvent(e)
+      const style = this.getSelectionPreviewStyle(mode, action)
+
+      Object.assign(selectionPreviewEl.style, {
+        left: `${left}px`,
+        top: `${top}px`,
+        width: `${width}px`,
+        height: `${height}px`,
+        borderStyle: style.borderStyle,
+        background: style.background
+      })
+      selectionPreviewEl.style.setProperty('--line-color', style.lineColor)
+    })
+
+    this.canvas.addEventListener('mouseup', e => {
+      if (!selectionStartWcs || !selectionStartCanvas) return
+
+      const endCanvas = this.viewportToCanvas({
+        x: e.clientX,
+        y: e.clientY
+      })
+      const endWcs = this.screenToWorld(endCanvas)
+      clearSelectionPreview()
+
+      const action = this.getSelectionActionFromEvent(e)
+
+      if (this.isSelectionClick(selectionStartCanvas, endCanvas)) {
+        const picked = this.pick(endWcs)
+        if (picked.length > 0) {
+          this.applySelection([picked[0].id], action)
+        } else if (action === 'replace') {
+          this.selectionSet.clear()
+        }
+      } else {
+        const box = new AcGeBox2d()
+          .expandByPoint(selectionStartWcs)
+          .expandByPoint(endWcs)
+        const mode = this.getSelectionMode(selectionStartCanvas, endCanvas)
+        this.selectByBoxWithMode(box, mode, action)
+      }
+
+      selectionStartWcs = null
+      selectionStartCanvas = null
     })
     // When using OrbitControls in THREE.js, it attaches its own event listeners to the DOM elements,
     // such as the canvas or the entire document. This can interfere with other event listeners you
     // add, including the keydown event.
     document.addEventListener('keydown', (e: KeyboardEvent) => {
+      // Ignore global shortcuts while typing or during IME composition.
+      const target = e.target as HTMLElement | null
+      const isEditableTarget =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target?.isContentEditable === true
+      // keyCode 229 is commonly reported by IME composing key events.
+      const isImeComposing = e.isComposing || e.keyCode === 229
+      if (isEditableTarget || isImeComposing) {
+        return
+      }
+
       switch (e.code) {
         case 'Escape':
           this.selectionSet.clear()
@@ -193,7 +290,13 @@ export class AcTrView2d extends AcEdBaseView {
 
         case 'Delete':
         case 'Backspace':
-          AcApDocManager.instance.sendStringToExecute('erase')
+          // Only dispatch erase when no command is currently active.
+          // Dispatching erase mid-command (e.g. while LINE awaits the next
+          // point) corrupts the active command's input pipeline because
+          // sendStringToExecute clears scripted inputs unconditionally.
+          if (!this.editor.isActive) {
+            AcApDocManager.instance.sendStringToExecute('erase')
+          }
           break
       }
     })
@@ -323,6 +426,7 @@ export class AcTrView2d extends AcEdBaseView {
     this._renderer.setClearColor(value)
     this._renderer.changeForeground(value == 0 ? 0xffffff : 0)
     this.editor.setCursorColor(value == 0 ? 'white' : 'black')
+    applyUiThemeFromBackground(value)
     this._isDirty = true
   }
 
@@ -540,10 +644,7 @@ export class AcTrView2d extends AcEdBaseView {
    * @inheritdoc
    */
   selectByBox(box: AcGeBox2d) {
-    const idsAdded: Array<AcDbObjectId> = []
-    const results = this._scene.search(box)
-    results.forEach(item => idsAdded.push(item.id))
-    this.selectionSet.add(idsAdded)
+    this.selectByBoxWithMode(box, 'crossing', 'add')
   }
 
   /**

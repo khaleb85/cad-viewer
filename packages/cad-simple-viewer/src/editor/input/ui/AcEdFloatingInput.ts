@@ -4,6 +4,8 @@ import {
   acdbMaskToOsnapModes,
   AcDbObjectId,
   AcDbOsnapMode,
+  AcDbSystemVariables,
+  AcDbSysVarManager,
   AcGePoint2d,
   AcGePoint2dLike,
   AcGePoint3dLike
@@ -19,6 +21,7 @@ import {
   AcEdFloatingInputCommitCallback,
   AcEdFloatingInputDrawPreviewCallback,
   AcEdFloatingInputDynamicValueCallback,
+  AcEdFloatingInputNoneCallback,
   AcEdFloatingInputOptions,
   AcEdFloatingInputValidationCallback
 } from './AcEdFloatingInputTypes'
@@ -63,11 +66,14 @@ export class AcEdFloatingInput<T> extends AcEdFloatingMessage {
 
   /** Stores last confirmed osnap point */
   private lastOsnapPoint?: AcEdOsnapPoint
+  /** Stores last dynamic WCS point used for preview updates */
+  private lastDynamicPoint?: AcGePoint2dLike
 
   /** Callbacks */
   private onCommit?: AcEdFloatingInputCommitCallback<T>
   private onChange?: AcEdFloatingInputChangeCallback<T>
   private onCancel?: AcEdFloatingInputCancelCallback
+  private onNone?: AcEdFloatingInputNoneCallback
 
   /** Validation and dynamic value providers */
   private validateFn: AcEdFloatingInputValidationCallback<T>
@@ -76,6 +82,13 @@ export class AcEdFloatingInput<T> extends AcEdFloatingMessage {
 
   /** Cached click handler */
   private boundOnClick: (e: MouseEvent) => void
+  /** Whether to suppress UI display while keeping input active */
+  private suppressDisplay: boolean = false
+  /** Cached sysvar handler */
+  private boundOnInputSysVarChanged: (args: {
+    name: string
+    database: unknown
+  }) => void
 
   // ---------------------------------------------------------------------------
   // CONSTRUCTOR
@@ -91,6 +104,9 @@ export class AcEdFloatingInput<T> extends AcEdFloatingMessage {
   constructor(view: AcEdBaseView, options: AcEdFloatingInputOptions<T>) {
     super(view, options)
 
+    this.allowPrompt = options.allowPrompt !== false
+    this.suppressDisplay = !this.isDynamicInputEnabled()
+
     // -----------------------------
     // OSNAP
     // -----------------------------
@@ -104,8 +120,9 @@ export class AcEdFloatingInput<T> extends AcEdFloatingMessage {
     if (options.basePoint) {
       this.rubberBand = new AcEdRubberBand(view)
       this.rubberBand.start(options.basePoint, {
-        color: '#0f0',
-        showBaseLineOnly: options.showBaseLineOnly
+        color: 'var(--ml-ui-canvas-line, #0f0)',
+        showBaseLineOnly: options.showBaseLineOnly,
+        baseAngle: options.baseAngle
       })
     }
 
@@ -119,6 +136,7 @@ export class AcEdFloatingInput<T> extends AcEdFloatingMessage {
     this.onCommit = options.onCommit
     this.onChange = options.onChange
     this.onCancel = options.onCancel
+    this.onNone = options.onNone
 
     // -----------------------------
     // Input boxes
@@ -129,8 +147,13 @@ export class AcEdFloatingInput<T> extends AcEdFloatingMessage {
         twoInputs: options.inputCount === 2,
         validate: this.validateFn,
         onCancel: this.onCancel,
+        onNone: this.onNone,
         onCommit: this.onCommit,
-        onChange: this.onChange
+        onChange: this.onChange,
+        autoFocus: this.isDynamicInputEnabled(),
+        allowNone: options.allowNone,
+        useDefaultValue: options.useDefaultValue,
+        defaultValue: options.defaultValue
       })
     }
 
@@ -139,7 +162,44 @@ export class AcEdFloatingInput<T> extends AcEdFloatingMessage {
     // -----------------------------
     this.boundOnClick = e => this.handleClick(e)
     this.parent.addEventListener('click', this.boundOnClick)
+
+    // -----------------------------
+    // Dynamic input settings listener
+    // -----------------------------
+    this.boundOnInputSysVarChanged = args => {
+      const name = args.name?.toLowerCase()
+      if (
+        name === AcDbSystemVariables.DYNMODE.toLowerCase() ||
+        name === AcDbSystemVariables.DYNPROMPT.toLowerCase()
+      ) {
+        this.updateDynamicInputDisplay()
+      }
+    }
+    AcDbSysVarManager.instance().events.sysVarChanged.addEventListener(
+      this.boundOnInputSysVarChanged
+    )
+    this.updateDynamicInputDisplay()
+
     this.injectInputCSS()
+  }
+
+  override showAt(pos: AcGePoint2dLike) {
+    if (this.disposed) return
+    this.updateDynamicInputDisplay()
+    if (!this.suppressDisplay) {
+      super.showAt(pos)
+      // Seed preview so modifier toggles can refresh immediately.
+      const wcsPos = this.view.screenToWorld(this.view.viewportToCanvas(pos))
+      this.updateDynamicPreview(wcsPos)
+      return
+    }
+
+    this.visible = true
+    this.container.style.display = 'none'
+    this.setPosition(pos)
+    this.parent.addEventListener('mousemove', this.boundOnMouseMove)
+    const wcsPos = this.view.screenToWorld(this.view.viewportToCanvas(pos))
+    this.updateDynamicPreview(wcsPos)
   }
 
   private injectInputCSS() {
@@ -154,14 +214,15 @@ export class AcEdFloatingInput<T> extends AcEdFloatingMessage {
         margin-left: 6px;
         height: 22px;
         width: 90px;
-        background: #888;
-        border: 1px solid #666;
+        background: var(--ml-ui-bg, #888);
+        border: 1px solid var(--ml-ui-border, #666);
+        color: var(--ml-ui-text, #fff);
         border-radius: 2px;
       }
   
       .ml-floating-input input.invalid {
-        border-color: red;
-        color: red;
+        border-color: var(--ml-ui-danger, red);
+        color: var(--ml-ui-danger, red);
       }
     `
     document.head.appendChild(style)
@@ -176,6 +237,9 @@ export class AcEdFloatingInput<T> extends AcEdFloatingMessage {
     super.dispose()
 
     this.parent.removeEventListener('click', this.boundOnClick)
+    AcDbSysVarManager.instance().events.sysVarChanged.removeEventListener(
+      this.boundOnInputSysVarChanged
+    )
     this.inputs?.dispose()
     this.rubberBand?.dispose()
     this.osnapMarkerManager?.clear()
@@ -190,17 +254,16 @@ export class AcEdFloatingInput<T> extends AcEdFloatingMessage {
     if (!this.visible) return
 
     const wcsPos = this.getPosition(e)
-    const defaults = this.getDynamicValue(wcsPos)
+    this.updateDynamicPreview(wcsPos)
+  }
 
-    this.inputs?.setValue(defaults.raw)
-
-    // Ensure focus stays in input boxes
-    if (this.inputs && !this.inputs.focused) {
-      this.inputs.focus()
-    }
-
-    this.rubberBand?.update(wcsPos)
-    this.drawPreview?.(wcsPos)
+  /**
+   * Re-render the current preview using the most recent cursor position.
+   * Useful when modifier keys change without mouse movement.
+   */
+  requestPreviewRefresh() {
+    if (!this.visible || !this.lastDynamicPoint) return
+    this.updateDynamicPreview(this.lastDynamicPoint)
   }
 
   // ---------------------------------------------------------------------------
@@ -215,6 +278,21 @@ export class AcEdFloatingInput<T> extends AcEdFloatingMessage {
 
     this.lastPoint = wcsPos
     this.onCommit?.(defaults.value, wcsPos)
+  }
+
+  private updateDynamicPreview(wcsPos: AcGePoint2dLike) {
+    this.lastDynamicPoint = { x: wcsPos.x, y: wcsPos.y }
+    const defaults = this.getDynamicValue(wcsPos)
+
+    this.inputs?.setValue(defaults.raw)
+
+    // Ensure focus stays in input boxes
+    if (this.inputs && !this.inputs.focused && !this.suppressDisplay) {
+      this.inputs.focus()
+    }
+
+    this.rubberBand?.update(wcsPos)
+    this.drawPreview?.(wcsPos)
   }
 
   // ---------------------------------------------------------------------------
@@ -247,6 +325,44 @@ export class AcEdFloatingInput<T> extends AcEdFloatingMessage {
       }
     }
     return wcsPos
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dynamic Input Settings
+  // ---------------------------------------------------------------------------
+
+  private updateDynamicInputDisplay() {
+    const dynamicEnabled = this.isDynamicInputEnabled()
+    const promptEnabled = this.isDynamicPromptEnabled()
+
+    this.setSuppressDisplay(!dynamicEnabled)
+    this.setPromptVisible(this.allowPrompt && dynamicEnabled && promptEnabled)
+  }
+
+  private setSuppressDisplay(suppress: boolean) {
+    if (this.suppressDisplay === suppress) return
+    this.suppressDisplay = suppress
+
+    if (!this.visible) return
+
+    if (this.suppressDisplay) {
+      this.container.style.display = 'none'
+      this.inputs?.blur()
+    } else {
+      this.container.style.display = 'flex'
+      if (this.inputs && !this.inputs.focused) {
+        this.inputs.focus()
+      }
+    }
+  }
+
+  private setPromptVisible(show: boolean) {
+    const hasMessage = !!this.label.textContent?.trim()
+    if (!hasMessage) {
+      this.label.style.display = 'none'
+      return
+    }
+    this.label.style.display = show ? 'inline' : 'none'
   }
 
   private osnapMode2MarkerType(osnapMode: AcDbOsnapMode) {

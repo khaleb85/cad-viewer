@@ -1,6 +1,51 @@
 import { AcEdKeyword } from './AcEdKeyword'
 
 /**
+ * Structured keyword-prompt render payload used by command-line UI.
+ *
+ * This interface captures the canonical AutoCAD-style keyword section that
+ * appears after the prompt message, including:
+ * - visible keyword labels inside `[...]`
+ * - optional default keyword inside `<...>`
+ * - the fully composed tail text ending with `:`
+ *
+ * Typical rendered form:
+ * `Specify option [Yes/No] <Yes>:`
+ */
+export interface AcEdKeywordPromptFormat {
+  /**
+   * Ordered list of visible keyword display names.
+   *
+   * Notes:
+   * - The order matches prompt-rendering order in the command line.
+   * - Hidden keywords are excluded.
+   * - Values are display strings (localized UI labels), not global tokens.
+   */
+  visibleKeywords: string[]
+
+  /**
+   * Display name of the default keyword, when one is configured and visible.
+   *
+   * The value corresponds to what should be shown inside angle brackets in the
+   * prompt tail, e.g. `<Yes>`. When no default keyword is active (or when the
+   * default is hidden), this field is `undefined`.
+   */
+  defaultKeyword?: string
+
+  /**
+   * Canonical AutoCAD-style keyword suffix for prompt rendering.
+   *
+   * Standard form:
+   * - `[K1/K2]:` when no default keyword exists
+   * - `[K1/K2] <K1>:` when a default keyword exists
+   *
+   * This string is intended to be appended after the prompt message, e.g.:
+   * `Specify option [Yes/No] <Yes>:`
+   */
+  formattedTail: string
+}
+
+/**
  * A collection of `AcEdKeyword` objects, mirroring `Autodesk.AutoCAD.EditorInput.KeywordCollection`.
  * Represents the set of valid keywords for a prompt.
  */
@@ -99,17 +144,22 @@ export class AcEdKeywordCollection {
         return comma >= 0 ? spec.substring(0, comma) : spec
       }
 
-      const globalName = parseSpec(globalSpec)
-      const localName = parseSpec(localSpec)
+      const rawGlobal = parseSpec(globalSpec)
+      const rawLocal = parseSpec(localSpec)
+      const hasGlobal = rawGlobal !== undefined
+      const hasLocal = rawLocal !== undefined
+
+      const globalName = hasGlobal ? rawGlobal! : ''
+      const localName = hasLocal ? rawLocal! : undefined
 
       // ARX rules:
       // - local without global → accepted, returns ""
       // - global without local → accepted only with underscore (already implied)
       // - matched → local maps to global
       const kw = new AcEdKeyword(
-        globalName ?? localName ?? '',
-        globalName ?? '',
-        localName ?? '',
+        globalName || localName || '',
+        globalName,
+        localName,
         true,
         false,
         true
@@ -222,6 +272,30 @@ export class AcEdKeywordCollection {
     return parts.join('/')
   }
 
+  /**
+   * Builds canonical AutoCAD-style keyword tail:
+   * [K1/K2] <Default>:
+   */
+  getPromptFormat(): AcEdKeywordPromptFormat {
+    const visibleKeywords = this._keywords
+      .filter(kw => kw.visible)
+      .map(kw => kw.displayName)
+
+    const defaultKeyword =
+      this._defaultKeyword && this._defaultKeyword.visible
+        ? this._defaultKeyword.displayName
+        : undefined
+
+    const keywordsText = `[${visibleKeywords.join('/')}]`
+    const defaultText = defaultKeyword ? ` <${defaultKeyword}>` : ''
+
+    return {
+      visibleKeywords,
+      defaultKeyword,
+      formattedTail: `${keywordsText}${defaultText}:`
+    }
+  }
+
   /** Returns an iterator over the `AcEdKeyword` objects in this collection. */
   [Symbol.iterator](): Iterator<AcEdKeyword> {
     let index = 0
@@ -275,6 +349,11 @@ export class AcEdKeywordCollection {
 
       // Local name match (what user types)
       if (kw.localName && kw.localName.toLowerCase() === needle) {
+        return true
+      }
+
+      // Alias match (derived from global name capitals)
+      if (kw.alias && kw.alias.toLowerCase() === needle) {
         return true
       }
 

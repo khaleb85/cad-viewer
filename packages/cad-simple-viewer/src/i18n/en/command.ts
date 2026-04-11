@@ -1,5 +1,8 @@
 export default {
   ACAD: {
+    arc: {
+      description: 'Creates an arc'
+    },
     cecolor: {
       description: 'Sets the current default color for newly created objects'
     },
@@ -30,9 +33,20 @@ export default {
     dimlinear: {
       description: 'Creates linear dimensions'
     },
+    ellipse: {
+      description:
+        'Creates an ellipse or elliptical arc by axis endpoints or center'
+    },
     erase: {
       description: 'Deletes selected entities from the drawing',
       prompt: 'Select entities'
+    },
+    hatch: {
+      description:
+        'Fills an enclosed area or selected objects with a hatch pattern'
+    },
+    '-layer': {
+      description: 'Manages layers through command-line options'
     },
     line: {
       description: 'Draws straight line segments between points'
@@ -42,6 +56,10 @@ export default {
     },
     pline: {
       description: 'Creates a polyline by specifying multiple points'
+    },
+    polygon: {
+      description:
+        'Creates a regular polygon by center/radius or by one polygon edge'
     },
     spline: {
       description: 'Creates a smooth spline curve by specifying control points'
