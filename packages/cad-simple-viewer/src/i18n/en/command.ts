@@ -1,5 +1,10 @@
 export default {
   ACAD: {
+    pngout: {
+      boundsFirstCorner: 'Specify first corner of bounds',
+      boundsSecondCorner: 'Specify opposite corner',
+      longSidePrompt: 'Enter long side size in pixels'
+    },
     arc: {
       description: 'Creates an arc'
     },
@@ -67,6 +72,10 @@ export default {
     mtext: {
       description: 'Creates one mtext entity'
     },
+    move: {
+      description: 'Moves selected entities by a displacement vector',
+      prompt: 'Select entities'
+    },
     log: {
       description: 'Logs debug information in console'
     },
@@ -105,9 +114,6 @@ export default {
     },
     zoom: {
       description: 'Zooms to display the maximum extents of all entities'
-    },
-    zoomw: {
-      description: 'Zooms to display an area specified by a rectangular window'
     }
   },
   USER: {}

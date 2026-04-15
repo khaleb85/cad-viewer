@@ -18,6 +18,7 @@ import {
   AcApCircleCmd,
   AcApClearMeasurementsCmd,
   AcApConvertToDxfCmd,
+  AcApConvertToPngCmd,
   AcApConvertToSvgCmd,
   AcApDimLinearCmd,
   AcApEllipseCmd,
@@ -30,6 +31,7 @@ import {
   AcApMeasureArcCmd,
   AcApMeasureAreaCmd,
   AcApMeasureDistanceCmd,
+  AcApMoveCmd,
   AcApMTextCmd,
   AcApOpenCmd,
   AcApPanCmd,
@@ -48,7 +50,6 @@ import {
   AcApSwitchBgCmd,
   AcApSysVarCmd,
   AcApZoomCmd,
-  AcApZoomToBoxCmd,
   AcEdCommand,
   AcEdCommandStack
 } from '../command'
@@ -89,6 +90,7 @@ const DEFAULT_COMMAND_ALIASES: Record<string, string[]> = {
   '-LAYER': ['LA'],
   LINE: ['L'],
   MTEXT: ['T'],
+  MOVE: ['M'],
   OPEN: ['OP'],
   PAN: ['P'],
   POLYGON: ['POL'],
@@ -97,8 +99,7 @@ const DEFAULT_COMMAND_ALIASES: Record<string, string[]> = {
   REGEN: ['RE'],
   SELECT: ['SE'],
   SPLINE: ['SPL'],
-  ZOOM: ['Z'],
-  ZOOMW: ['ZW']
+  ZOOM: ['Z']
 }
 
 /**
@@ -762,7 +763,6 @@ export class AcApDocManager {
    * - pan: Pan/move the view
    * - select: Select entities
    * - zoom: Zoom in/out
-   * - zoomw: Zoom to window/box
    *
    * All commands are registered under the system command group.
    */
@@ -800,6 +800,7 @@ export class AcApDocManager {
     addSystemCommand('circle', 'circle', new AcApCircleCmd())
     addSystemCommand('cdxf', 'cdxf', new AcApConvertToDxfCmd())
     addSystemCommand('csvg', 'csvg', new AcApConvertToSvgCmd())
+    addSystemCommand('pngout', 'pngout', new AcApConvertToPngCmd())
     addSystemCommand('ellipse', 'ellipse', new AcApEllipseCmd())
     addSystemCommand('erase', 'erase', new AcApEraseCmd())
     addSystemCommand('dimlinear', 'dimlinear', new AcApDimLinearCmd())
@@ -820,6 +821,7 @@ export class AcApDocManager {
     addSystemCommand('-layer', '-layer', new AcApLayerCmd())
     addSystemCommand('line', 'line', new AcApLineCmd())
     addSystemCommand('mtext', 'mtext', new AcApMTextCmd())
+    addSystemCommand('move', 'move', new AcApMoveCmd())
     addSystemCommand('log', 'log', new AcApLogCmd())
     addSystemCommand('open', 'open', new AcApOpenCmd())
     addSystemCommand('pan', 'pan', new AcApPanCmd())
@@ -837,7 +839,6 @@ export class AcApDocManager {
     addSystemCommand('spline', 'spline', new AcApSplineCmd())
     addSystemCommand('switchbg', 'switchbg', new AcApSwitchBgCmd())
     addSystemCommand('zoom', 'zoom', new AcApZoomCmd())
-    addSystemCommand('zoomw', 'zoomw', new AcApZoomToBoxCmd())
 
     // Register system variables as commands
     const sysVars = AcDbSysVarManager.instance().getAllDescriptors()

@@ -170,6 +170,18 @@ export default {
   mtext: {
     point: 'Specify mtext insertion point:'
   },
+  move: {
+    basePointOrDisplacement: 'Specify base point or',
+    secondPointOrDisplacement: 'Specify second point or',
+    displacement: 'Specify displacement:',
+    keywords: {
+      displacement: {
+        display: 'Displacement(D)',
+        local: 'Displacement',
+        global: 'Displacement'
+      }
+    }
+  },
   rect: {
     firstPoint: 'Specify first corner point:',
     nextPoint: 'Specify other corner point:',
@@ -330,6 +342,46 @@ export default {
     arcSecondPoint: 'Specify second point on arc:',
     arcEndPoint: 'Specify arc end point:',
     arcRadius: 'Specify arc radius:'
+  },
+  zoom: {
+    mainPrompt: 'Specify corner of window or',
+    firstCorner: 'Specify first corner:',
+    secondCorner: 'Specify opposite corner:',
+    centerPoint: 'Specify center point:',
+    heightOrScale: 'Enter height or scale factor (nX or nXP):',
+    scaleFactor: 'Enter scale factor (nX or nXP):',
+    keywords: {
+      all: {
+        display: 'All(A)',
+        local: 'All',
+        global: 'All'
+      },
+      center: {
+        display: 'Center(C)',
+        local: 'Center',
+        global: 'Center'
+      },
+      extents: {
+        display: 'Extents(E)',
+        local: 'Extents',
+        global: 'Extents'
+      },
+      previous: {
+        display: 'Previous(P)',
+        local: 'Previous',
+        global: 'Previous'
+      },
+      scale: {
+        display: 'Scale(S)',
+        local: 'Scale',
+        global: 'Scale'
+      },
+      window: {
+        display: 'Window(W)',
+        local: 'Window',
+        global: 'Window'
+      }
+    }
   },
   layer: {
     main: 'Enter option',

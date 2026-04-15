@@ -1,5 +1,10 @@
 export default {
   ACAD: {
+    pngout: {
+      boundsFirstCorner: '指定边界的第一个角点',
+      boundsSecondCorner: '指定对角点',
+      longSidePrompt: '输入长边像素大小'
+    },
     arc: {
       description: '创建圆弧'
     },
@@ -61,6 +66,10 @@ export default {
     mtext: {
       description: '创建一条多行文本（MTEXT）'
     },
+    move: {
+      description: '通过位移向量移动所选图元',
+      prompt: '选择对象'
+    },
     log: {
       description: '在控制台输出调试信息'
     },
@@ -96,9 +105,6 @@ export default {
     },
     zoom: {
       description: '缩放以显示所有对象'
-    },
-    zoomw: {
-      description: '缩放以显示矩形窗口内的对象'
     }
   },
   USER: {}
