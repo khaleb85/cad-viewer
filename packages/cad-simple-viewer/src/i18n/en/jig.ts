@@ -2,6 +2,7 @@ export default {
   arc: {
     startPointOrCenter: 'Specify start point of arc or',
     secondPointOrOptions: 'Specify second point of arc or',
+    secondPoint: 'Specify second point of arc:',
     startPoint: 'Specify start point of arc:',
     centerPoint: 'Specify center point of arc:',
     endPoint: 'Specify end point of arc:',
@@ -170,6 +171,9 @@ export default {
   mtext: {
     point: 'Specify mtext insertion point:'
   },
+  point: {
+    point: 'Specify a point'
+  },
   move: {
     basePointOrDisplacement: 'Specify base point or',
     secondPointOrDisplacement: 'Specify second point or',
@@ -180,6 +184,76 @@ export default {
         local: 'Displacement',
         global: 'Displacement'
       }
+    }
+  },
+  copy: {
+    basePointOrOptions: 'Specify base point or',
+    displacementOrArray: 'Specify displacement or',
+    secondPointOrArray: 'Specify second point or',
+    modePrompt: 'Enter copy mode option',
+    arrayItemCount:
+      'Enter the number of items in the array including the original:',
+    arraySecondPointOrFit: 'Specify second point or',
+    arrayFitSecondPoint: 'Specify second point:',
+    keywords: {
+      displacement: {
+        display: 'Displacement(D)',
+        local: 'Displacement',
+        global: 'Displacement'
+      },
+      mode: {
+        display: 'Mode(O)',
+        local: 'Mode',
+        global: 'Mode'
+      },
+      multiple: {
+        display: 'Multiple(M)',
+        local: 'Multiple',
+        global: 'Multiple'
+      },
+      single: {
+        display: 'Single(S)',
+        local: 'Single',
+        global: 'Single'
+      },
+      array: {
+        display: 'Array(A)',
+        local: 'Array',
+        global: 'Array'
+      },
+      fit: {
+        display: 'Fit(F)',
+        local: 'Fit',
+        global: 'Fit'
+      }
+    }
+  },
+  rotate: {
+    basePoint: 'Specify base point:',
+    rotationAngleOrOptions: 'Specify rotation angle or',
+    referenceAngleOrPoints: 'Specify reference angle or',
+    firstReferencePoint: 'Specify first point of reference angle:',
+    secondReferencePoint: 'Specify second point:',
+    newAngle: 'Specify new angle:',
+    keywords: {
+      copy: {
+        display: 'Copy(C)',
+        local: 'Copy',
+        global: 'Copy'
+      },
+      reference: {
+        display: 'Reference(R)',
+        local: 'Reference',
+        global: 'Reference'
+      },
+      points: {
+        display: 'Points(P)',
+        local: 'Points',
+        global: 'Points'
+      }
+    },
+    invalid: {
+      referencePoints: 'Invalid reference points: points must be different.'
     }
   },
   rect: {
@@ -466,6 +540,70 @@ export default {
         display: 'Description(D)',
         local: 'Description',
         global: 'Description'
+      }
+    }
+  },
+  layoff: {
+    prompt: 'Select object on layer to turn off or',
+    invalidSelection: 'Invalid object selected.',
+    settingsPrompt: 'Enter LAYOFF setting to change',
+    viewportPrompt: 'Specify viewport behavior',
+    blockSelectionPrompt: 'Specify nested block selection behavior',
+    vpfreezeFallback:
+      'Current viewer does not support per-viewport layer off; using Off behavior instead.',
+    nestedSelectionLimited:
+      'Nested block selection settings are stored, but current picking still resolves the top-level entity layer.',
+    layerNotFound: 'Layer not found',
+    cannotTurnOffCurrent: 'Cannot turn off the current layer.',
+    alreadyOff: 'Layer is already off',
+    turnedOff: 'Turned off layer',
+    restored: 'Restored layer',
+    nothingToUndo: 'There is no LAYOFF action to undo.',
+    keywords: {
+      settings: {
+        display: 'Settings(S)',
+        local: 'Settings',
+        global: 'Settings'
+      },
+      undo: {
+        display: 'Undo(U)',
+        local: 'Undo',
+        global: 'Undo'
+      },
+      viewports: {
+        display: 'Viewports(V)',
+        local: 'Viewports',
+        global: 'Viewports'
+      },
+      blockSelection: {
+        display: 'Block selection(B)',
+        local: 'Block selection',
+        global: 'BlockSelection'
+      },
+      off: {
+        display: 'Off(O)',
+        local: 'Off',
+        global: 'Off'
+      },
+      vpfreeze: {
+        display: 'Vpfreeze(V)',
+        local: 'Vpfreeze',
+        global: 'Vpfreeze'
+      },
+      block: {
+        display: 'Block(B)',
+        local: 'Block',
+        global: 'Block'
+      },
+      entity: {
+        display: 'Entity(E)',
+        local: 'Entity',
+        global: 'Entity'
+      },
+      none: {
+        display: 'None(N)',
+        local: 'None',
+        global: 'None'
       }
     }
   },

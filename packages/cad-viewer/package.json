@@ -1,6 +1,6 @@
 {
   "name": "@mlightcad/cad-viewer",
-  "version": "1.4.12",
+  "version": "1.4.13",
   "license": "MIT",
   "type": "module",
   "repository": {
@@ -22,8 +22,10 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    "types": "./dist/index.d.ts",
-    "import": "./dist/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
   "files": [
     "dist",
@@ -41,6 +43,7 @@
     "lint:fix": "eslint --fix --quiet src/"
   },
   "devDependencies": {
+    "@mlightcad/ribbon": "0.0.8",
     "@mlightcad/svg-renderer": "workspace:*",
     "@mlightcad/three-renderer": "workspace:*",
     "@mlightcad/three-viewcube": "0.0.9",
@@ -57,7 +60,7 @@
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
     "lodash-es": "4.17.21",
-    "three": "^0.172.0"
+    "three": "workspace:*"
   },
   "peerDependencies": {
     "@mlightcad/cad-simple-viewer": "workspace:*",

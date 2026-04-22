@@ -48,6 +48,20 @@ export default {
     '-layer': {
       description: '通过命令行选项管理图层'
     },
+    laydel: {
+      description: '删除图层及该图层上的所有对象'
+    },
+    layfrz: {
+      description: '冻结所选对象所在的图层',
+      prompt: '选择要冻结其图层的对象'
+    },
+    layoff: {
+      description: '关闭所选对象所在的图层',
+      prompt: '选择要关闭其图层的对象'
+    },
+    layerclose: {
+      description: '关闭图层属性管理器'
+    },
     line: {
       description: '在指定点之间绘制直线段'
     },
@@ -70,6 +84,14 @@ export default {
       description: '通过位移向量移动所选图元',
       prompt: '选择对象'
     },
+    copy: {
+      description: '通过克隆将所选图元复制到新位置',
+      prompt: '选择对象'
+    },
+    rotate: {
+      description: '绕基点旋转所选图元',
+      prompt: '选择对象'
+    },
     log: {
       description: '在控制台输出调试信息'
     },
@@ -79,13 +101,16 @@ export default {
     pan: {
       description: '平移视图'
     },
+    point: {
+      description: '连续创建点'
+    },
     pickbox: {
       description: '控制用于选择对象的拾取框大小（像素）'
     },
     qnew: {
       description: '创建新图纸'
     },
-    rectangle: {
+    rectang: {
       description: '通过指定两个对角点创建矩形'
     },
     regen: {

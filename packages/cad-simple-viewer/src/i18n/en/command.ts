@@ -53,6 +53,20 @@ export default {
     '-layer': {
       description: 'Manages layers through command-line options'
     },
+    laydel: {
+      description: 'Deletes a layer and all objects on that layer'
+    },
+    layfrz: {
+      description: 'Freezes the layer of selected objects',
+      prompt: 'Select object on layer to freeze'
+    },
+    layoff: {
+      description: 'Turns off the layer of selected objects',
+      prompt: 'Select object on layer to turn off'
+    },
+    layerclose: {
+      description: 'Closes the Layer Properties Manager'
+    },
     line: {
       description: 'Draws straight line segments between points'
     },
@@ -76,6 +90,14 @@ export default {
       description: 'Moves selected entities by a displacement vector',
       prompt: 'Select entities'
     },
+    copy: {
+      description: 'Copies selected entities by cloning them to new positions',
+      prompt: 'Select entities'
+    },
+    rotate: {
+      description: 'Rotates selected entities around a base point',
+      prompt: 'Select entities'
+    },
     log: {
       description: 'Logs debug information in console'
     },
@@ -86,6 +108,9 @@ export default {
       description:
         'Shifts the view without changing the viewing direction or magnification'
     },
+    point: {
+      description: 'Creates points'
+    },
     pickbox: {
       description:
         'Sets the size (in pixels) of the selection box used to pick objects'
@@ -93,7 +118,7 @@ export default {
     qnew: {
       description: 'Starts a new drawing'
     },
-    rectangle: {
+    rectang: {
       description: 'Creates a rectangle by specifying two opposite corners'
     },
     regen: {

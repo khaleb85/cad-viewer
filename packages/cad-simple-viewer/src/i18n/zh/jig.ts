@@ -2,6 +2,7 @@ export default {
   arc: {
     startPointOrCenter: '指定圆弧的起点或',
     secondPointOrOptions: '指定圆弧上的第二点或',
+    secondPoint: '指定圆弧上的第二点：',
     startPoint: '指定圆弧的起点：',
     centerPoint: '指定圆弧的圆心：',
     endPoint: '指定圆弧的端点：',
@@ -163,6 +164,9 @@ export default {
   mtext: {
     point: '指定多行文本插入点：'
   },
+  point: {
+    point: '指定点'
+  },
   move: {
     basePointOrDisplacement: '指定基点或',
     secondPointOrDisplacement: '指定第二个点或',
@@ -173,6 +177,75 @@ export default {
         local: '位移',
         global: 'Displacement'
       }
+    }
+  },
+  copy: {
+    basePointOrOptions: '指定基点或',
+    displacementOrArray: '指定位移或',
+    secondPointOrArray: '指定第二个点或',
+    modePrompt: '输入复制模式选项',
+    arrayItemCount: '输入阵列中的项目数（包括原对象）：',
+    arraySecondPointOrFit: '指定第二个点或',
+    arrayFitSecondPoint: '指定第二个点：',
+    keywords: {
+      displacement: {
+        display: '位移(D)',
+        local: '位移',
+        global: 'Displacement'
+      },
+      mode: {
+        display: '模式(O)',
+        local: '模式',
+        global: 'Mode'
+      },
+      multiple: {
+        display: '多个(M)',
+        local: '多个',
+        global: 'Multiple'
+      },
+      single: {
+        display: '单个(S)',
+        local: '单个',
+        global: 'Single'
+      },
+      array: {
+        display: '阵列(A)',
+        local: '阵列',
+        global: 'Array'
+      },
+      fit: {
+        display: '布满(F)',
+        local: '布满',
+        global: 'Fit'
+      }
+    }
+  },
+  rotate: {
+    basePoint: '指定基点：',
+    rotationAngleOrOptions: '指定旋转角度或',
+    referenceAngleOrPoints: '指定参考角或',
+    firstReferencePoint: '指定参考角的第一点：',
+    secondReferencePoint: '指定第二点：',
+    newAngle: '指定新角度：',
+    keywords: {
+      copy: {
+        display: '复制(C)',
+        local: '复制',
+        global: 'Copy'
+      },
+      reference: {
+        display: '参照(R)',
+        local: '参照',
+        global: 'Reference'
+      },
+      points: {
+        display: '点(P)',
+        local: '点',
+        global: 'Points'
+      }
+    },
+    invalid: {
+      referencePoints: '参考点输入无效：两点必须不同。'
     }
   },
   rect: {
@@ -457,6 +530,70 @@ export default {
         display: '说明(D)',
         local: '说明',
         global: 'Description'
+      }
+    }
+  },
+  layoff: {
+    prompt: '选择要关闭其图层的对象或',
+    invalidSelection: '所选对象无效。',
+    settingsPrompt: '输入要修改的 LAYOFF 设置',
+    viewportPrompt: '指定视口行为',
+    blockSelectionPrompt: '指定嵌套块选择行为',
+    vpfreezeFallback:
+      '当前 viewer 不支持按视口关闭图层，已退化为普通 Off 行为。',
+    nestedSelectionLimited:
+      '嵌套块选择设置会被保存，但当前拾取仍只能解析顶层对象所在图层。',
+    layerNotFound: '未找到图层',
+    cannotTurnOffCurrent: '不能关闭当前图层。',
+    alreadyOff: '图层已处于关闭状态',
+    turnedOff: '已关闭图层',
+    restored: '已恢复图层',
+    nothingToUndo: '当前没有可撤销的 LAYOFF 操作。',
+    keywords: {
+      settings: {
+        display: '设置(S)',
+        local: '设置',
+        global: 'Settings'
+      },
+      undo: {
+        display: '放弃(U)',
+        local: '放弃',
+        global: 'Undo'
+      },
+      viewports: {
+        display: '视口(V)',
+        local: '视口',
+        global: 'Viewports'
+      },
+      blockSelection: {
+        display: '块选择(B)',
+        local: '块选择',
+        global: 'BlockSelection'
+      },
+      off: {
+        display: '关闭(O)',
+        local: '关闭',
+        global: 'Off'
+      },
+      vpfreeze: {
+        display: '视口冻结(V)',
+        local: '视口冻结',
+        global: 'Vpfreeze'
+      },
+      block: {
+        display: '块(B)',
+        local: '块',
+        global: 'Block'
+      },
+      entity: {
+        display: '对象(E)',
+        local: '对象',
+        global: 'Entity'
+      },
+      none: {
+        display: '无(N)',
+        local: '无',
+        global: 'None'
       }
     }
   },
