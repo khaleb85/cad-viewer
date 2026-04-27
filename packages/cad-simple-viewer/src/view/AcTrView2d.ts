@@ -14,6 +14,7 @@ import {
   AcGeBox3d,
   AcGePoint2d,
   AcGePoint2dLike,
+  AcGiSubEntityTraits,
   log
 } from '@mlightcad/data-model'
 import { AcDbSystemVariables } from '@mlightcad/data-model'
@@ -22,7 +23,10 @@ import {
   AcTrGroup,
   AcTrHtmlTransientManager,
   AcTrRenderer,
-  AcTrViewportView
+  AcTrViewportView,
+  getMaterialMetadata,
+  hasByLayerBinding,
+  setMaterialMetadata
 } from '@mlightcad/three-renderer'
 import * as THREE from 'three'
 import Stats from 'three/examples/jsm/libs/stats.module'
@@ -38,7 +42,8 @@ import {
   AcEdSpatialQueryResultItemEx,
   AcEdViewMode,
   applyUiThemeFromBackground,
-  eventBus
+  eventBus,
+  resolvePointerSelectionAction
 } from '../editor'
 import { AcTrGeometryUtil } from '../util'
 import { AcTrLayoutView } from './AcTrLayoutView'
@@ -166,10 +171,43 @@ export class AcTrView2d extends AcEdBaseView {
     this.backgroundColor = mergedOptions.background || 0x000000
     this._stats = this.createStats(AcApSettingManager.instance.isShowStats)
 
+    // Two sysvars can drive the canvas background:
+    //
+    // - WHITEBKCOLOR (boolean): the low-level "is the paper white?" flag
+    //   that the View has always honoured.
+    // - COLORTHEME (number): the AutoCAD-standard theme selector where
+    //   0 = dark theme (black bg) and 1 = light theme (white bg).
+    //
+    // The Vue composable `useDark` (cad-viewer) toggles only COLORTHEME
+    // when the user flips the theme.  Without this bridge, toggling the
+    // UI theme left WHITEBKCOLOR stale and the canvas kept its previous
+    // background even though `changeForeground` had been fired through
+    // MTEXT/line inversion — producing e.g. a black canvas in light mode
+    // or a white canvas in dark mode.
+    //
+    // Listening to both sysvars keeps either entry point working.  The
+    // two remain independent (settable in isolation) because setting
+    // `this.backgroundColor` is idempotent and the handler for each
+    // sysvar only fires when that specific variable changes.
     AcDbSysVarManager.instance().events.sysVarChanged.addEventListener(args => {
-      if (args.name === AcDbSystemVariables.WHITEBKCOLOR.toLowerCase()) {
+      const nameLower = args.name.toLowerCase()
+      if (nameLower === AcDbSystemVariables.WHITEBKCOLOR.toLowerCase()) {
         const useWhiteBackgroundColor = args.newVal as boolean
         this.backgroundColor = useWhiteBackgroundColor ? 0xffffff : 0
+      } else if (nameLower === AcDbSystemVariables.COLORTHEME.toLowerCase()) {
+        // COLORTHEME is registered with type 'number' in the data-model
+        // (0 = dark, 1 = light), but the sysvar bus does not strictly
+        // coerce values.  Normalise defensively so plugins setting the
+        // value as a string or boolean still behave correctly.
+        const newVal = args.newVal
+        const isLight =
+          typeof newVal === 'number'
+            ? newVal === 1
+            : typeof newVal === 'boolean'
+              ? newVal
+              : String(newVal).toLowerCase() === 'light' ||
+                String(newVal) === '1'
+        this.backgroundColor = isLight ? 0xffffff : 0
       }
     })
 
@@ -224,7 +262,7 @@ export class AcTrView2d extends AcEdBaseView {
       const height = Math.abs(p1.y - p2.y)
 
       const mode = this.getSelectionMode(selectionStartCanvas, curCanvas)
-      const action = this.getSelectionActionFromEvent(e)
+      const action = this.getPointerSelectionAction(e)
       const style = this.getSelectionPreviewStyle(mode, action)
 
       Object.assign(selectionPreviewEl.style, {
@@ -248,7 +286,7 @@ export class AcTrView2d extends AcEdBaseView {
       const endWcs = this.screenToWorld(endCanvas)
       clearSelectionPreview()
 
-      const action = this.getSelectionActionFromEvent(e)
+      const action = this.getPointerSelectionAction(e)
 
       if (this.isSelectionClick(selectionStartCanvas, endCanvas)) {
         const picked = this.pick(endWcs)
@@ -326,6 +364,10 @@ export class AcTrView2d extends AcEdBaseView {
     this._isDirty = true
     this.startAnimationLoop()
     this._numOfEntitiesToProcess = 0
+  }
+
+  private getPointerSelectionAction(e: MouseEvent) {
+    return resolvePointerSelectionAction(e)
   }
 
   /**
@@ -426,6 +468,28 @@ export class AcTrView2d extends AcEdBaseView {
   set backgroundColor(value: number) {
     this._renderer.setClearColor(value)
     this._renderer.changeForeground(value == 0 ? 0xffffff : 0)
+    // Keep solid ACI 7 hatches fused with the canvas background in
+    // both themes (matches AutoCAD, where such hatches vanish into
+    // the paper and only the overlaid wireframe stays visible).
+    //
+    // Setting `currentBackgroundColor` (instead of calling
+    // `changeBackground` directly) covers BOTH phases of the lifecycle:
+    //
+    // 1. Mid-session theme flip: every background-follow material
+    //    already in the material manager's cache is repainted to the
+    //    new bg — same as `changeBackground` alone would have done.
+    // 2. Initial boot (e.g. `useDark` sets dark theme before the DWG
+    //    finishes loading): the style manager stores the bg on its
+    //    options so hatch materials created LATER during `batchConvert`
+    //    are BORN with the correct bg colour.  Without this, the first
+    //    frame after load showed ACI 7 hatches as solid white on a
+    //    black canvas until the user manually toggled the theme.
+    //
+    // `changeForeground` above already handles the inverse flip for
+    // lines/text/MText; `currentBackgroundColor` is the symmetric
+    // counterpart for fills opted into `isBackgroundFill` by
+    // `AcTrFillMaterialManager.shouldTrackBackground`.
+    this._renderer.currentBackgroundColor = value
     this.editor.setCursorColor(value == 0 ? 'white' : 'black')
     applyUiThemeFromBackground(value)
     this._isDirty = true
@@ -652,11 +716,27 @@ export class AcTrView2d extends AcEdBaseView {
    * @inheritdoc
    */
   addLayer(layer: AcDbLayerTableRecord) {
-    this._scene.addLayer({
+    const updatedLayers = this._scene.addLayer({
       name: layer.name,
       isFrozen: layer.isFrozen,
       isOff: layer.isOff,
       color: layer.color
+    })
+
+    const traits: Partial<AcGiSubEntityTraits> = {
+      layer: layer.name,
+      color: layer.color.clone(),
+      rgbColor: layer.color.RGB,
+      lineType: layer.lineStyle,
+      lineWeight: layer.lineWeight,
+      transparency: layer.transparency
+    }
+    const materials = this._renderer.updateLayerMaterial(layer.name, traits)
+    updatedLayers.forEach(updatedLayer => {
+      for (const id in materials) {
+        const material = materials[id]
+        updatedLayer.updateMaterial(Number(id), material)
+      }
     })
     this._isDirty = true
   }
@@ -971,34 +1051,41 @@ export class AcTrView2d extends AcEdBaseView {
   private async batchConvert(entities: AcDbEntity[]) {
     for (let i = 0; i < entities.length; ++i) {
       const entity = entities[i]
-      const threeEntity: AcTrEntity | null = this.drawEntity(entity, true)
-      if (threeEntity) {
+      try {
+        const threeEntity: AcTrEntity | null = this.drawEntity(entity, true)
+        if (!threeEntity) continue
+
         threeEntity.objectId = entity.objectId
         threeEntity.ownerId = entity.ownerId
         threeEntity.layerName = entity.layer
         threeEntity.visible = entity.visibility
         if (
           threeEntity instanceof AcTrGroup &&
+          (threeEntity as AcTrGroup).isOnTheSameLayer
+        ) {
+          // Even when a block expands to a single layer bucket, children authored on
+          // layer "0" still inherit the INSERT layer for ByLayer traits (color, etc.).
+          this.remapInheritedLayerObjects(
+            (threeEntity as AcTrGroup).children,
+            '0',
+            threeEntity.layerName
+          )
+        }
+        if (
+          threeEntity instanceof AcTrGroup &&
           !(threeEntity as AcTrGroup).isOnTheSameLayer
         ) {
           this.handleGroup(threeEntity as AcTrGroup)
-          this.decreaseNumOfEntitiesToProcess()
         } else {
           const isExtendBbox = !(
             entity instanceof AcDbRay || entity instanceof AcDbXline
           )
 
-          await threeEntity
-            .draw()
-            .then(() => {
-              this._scene.addEntity(threeEntity, isExtendBbox)
-              // Release memory occupied by this entity
-              threeEntity.dispose()
-              this._isDirty = true
-            })
-            .finally(() => {
-              this.decreaseNumOfEntitiesToProcess()
-            })
+          await threeEntity.draw()
+          this._scene.addEntity(threeEntity, isExtendBbox)
+          // Release memory occupied by this entity
+          threeEntity.dispose()
+          this._isDirty = true
         }
 
         if (entity instanceof AcDbViewport) {
@@ -1020,7 +1107,12 @@ export class AcTrView2d extends AcEdBaseView {
           const fileName = entity.imageFileName
           if (fileName) this._missedImages.set(entity.objectId, fileName)
         }
-      } else {
+      } catch (error) {
+        log.error(
+          `[AcTrView2d] Failed to convert entity ${entity.objectId} (${entity.type}):`,
+          error
+        )
+      } finally {
         this.decreaseNumOfEntitiesToProcess()
       }
     }
@@ -1060,19 +1152,26 @@ export class AcTrView2d extends AcEdBaseView {
       })
     )
     objectsGroupByLayer.forEach((objects, layerName) => {
-      // In AutoCAD, an INSERT entity may reference multiple child entities that
-      // reside on different layers. During rendering, this engine groups entities
-      // by layer and assigns each group the INSERT entity's object ID.
-      // As a result, a single object ID (typically from an INSERT entity) may
-      // correspond to multiple layers. However, in this layer its object id is still
-      // uniqiue.
+      // AutoCAD block rule: entities authored on layer "0" inherit the INSERT's layer.
+      // Non-zero layers keep their original layer name.
+      const effectiveLayerName = layerName === '0' ? groupLayerName : layerName
+
+      // Keep runtime layer metadata/material cache aligned with the inherited layer so
+      // later layer style edits (color, linetype, lineweight, transparency) target this
+      // object set correctly.
+      this.remapInheritedLayerObjects(objects, layerName, effectiveLayerName)
+
+      // One INSERT can expand to children from multiple layers. Here we create one
+      // render entity per layer bucket but preserve the INSERT object id for all
+      // buckets, so selection/highlight still maps back to the same database object.
+      // Within each layer bucket, the object id remains unique in scene indexing.
       const entity = new AcTrEntity(styleManager)
       entity.applyMatrix4(group.matrix)
       entity.objectId = groupObjectId
       entity.ownerId = group.ownerId
-      // Here one group represents one block reference. If the layer name of entities in block
-      // definition is '0', it should be put on layer where the group exist.
-      entity.layerName = layerName === '0' ? groupLayerName : layerName
+      // If block-definition entities are on layer "0", this bucket now uses the layer
+      // of the block reference itself (effectiveLayerName).
+      entity.layerName = effectiveLayerName
       entity.box = groupBox
       const entityUserData = entity.userData as {
         spatialIndexChildBoxes?: AcEdSpatialQueryResultItem[]
@@ -1091,6 +1190,104 @@ export class AcTrView2d extends AcEdBaseView {
     group.dispose()
 
     this._isDirty = true
+  }
+
+  /**
+   * Remaps layer metadata/material bindings from a source layer to the effective render layer.
+   *
+   * During block decomposition, one INSERT may be split into multiple layer buckets. For
+   * children authored on layer "0", AutoCAD requires inheriting the INSERT's own layer.
+   * This method applies that inheritance by mutating each child's `userData.layerName` and
+   * re-binding materials via renderer cache, so subsequent layer-level style changes still
+   * hit the correct material instances.
+   *
+   * @param objects - Root objects in the current layer bucket to traverse and remap.
+   * @param sourceLayerName - Layer name found in block definition before inheritance.
+   * @param effectiveLayerName - Final layer name used by rendering and style updates.
+   */
+  private remapInheritedLayerObjects(
+    objects: THREE.Object3D[],
+    sourceLayerName: string,
+    effectiveLayerName: string
+  ) {
+    if (sourceLayerName === effectiveLayerName) return
+
+    const renderer = this._renderer
+    const layerTraits = this.getEffectiveLayerTraits(effectiveLayerName)
+    for (const object of objects) {
+      object.traverse(child => {
+        if (child.userData.layerName === sourceLayerName) {
+          child.userData.layerName = effectiveLayerName
+        }
+
+        if (!('material' in child)) return
+
+        const material = child.material
+        if (Array.isArray(material)) {
+          const materials = material as THREE.Material[]
+          child.material = materials.map(entry =>
+            renderer.getLayerBoundMaterial(
+              this.promoteLayerZeroByLayerColor(entry, sourceLayerName),
+              effectiveLayerName,
+              layerTraits
+            )
+          )
+          return
+        }
+
+        const remappedMaterial = renderer.getLayerBoundMaterial(
+          this.promoteLayerZeroByLayerColor(
+            material as THREE.Material,
+            sourceLayerName
+          ),
+          effectiveLayerName,
+          layerTraits
+        )
+        child.material = remappedMaterial
+        child.userData.styleMaterialId = remappedMaterial.id
+      })
+    }
+  }
+
+  /**
+   * Some DXF conversion paths lose `isByLayerColor` on layer-0 block contents while still
+   * retaining other ByLayer markers (lineType/lineWeight/transparency). For AutoCAD-compatible
+   * INSERT inheritance, treat such colors as inheritable when remapping from layer "0".
+   */
+  private promoteLayerZeroByLayerColor(
+    material: THREE.Material,
+    sourceLayerName: string
+  ): THREE.Material {
+    const metadata = getMaterialMetadata(material)
+    const hasAnyOtherByLayerBinding =
+      hasByLayerBinding(metadata) && metadata.isByLayerColor !== true
+
+    if (sourceLayerName === '0' && hasAnyOtherByLayerBinding) {
+      setMaterialMetadata(material, { isByLayerColor: true })
+    }
+    return material
+  }
+
+  /**
+   * Builds the resolved layer traits used when layer-0 block content inherits an INSERT layer.
+   */
+  private getEffectiveLayerTraits(
+    layerName: string
+  ): Partial<AcGiSubEntityTraits> | undefined {
+    const layer =
+      AcApDocManager.instance.curDocument.database.tables.layerTable.getAt(
+        layerName
+      )
+    if (!layer) return undefined
+
+    return {
+      layer: layer.name,
+      color: layer.color.clone(),
+      rgbColor: layer.color.RGB,
+      lineType: layer.lineStyle,
+      lineWeight: layer.lineWeight,
+      transparency: layer.transparency
+    }
   }
 
   private decreaseNumOfEntitiesToProcess() {

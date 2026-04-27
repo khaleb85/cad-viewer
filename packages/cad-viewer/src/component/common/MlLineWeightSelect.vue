@@ -1,59 +1,56 @@
 <template>
   <div class="ml-lineweight-select">
-    <el-select
-      :model-value="resolvedModelValue"
+    <el-dropdown
+      class="ml-lineweight-select__dropdown"
+      trigger="click"
+      popper-class="ml-lineweight-popper"
       :disabled="props.disabled || !lineWeightItems.length"
-      class="ml-lineweight-select__control"
-      style="width: 100%"
-      @change="onSelect"
+      @command="onSelect"
     >
-      <template #label>
-        <div class="ml-lineweight-item ml-lineweight-item--selected">
-          <span
-            v-if="props.leadingIcon"
-            class="ml-lineweight-leading-icon"
-            aria-hidden="true"
-          >
-            <component :is="props.leadingIcon" />
-          </span>
+      <button
+        type="button"
+        class="ml-lineweight-select__trigger"
+        :class="{ 'is-disabled': props.disabled }"
+        :disabled="props.disabled"
+      >
+        <span class="ml-lineweight-select__value">
           <span
             v-if="currentPreviewWidth !== null"
-            class="ml-lineweight-preview"
-            :style="{ height: currentPreviewWidth + 'px' }"
+            class="ml-lineweight-preview ml-lineweight-preview--btn"
+            :style="{ '--ml-lineweight-height': currentPreviewWidth + 'px' }"
           />
-          <span class="ml-lineweight-text">
-            {{ currentLabel }}
-          </span>
-        </div>
-      </template>
+          <span class="ml-lineweight-label">{{ currentLabel }}</span>
+        </span>
+        <el-icon class="ml-lineweight-caret">
+          <ArrowDown />
+        </el-icon>
+      </button>
 
-      <el-option
-        v-for="item in lineWeightItems"
-        :key="item.value"
-        :label="item.label"
-        :value="item.value"
-      >
-        <div class="ml-lineweight-item">
-          <span
-            v-if="item.previewWidth !== null"
-            class="ml-lineweight-preview"
-            :style="{ height: item.previewWidth + 'px' }"
-          />
-          <span class="ml-lineweight-text">{{ item.label }}</span>
-        </div>
-      </el-option>
-    </el-select>
+      <template #dropdown>
+        <el-dropdown-menu class="ml-lineweight-menu">
+          <el-dropdown-item
+            v-for="item in lineWeightItems"
+            :key="item.value"
+            :command="item.value"
+            class="ml-lineweight-item"
+          >
+            <span
+              v-if="item.previewWidth !== null"
+              class="ml-lineweight-preview"
+              :style="{ '--ml-lineweight-height': item.previewWidth + 'px' }"
+            />
+            <span class="ml-lineweight-text">{{ item.label }}</span>
+          </el-dropdown-item>
+        </el-dropdown-menu>
+      </template>
+    </el-dropdown>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ArrowDown } from '@element-plus/icons-vue'
 import { AcGiLineWeight } from '@mlightcad/data-model'
-import { type Component, computed } from 'vue'
-import { useI18n } from 'vue-i18n'
-
-defineOptions({
-  inheritAttrs: false
-})
+import { computed } from 'vue'
 
 /**
  * Render-ready line weight entry shown by the select control.
@@ -61,7 +58,7 @@ defineOptions({
 interface LineWeightItem {
   /** Enum value written back to the CAD database. */
   value: AcGiLineWeight
-  /** Localized label displayed in the dropdown list. */
+  /** Display label shown in the dropdown list. */
   label: string
   /** Preview stroke thickness in CSS pixels, or `null` for symbolic values. */
   previewWidth: number | null
@@ -72,11 +69,11 @@ interface LineWeightItem {
  */
 interface LineWeightSelectProps {
   /** Currently selected line weight value. */
-  modelValue: AcGiLineWeight
+  modelValue?: AcGiLineWeight
   /** Disables selection while the surrounding ribbon is unavailable. */
   disabled?: boolean
-  /** Optional icon rendered before the selected value. */
-  leadingIcon?: string | Component
+  /** Placeholder shown when no line weight can be resolved. */
+  placeholder?: string
 }
 
 const props = defineProps<LineWeightSelectProps>()
@@ -86,10 +83,8 @@ const emit = defineEmits<{
   (e: 'change', value: AcGiLineWeight): void
 }>()
 
-const { t } = useI18n()
-
 /**
- * Formats a line weight enum into the localized label shown in the UI.
+ * Formats a line weight enum into the fixed label shown in the UI.
  *
  * @param value Line weight to describe.
  * @returns Human-readable text for the given enum member.
@@ -97,13 +92,11 @@ const { t } = useI18n()
 function formatLabel(value: AcGiLineWeight): string {
   switch (value) {
     case AcGiLineWeight.ByLayer:
-      return t('main.lineWeightSelect.byLayer')
+      return 'ByLayer'
     case AcGiLineWeight.ByBlock:
-      return t('main.lineWeightSelect.byBlock')
-    case AcGiLineWeight.ByDIPs:
-      return t('main.lineWeightSelect.byDIPs')
+      return 'ByBlock'
     case AcGiLineWeight.ByLineWeightDefault:
-      return t('main.lineWeightSelect.default')
+      return 'Default'
     default:
       return `${(value / 100).toFixed(2)} mm`
   }
@@ -132,8 +125,7 @@ function sortLineWeightValues(a: AcGiLineWeight, b: AcGiLineWeight) {
   const specialOrder = [
     AcGiLineWeight.ByLayer,
     AcGiLineWeight.ByBlock,
-    AcGiLineWeight.ByLineWeightDefault,
-    AcGiLineWeight.ByDIPs
+    AcGiLineWeight.ByLineWeightDefault
   ]
   const aIndex = specialOrder.indexOf(a)
   const bIndex = specialOrder.indexOf(b)
@@ -152,7 +144,8 @@ const lineWeightItems = computed<LineWeightItem[]>(() =>
   Array.from(
     new Set(
       Object.values(AcGiLineWeight).filter(
-        (v): v is AcGiLineWeight => typeof v === 'number'
+        (v): v is AcGiLineWeight =>
+          typeof v === 'number' && v !== AcGiLineWeight.ByDIPs
       )
     )
   )
@@ -164,12 +157,14 @@ const lineWeightItems = computed<LineWeightItem[]>(() =>
     }))
 )
 
-const currentLabel = computed(() => formatLabel(props.modelValue))
-const currentPreviewWidth = computed(() => previewPx(props.modelValue))
-const resolvedModelValue = computed<AcGiLineWeight | undefined>(() =>
-  lineWeightItems.value.some(item => item.value === props.modelValue)
-    ? props.modelValue
-    : lineWeightItems.value[0]?.value
+const selectedItem = computed<LineWeightItem | undefined>(() =>
+  lineWeightItems.value.find(item => item.value === props.modelValue)
+)
+const currentLabel = computed(
+  () => selectedItem.value?.label ?? props.placeholder ?? ''
+)
+const currentPreviewWidth = computed(
+  () => selectedItem.value?.previewWidth ?? null
 )
 
 /**
@@ -185,57 +180,147 @@ function onSelect(value: AcGiLineWeight) {
 
 <style scoped>
 .ml-lineweight-select {
+  --ml-lineweight-caret-size: var(--el-font-size-base);
   display: flex;
+  flex: 1 1 auto;
+  align-self: stretch;
   width: 100%;
+  height: 100%;
   min-width: 0;
 }
 
-.ml-lineweight-leading-icon {
-  display: inline-flex;
+.ml-lineweight-select__dropdown {
+  display: flex;
+  flex: 1 1 auto;
+  align-self: stretch;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+}
+
+.ml-lineweight-select__dropdown :deep(.el-tooltip__trigger) {
+  display: flex;
+  flex: 1 1 auto;
+  align-self: stretch;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+}
+
+.ml-lineweight-select__trigger {
+  display: flex;
+  flex: 1 1 auto;
   align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-  color: var(--el-text-color-secondary);
-}
-
-.ml-lineweight-select__control {
+  justify-content: flex-start;
   width: 100%;
+  height: 100%;
+  min-height: var(--ml-rb-compact-height, 28px);
   min-width: 0;
-}
-
-.ml-lineweight-select :deep(.el-select__wrapper),
-.ml-lineweight-select :deep(.el-select__selection),
-.ml-lineweight-select :deep(.el-select__selected-item),
-.ml-lineweight-select :deep(.el-select__placeholder) {
-  width: 100%;
-  min-width: 0;
-}
-
-.ml-lineweight-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-width: 0;
-}
-
-.ml-lineweight-item--selected {
-  width: 100%;
-}
-
-.ml-lineweight-text {
+  box-sizing: border-box;
+  padding: 0 6px;
+  border: 1px solid var(--el-border-color);
+  border-radius: var(--el-border-radius-base);
+  background: var(--el-fill-color-blank);
+  color: var(--el-text-color-regular);
   font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color var(--el-transition-duration),
+    box-shadow var(--el-transition-duration);
+}
+
+.ml-lineweight-select__trigger:hover {
+  border-color: var(--el-border-color-hover);
+}
+
+.ml-lineweight-select__trigger:focus-visible {
+  outline: none;
+  border-color: var(--el-color-primary);
+  box-shadow: 0 0 0 1px var(--el-color-primary) inset;
+}
+
+.ml-lineweight-select__trigger.is-disabled {
+  cursor: not-allowed;
+  color: var(--el-disabled-text-color);
+  background: var(--el-fill-color-light);
+  border-color: var(--el-border-color-light);
+}
+
+.ml-lineweight-select__value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.ml-lineweight-caret {
+  flex: 0 0 auto;
+  font-size: var(--ml-lineweight-caret-size);
+  color: var(--el-text-color-placeholder);
+}
+
+.ml-lineweight-menu {
+  padding: 4px 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.ml-lineweight-label {
+  font-size: 13px;
+  min-width: 0;
+}
+
+.ml-lineweight-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: left;
+  flex: 1 1 auto;
 }
 
 .ml-lineweight-preview {
-  width: 40px;
+  position: relative;
+  display: inline-flex;
+  width: 52px;
+  height: 14px;
+  flex: 0 0 52px;
+}
+
+.ml-lineweight-preview::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: var(--ml-lineweight-height, 2px);
+  transform: translateY(-50%);
   background-color: currentColor;
-  border-radius: 2px;
-  flex: 0 0 40px;
+  border-radius: 999px;
+}
+
+:global(.ml-lineweight-popper .ml-lineweight-menu) {
+  padding: 4px 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+:global(.ml-lineweight-popper .ml-lineweight-item) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 160px;
+}
+
+:global(.ml-lineweight-popper .ml-lineweight-text) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  font-size: 13px;
 }
 </style>

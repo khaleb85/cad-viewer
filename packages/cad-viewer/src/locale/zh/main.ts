@@ -2,7 +2,8 @@ export default {
   mainMenu: {
     new: '新建图纸',
     open: '打开图纸',
-    export: '导出为DXF'
+    export: '导出为DXF',
+    exportImage: '导出图片'
   },
   ribbon: {
     tab: {
@@ -14,6 +15,7 @@ export default {
       modify: '修改',
       layer: '图层',
       properties: '属性',
+      utilities: '实用工具',
       annotation: '批注',
       measurement: '测量'
     },
@@ -21,6 +23,19 @@ export default {
       color: '颜色',
       lineType: '线型',
       lineWeight: '线宽'
+    },
+    layerTools: {
+      select: '图层',
+      off: '关闭图层',
+      isolate: '隔离',
+      freeze: '冻结图层',
+      lock: '锁定图层',
+      current: '置为当前',
+      allOn: '图层全开',
+      unisolate: '取消隔离',
+      thaw: '解冻图层',
+      unlock: '解锁图层',
+      restore: '图层恢复'
     },
     arc: {
       threePoint: '三点',
@@ -60,7 +75,53 @@ export default {
       rotate: '围绕基点旋转选中的对象。',
       copy: '将选中的对象复制到新位置。',
       erase: '从图纸中删除选中的对象。',
-      properties: '打开当前所选对象的属性面板。'
+      properties: '打开当前所选对象的属性面板。',
+      quickSelect: '打开快速选择对话框，按条件筛选并选择图元。',
+      propertyColor: '设置新建对象或当前选中对象使用的颜色。',
+      propertyLineType: '设置新建对象或当前选中对象使用的线型。',
+      propertyLineWeight: '设置新建对象或当前选中对象使用的线宽。',
+      layerAction: {
+        off: '关闭当前选中的图层，使该图层上的对象隐藏，但不会冻结该图层。',
+        isolate: '仅显示当前选中的图层，并隐藏其他图层，方便专注处理相关对象。',
+        freeze: '冻结当前选中的图层，使其对象隐藏，并在重生成时跳过该图层。',
+        lock: '锁定当前选中的图层，使其对象保持可见，但不能被编辑。',
+        current:
+          '将当前选中的图层设为当前图层，之后新建对象会默认放在该图层上。',
+        allOn: '打开所有已关闭的图层；已冻结的图层会继续保持冻结状态。',
+        unisolate:
+          '恢复被图层隔离隐藏或锁定的图层，同时保留隔离之后的其他图层更改。',
+        thaw: '解冻当前选中的图层，使其对象重新显示并重新参与重生成。',
+        unlock: '解锁当前选中的图层，使其对象可以再次被选择和编辑。',
+        restore: '恢复此 Ribbon 中最近一次图层操作之前的图层状态。'
+      },
+      circleOption: {
+        centerRadius: '通过指定圆心和半径创建圆。',
+        centerDiameter: '通过指定圆心和直径创建圆。',
+        twoPoint: '通过两个点定义直径来创建圆。',
+        threePoint: '创建经过三个点的圆。',
+        tanTanRadius: '创建与两个对象相切并指定半径的圆。',
+        tanTanTan: '创建与三个对象相切的圆。'
+      },
+      arcOption: {
+        threePoint: '通过起点、中间点和终点创建圆弧。',
+        startCenterEnd: '通过起点、圆心和终点创建圆弧。',
+        startCenterAngle: '通过起点、圆心和夹角创建圆弧。',
+        startCenterLength: '通过起点、圆心和弧长创建圆弧。',
+        startEndAngle: '通过起点、终点和夹角创建圆弧。',
+        startEndDirection: '通过起点、终点和起点切线方向创建圆弧。',
+        startEndRadius: '通过起点、终点和指定半径创建圆弧。',
+        centerStartEnd: '通过圆心、起点和终点创建圆弧。',
+        centerStartAngle: '通过圆心、起点和夹角创建圆弧。',
+        centerStartLength: '通过圆心、起点和弧长创建圆弧。'
+      },
+      rectOption: {
+        rectangle: '通过指定对角点或尺寸创建矩形。',
+        polygon: '通过指定边数和构造方式创建正多边形。'
+      },
+      ellipseOption: {
+        ellipse: '通过指定主轴和次轴创建完整椭圆。',
+        arc: '通过指定椭圆轴和弧段范围创建椭圆弧。'
+      }
     },
     command: {
       line: '直线',
@@ -80,7 +141,8 @@ export default {
       rotate: '旋转',
       copy: '复制',
       erase: '删除',
-      properties: '属性'
+      properties: '属性',
+      quickSelect: '快速选择'
     }
   },
   verticalToolbar: {
@@ -244,12 +306,6 @@ export default {
   lineTypeSelect: {
     placeholder: '线型'
   },
-  lineWeightSelect: {
-    byLayer: '随层',
-    byBlock: '随块',
-    byDIPs: '按DIP',
-    default: '默认'
-  },
   colorIndexPicker: {
     color: '颜色：',
     colorIndex: '颜色索引：',
@@ -264,7 +320,27 @@ export default {
   ribbonProperty: {
     color: '颜色',
     lineType: '线型',
-    lineWeight: '线宽'
+    lineWeight: '线宽',
+    layer: '图层'
+  },
+  layerSelect: {
+    searchPlaceholder: '请输入图层名字进行搜索',
+    noLayerAvailable: '无可用图层',
+    noMatchedLayer: '未找到匹配图层',
+    tooltip: {
+      layer: '图层',
+      visibility: '可见性',
+      freeze: '冻结',
+      lock: '锁定',
+      lineType: '线型',
+      color: '颜色',
+      visible: '显示',
+      hidden: '隐藏',
+      frozen: '已冻结',
+      thawed: '未冻结',
+      locked: '已锁定',
+      unlocked: '未锁定'
+    }
   },
   message: {
     loadingFonts: '正在加载字体...',

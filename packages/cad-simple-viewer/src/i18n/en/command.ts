@@ -1,10 +1,5 @@
 export default {
   ACAD: {
-    pngout: {
-      boundsFirstCorner: 'Specify first corner of bounds',
-      boundsSecondCorner: 'Specify opposite corner',
-      longSidePrompt: 'Enter long side size in pixels'
-    },
     arc: {
       description: 'Creates an arc'
     },
@@ -53,6 +48,11 @@ export default {
     '-layer': {
       description: 'Manages layers through command-line options'
     },
+    laycur: {
+      description:
+        'Changes the layer property of selected objects to the current layer',
+      prompt: 'Select objects to be changed to the current layer'
+    },
     laydel: {
       description: 'Deletes a layer and all objects on that layer'
     },
@@ -60,9 +60,30 @@ export default {
       description: 'Freezes the layer of selected objects',
       prompt: 'Select object on layer to freeze'
     },
+    layiso: {
+      description: 'Isolates the layers of selected objects',
+      prompt: 'Select objects on layers to isolate'
+    },
+    layuniso: {
+      description: 'Restores layers hidden or locked by LAYISO'
+    },
+    laylck: {
+      description: 'Locks the layer of selected objects',
+      prompt: 'Select object on layer to lock'
+    },
+    layon: {
+      description: 'Turns on all layers in the drawing'
+    },
     layoff: {
       description: 'Turns off the layer of selected objects',
       prompt: 'Select object on layer to turn off'
+    },
+    laythw: {
+      description: 'Thaws all frozen layers in the drawing'
+    },
+    layulk: {
+      description: 'Unlocks the layer of selected objects',
+      prompt: 'Select object on layer to unlock'
     },
     layerclose: {
       description: 'Closes the Layer Properties Manager'
@@ -114,6 +135,9 @@ export default {
     pickbox: {
       description:
         'Sets the size (in pixels) of the selection box used to pick objects'
+    },
+    pngout: {
+      description: 'Exports to PNG'
     },
     qnew: {
       description: 'Starts a new drawing'

@@ -1,4 +1,8 @@
-import { AcGiSubEntityTraits, log } from '@mlightcad/data-model'
+import {
+  type AcGiHatchPatternLine,
+  AcGiSubEntityTraits,
+  log
+} from '@mlightcad/data-model'
 import * as THREE from 'three'
 
 import {
@@ -6,6 +10,10 @@ import {
   createHatchPatternShaderMaterial
 } from './AcTrHatchPatternShaders'
 import { AcTrMaterialManager, AcTrMaterialSide } from './AcTrMaterialManager'
+import {
+  getMaterialMetadata,
+  setMaterialMetadata
+} from './AcTrMaterialMetadata'
 
 export interface AcTrFillMaterialOptions {
   rebaseOffset: THREE.Vector2
@@ -38,16 +46,55 @@ export class AcTrFillMaterialManager extends AcTrMaterialManager<AcTrFillMateria
    * per fragment, no `DoubleSide` overhead).
    */
   getBackSideVariant(material: THREE.Material): THREE.Material {
-    const key = material.userData.materialKey as string | undefined
+    const metadata = getMaterialMetadata(material)
+    const key = metadata.materialKey
     if (!key) return material
 
     // Already a back-side material — return as-is (idempotent).
-    if (material.userData.side === 'back') return material
+    if (metadata.side === 'back') return material
 
     const traits = this.keyToTraits[key]
     if (!traits) return material
 
+    // `keyToTraits` stores the full options alongside traits, so we
+    // preserve the original draw-order tier and only override `side`.
     return this.getMaterial(traits, { ...traits, side: 'back' })
+  }
+
+  /**
+   * Fill meshes at the normal linework tier (`drawOrder >= 0`) follow
+   * COLORTHEME inversion so ACI 7 content stays legible.
+   *
+   * This covers MText glyphs and wide polylines, both of which are
+   * rasterized as meshes but should behave like linework, not like
+   * hatches. Negative tiers are reserved for hatch-like fills and are
+   * handled by `shouldTrackBackground` instead.
+   */
+  protected shouldTrackForeground(
+    traits: AcGiSubEntityTraits,
+    _options: AcTrFillMaterialOptions
+  ): boolean {
+    return (traits.drawOrder ?? 0) >= 0 && traits.color.isForeground
+  }
+
+  /**
+   * Solid hatch fills whose resolved colour is the foreground (ACI 7)
+   * must follow the canvas background colour rather than keep an
+   * absolute RGB — AutoCAD renders them as if they were painted with
+   * the paper colour, so they fuse into both light and dark bgs and
+   * only the overlaid wireframe remains visible.
+   *
+   * Hatches with an explicit RGB (including truecolor white) fall
+   * outside this rule — `traits.color.isForeground` is only true for
+   * the ACI 7 / foreground pseudo-colour, so a DWG author who picked
+   * `255,255,255` via the truecolor picker still gets a literal white
+   * hatch.
+   */
+  protected shouldTrackBackground(
+    traits: AcGiSubEntityTraits,
+    _options: AcTrFillMaterialOptions
+  ): boolean {
+    return (traits.drawOrder ?? 0) < 0 && traits.color.isForeground
   }
 
   /**
@@ -61,18 +108,47 @@ export class AcTrFillMaterialManager extends AcTrMaterialManager<AcTrFillMateria
     const side = options.side ?? 'front'
     const threeSide = side === 'back' ? THREE.BackSide : THREE.FrontSide
 
+    // Background-follow fills must be BORN with the current canvas
+    // bg, not with their resolved trait RGB.  Without this, opening a
+    // DWG in dark theme shows ACI 7 hatches as solid white on the
+    // first frame — `changeBackground` iterates only materials already
+    // in the cache, so it cannot fix materials created AFTER the theme
+    // was set.  Overriding `rgbColor` here lets the existing
+    // `createMeshBasicMaterial` / `createHatchShaderMaterial` helpers
+    // stay untouched while the material still lands on the right
+    // `userData.isBackgroundFill` bucket for future repaints.
+    const effectiveTraits: AcGiSubEntityTraits = this.shouldTrackBackground(
+      traits,
+      options
+    )
+      ? { ...traits, rgbColor: this.options.currentBackgroundColor }
+      : traits
+
     let material: THREE.Material
     if (!style.definitionLines || style.definitionLines.length < 1) {
-      material = this.createMeshBasicMaterial(traits, threeSide)
-    } else if (style.definitionLines.some(line => !line.dashLengths)) {
-      log.warn('Invalid dash pattern', style)
-      material = this.createMeshBasicMaterial(traits, threeSide)
+      material = this.createMeshBasicMaterial(effectiveTraits, threeSide)
+    } else if (
+      style.definitionLines.some(line => !this.isValidDefinitionLine(line))
+    ) {
+      log.warn(
+        'Invalid hatch pattern definition line, fallback to solid fill',
+        style
+      )
+      material = this.createMeshBasicMaterial(effectiveTraits, threeSide)
     } else {
-      material = this.createHatchShaderMaterial(traits, options, threeSide)
+      material = this.createHatchShaderMaterial(
+        effectiveTraits,
+        options,
+        threeSide
+      )
     }
 
-    // Store side in userData so getBackSideVariant can check idempotency
-    material.userData.side = side
+    // Store side in userData so getBackSideVariant can check idempotency.
+    // Draw-order metadata is stamped by the base material manager from
+    // `traits.drawOrder`.
+    setMaterialMetadata(material, {
+      side
+    })
     return material
   }
 
@@ -198,9 +274,18 @@ export class AcTrFillMaterialManager extends AcTrMaterialManager<AcTrFillMateria
   /**
    * Build a deterministic caching key based on traits and options.
    *
-   * The `side` dimension is appended only when it differs from the
-   * default (`'front'`), keeping existing keys stable and avoiding
-   * unnecessary cache fragmentation for the common non-mirrored path.
+   * Two partitioning dimensions beyond colour/layer/pattern:
+   *
+   * - `side`: `'back'` variant goes in a separate key so mirrored
+   *   fills don't steal the front-side material of the common path.
+   * - `drawOrder`: hatch fills must not share a material instance with
+   *   line-like fill meshes (wide polylines, text glyphs) because the
+   *   batcher groups by material id and applies one `renderOrder` tier
+   *   per batch.
+   *
+   * Both suffixes are appended only when they differ from the
+   * default, keeping existing keys stable and avoiding unnecessary
+   * cache fragmentation on the common path.
    */
   protected buildKey(
     traits: AcGiSubEntityTraits,
@@ -208,20 +293,81 @@ export class AcTrFillMaterialManager extends AcTrMaterialManager<AcTrFillMateria
   ): string {
     const style = traits.fillType
     const sideSuffix = options.side === 'back' ? '_back' : ''
+    const drawOrderSuffix = this.buildDrawOrderSuffix(traits)
+    // Foreground-tracking fills (solid hatches with ACI 7) get their
+    // own partition so `changeBackground` can mutate them in place
+    // without affecting any literal-RGB hatch that happens to share
+    // layer + colour.  The suffix is appended only when the condition
+    // matches, keeping the common path's keys bit-identical.
+    const bgSuffix =
+      (traits.drawOrder ?? 0) < 0 && traits.color.isForeground ? '_bgfill' : ''
 
     // Use color + layer + rebaseOffset + pattern info for key
     const isSolid = !style.definitionLines || style.definitionLines.length === 0
     if (isSolid) {
-      return `solid_${traits.layer}_${traits.rgbColor}${sideSuffix}`
+      return `solid_${traits.layer}_${traits.rgbColor}${sideSuffix}${drawOrderSuffix}${bgSuffix}`
     }
 
     const patternHash = style.definitionLines
-      .map(
-        pl =>
-          pl.dashLengths.join(',') + `@${pl.angle},${pl.base.x},${pl.base.y}`
-      )
+      .map(pl => {
+        if (!this.isValidDefinitionLine(pl)) {
+          return 'invalid'
+        }
+
+        const dash = pl.dashLengths!.join(',')
+        const angle = Number.isFinite(pl.angle) ? pl.angle : 0
+        const baseX = pl.base!.x!
+        const baseY = pl.base!.y!
+        return `${dash}@${angle},${baseX},${baseY}`
+      })
       .join('|')
 
-    return `hatch_${traits.layer}_${traits.rgbColor}_${style.patternAngle}_${patternHash}${sideSuffix}`
+    return `hatch_${traits.layer}_${traits.rgbColor}_${style.patternAngle}_${patternHash}${sideSuffix}${drawOrderSuffix}${bgSuffix}`
+  }
+
+  /**
+   * Normalizes one hatch pattern definition line in-place and validates it.
+   *
+   * DXF payloads occasionally contain partial pattern-line records. To keep
+   * hatch rendering resilient, this method applies fallback defaults:
+   * - `base` missing  -> `{ x: 0, y: 0 }`
+   * - `offset` missing -> `{ x: 0, y: 0 }`
+   * - `angle` missing  -> `0`
+   *
+   * `dashLengths` must still be an array; when absent or malformed, the line is
+   * considered invalid and the caller can fall back to solid fill rendering.
+   *
+   * @param line Candidate value read from hatch pattern data.
+   * @returns `true` when the line is usable for hatch shader generation.
+   */
+  private isValidDefinitionLine(line: AcGiHatchPatternLine) {
+    if (!line || typeof line !== 'object') return false
+    const mutable = line as AcGiHatchPatternLine & {
+      angle?: unknown
+      dashLengths?: unknown
+      base?: { x?: unknown; y?: unknown } | null
+      offset?: { x?: unknown; y?: unknown } | null
+    }
+
+    if (!Array.isArray(mutable.dashLengths)) return false
+
+    mutable.base = {
+      x: this.toFiniteNumber(mutable.base?.x, 0),
+      y: this.toFiniteNumber(mutable.base?.y, 0)
+    }
+    mutable.offset = {
+      x: this.toFiniteNumber(mutable.offset?.x, 0),
+      y: this.toFiniteNumber(mutable.offset?.y, 0)
+    }
+    mutable.angle = this.toFiniteNumber(mutable.angle, 0)
+    mutable.dashLengths = mutable.dashLengths.map(item =>
+      this.toFiniteNumber(item, 0)
+    )
+
+    return true
+  }
+
+  private toFiniteNumber(value: unknown, fallback = 0): number {
+    return Number.isFinite(value) ? (value as number) : fallback
   }
 }

@@ -88,104 +88,6 @@ export default {
       }
     }
   },
-  ellipse: {
-    axisEndpointOrOptions: 'Specify axis endpoint of ellipse or',
-    arcAxisEndpointOrCenter: 'Specify axis endpoint of elliptical arc or',
-    center: 'Specify center of ellipse:',
-    firstAxisEndpoint: 'Specify endpoint of axis:',
-    secondAxisEndpoint: 'Specify other endpoint of axis:',
-    otherAxisOrRotation: 'Specify distance to other axis or',
-    rotationAngle: 'Specify rotation angle around major axis:',
-    arcStartAngle: 'Specify start angle of elliptical arc:',
-    arcEndAngle: 'Specify end angle of elliptical arc:',
-    keywords: {
-      arc: {
-        display: 'Arc(A)',
-        local: 'Arc',
-        global: 'Arc'
-      },
-      center: {
-        display: 'Center(C)',
-        local: 'Center',
-        global: 'Center'
-      },
-      rotation: {
-        display: 'Rotation(R)',
-        local: 'Rotation',
-        global: 'Rotation'
-      }
-    },
-    invalid: {
-      axis: 'Invalid axis input: axis length must be greater than 0.',
-      otherAxis: 'Invalid other-axis input: distance must be greater than 0.',
-      rotation:
-        'Invalid rotation input: resulting minor axis must be greater than 0.'
-    }
-  },
-  measureDistance: {
-    firstPoint: 'Specify first point:',
-    secondPoint: 'Specify second point:'
-  },
-  measureArea: {
-    firstPoint: 'Specify first point:',
-    nextPoint: 'Specify next point (or press Enter to finish):'
-  },
-  measureAngle: {
-    vertex: 'Specify vertex point:',
-    arm1: 'Specify point on first arm:',
-    arm2: 'Specify point on second arm:'
-  },
-  measureArc: {
-    startPoint: 'Specify arc start point:',
-    throughPoint: 'Specify a point on the arc:',
-    endPoint: 'Specify arc end point:'
-  },
-  dimlinear: {
-    xLine1Point: 'Specify the first extension line origin:',
-    xLine2Point: 'Specify the second extension line origin:',
-    dimLinePoint: 'Specify dimension line location:'
-  },
-  line: {
-    firstPoint: 'Specify the first point:',
-    firstPointOrContinue: 'Specify first point or',
-    nextPoint: 'Specify the next point:',
-    nextPointWithOptions: 'Specify next point or',
-    keywords: {
-      continue: {
-        display: 'Continue(C)',
-        local: 'Continue',
-        global: 'Continue'
-      },
-      undo: {
-        display: 'Undo(U)',
-        local: 'Undo',
-        global: 'Undo'
-      },
-      close: {
-        display: 'Close(C)',
-        local: 'Close',
-        global: 'Close'
-      }
-    }
-  },
-  mtext: {
-    point: 'Specify mtext insertion point:'
-  },
-  point: {
-    point: 'Specify a point'
-  },
-  move: {
-    basePointOrDisplacement: 'Specify base point or',
-    secondPointOrDisplacement: 'Specify second point or',
-    displacement: 'Specify displacement:',
-    keywords: {
-      displacement: {
-        display: 'Displacement(D)',
-        local: 'Displacement',
-        global: 'Displacement'
-      }
-    }
-  },
   copy: {
     basePointOrOptions: 'Specify base point or',
     displacementOrArray: 'Specify displacement or',
@@ -228,232 +130,115 @@ export default {
       }
     }
   },
-  rotate: {
-    basePoint: 'Specify base point:',
-    rotationAngleOrOptions: 'Specify rotation angle or',
-    referenceAngleOrPoints: 'Specify reference angle or',
-    firstReferencePoint: 'Specify first point of reference angle:',
-    secondReferencePoint: 'Specify second point:',
-    newAngle: 'Specify new angle:',
-    keywords: {
-      copy: {
-        display: 'Copy(C)',
-        local: 'Copy',
-        global: 'Copy'
-      },
-      reference: {
-        display: 'Reference(R)',
-        local: 'Reference',
-        global: 'Reference'
-      },
-      points: {
-        display: 'Points(P)',
-        local: 'Points',
-        global: 'Points'
-      }
-    },
-    invalid: {
-      referencePoints: 'Invalid reference points: points must be different.'
-    }
+  dimlinear: {
+    xLine1Point: 'Specify the first extension line origin:',
+    xLine2Point: 'Specify the second extension line origin:',
+    dimLinePoint: 'Specify dimension line location:'
   },
-  rect: {
-    firstPoint: 'Specify first corner point:',
-    nextPoint: 'Specify other corner point:',
-    firstPointWithOptions: 'Specify first corner point or',
-    otherCornerWithOptions: 'Specify other corner point or',
-    chamferFirst: 'Specify first chamfer distance:',
-    chamferSecond: 'Specify second chamfer distance:',
-    filletRadius: 'Specify fillet radius:',
-    segmentWidth: 'Specify rectangle line width:',
-    elevationValue: 'Specify elevation:',
-    thicknessValue: 'Specify thickness:',
-    rotationAngle: 'Specify rectangle rotation angle:',
-    dimensionLength: 'Specify rectangle length:',
-    dimensionWidth: 'Specify rectangle width:',
-    areaValue: 'Specify rectangle area:',
-    areaLengthOrWidth: 'Specify rectangle length',
-    areaSpecifyWidth: 'Specify rectangle width:',
-    invalidPositive: 'Invalid input. Please enter a value greater than 0.',
-    invalidRect:
-      'Unable to create rectangle. Please specify valid corners or dimensions.',
-    thicknessNotSupported:
-      'Rectangle thickness is currently not written to entity data. The thickness setting is ignored.',
-    keywords: {
-      chamfer: {
-        display: 'Chamfer(C)',
-        local: 'Chamfer',
-        global: 'Chamfer'
-      },
-      elevation: {
-        display: 'Elevation(E)',
-        local: 'Elevation',
-        global: 'Elevation'
-      },
-      fillet: {
-        display: 'Fillet(F)',
-        local: 'Fillet',
-        global: 'Fillet'
-      },
-      thickness: {
-        display: 'Thickness(T)',
-        local: 'Thickness',
-        global: 'Thickness'
-      },
-      width: {
-        display: 'Width(W)',
-        local: 'Width',
-        global: 'Width'
-      },
-      area: {
-        display: 'Area(A)',
-        local: 'Area',
-        global: 'Area'
-      },
-      dimensions: {
-        display: 'Dimensions(D)',
-        local: 'Dimensions',
-        global: 'Dimensions'
-      },
-      rotation: {
-        display: 'Rotation(R)',
-        local: 'Rotation',
-        global: 'Rotation'
-      },
-      length: {
-        display: 'Length(L)',
-        local: 'Length',
-        global: 'Length'
-      },
-      rectWidth: {
-        display: 'Width(W)',
-        local: 'Width',
-        global: 'Width'
-      }
-    }
-  },
-  polygon: {
-    numberOfSides: 'Enter number of sides:',
-    centerOrEdge: 'Specify center of polygon or',
-    radiusOrType: 'Enter options',
-    edgeStart: 'Specify first endpoint of edge:',
-    edgeEnd: 'Specify second endpoint of edge:',
-    keywords: {
-      edge: {
-        display: 'Edge(E)',
-        local: 'Edge',
-        global: 'Edge'
-      },
-      inscribed: {
-        display: 'Inscribed in circle(I)',
-        local: 'Inscribed in circle',
-        global: 'Inscribed'
-      },
-      circumscribed: {
-        display: 'Circumscribed about circle(C)',
-        local: 'Circumscribed about circle',
-        global: 'Circumscribed'
-      }
-    },
-    invalid: {
-      sides: 'Invalid number of sides. Enter an integer between 3 and 1024.',
-      radius: 'Invalid radius. Radius must be greater than 0.',
-      edge: 'Invalid edge. The edge length must be greater than 0.'
-    }
-  },
-  sketch: {
-    firstPoint: 'Specify the first point:',
-    nextPoint: 'Specify the end point:'
-  },
-  polyline: {
-    firstPoint: 'Specify the first point:',
-    nextPoint: 'Specify the next point (or press Enter to finish):',
-    nextPointWithOptions: 'Specify next point or',
-    nextPointWithArcOptions: 'Specify next point or',
+  ellipse: {
+    axisEndpointOrOptions: 'Specify axis endpoint of ellipse or',
+    arcAxisEndpointOrCenter: 'Specify axis endpoint of elliptical arc or',
+    center: 'Specify center of ellipse:',
+    firstAxisEndpoint: 'Specify endpoint of axis:',
+    secondAxisEndpoint: 'Specify other endpoint of axis:',
+    otherAxisOrRotation: 'Specify distance to other axis or',
+    rotationAngle: 'Specify rotation angle around major axis:',
+    arcStartAngle: 'Specify start angle of elliptical arc:',
+    arcEndAngle: 'Specify end angle of elliptical arc:',
     keywords: {
       arc: {
         display: 'Arc(A)',
         local: 'Arc',
         global: 'Arc'
       },
-      undo: {
-        display: 'Undo(U)',
-        local: 'Undo',
-        global: 'Undo'
-      },
-      close: {
-        display: 'Close(C)',
-        local: 'Close',
-        global: 'Close'
-      },
-      line: {
-        display: 'Line(L)',
-        local: 'Line',
-        global: 'Line'
-      },
-      angle: {
-        display: 'Angle(A)',
-        local: 'Angle',
-        global: 'Angle'
-      },
       center: {
         display: 'Center(C)',
         local: 'Center',
         global: 'Center'
       },
-      secondPoint: {
-        display: 'Second point(P)',
-        local: 'Second point',
-        global: 'SecondPoint'
-      },
-      radius: {
-        display: 'Radius(R)',
-        local: 'Radius',
-        global: 'Radius'
+      rotation: {
+        display: 'Rotation(R)',
+        local: 'Rotation',
+        global: 'Rotation'
       }
     },
-    arcAngle: 'Specify arc angle:',
-    arcCenter: 'Specify center point:',
-    arcSecondPoint: 'Specify second point on arc:',
-    arcEndPoint: 'Specify arc end point:',
-    arcRadius: 'Specify arc radius:'
+    invalid: {
+      axis: 'Invalid axis input: axis length must be greater than 0.',
+      otherAxis: 'Invalid other-axis input: distance must be greater than 0.',
+      rotation:
+        'Invalid rotation input: resulting minor axis must be greater than 0.'
+    }
   },
-  zoom: {
-    mainPrompt: 'Specify corner of window or',
-    firstCorner: 'Specify first corner:',
-    secondCorner: 'Specify opposite corner:',
-    centerPoint: 'Specify center point:',
-    heightOrScale: 'Enter height or scale factor (nX or nXP):',
-    scaleFactor: 'Enter scale factor (nX or nXP):',
+  hatch: {
+    prompt: 'Select boundary object or',
+    pickPoint: 'Specify internal point (or press Enter to finish):',
+    select: 'Select objects to hatch:',
+    patternName: 'Enter hatch pattern name:',
+    scale: 'Specify hatch pattern scale:',
+    angle: 'Specify hatch pattern angle:',
+    style: 'Enter hatch style',
+    associative: 'Specify associativity',
+    invalidBoundary: 'Selected objects do not form a closed boundary.',
     keywords: {
-      all: {
-        display: 'All(A)',
-        local: 'All',
-        global: 'All'
+      pick: {
+        display: 'Pick points(P)',
+        local: 'Pick points',
+        global: 'PickPoints'
       },
-      center: {
-        display: 'Center(C)',
-        local: 'Center',
-        global: 'Center'
+      select: {
+        display: 'Select objects(S)',
+        local: 'Select objects',
+        global: 'SelectObjects'
       },
-      extents: {
-        display: 'Extents(E)',
-        local: 'Extents',
-        global: 'Extents'
-      },
-      previous: {
-        display: 'Previous(P)',
-        local: 'Previous',
-        global: 'Previous'
+      pattern: {
+        display: 'Pattern(P)',
+        local: 'Pattern',
+        global: 'Pattern'
       },
       scale: {
         display: 'Scale(S)',
         local: 'Scale',
         global: 'Scale'
       },
-      window: {
-        display: 'Window(W)',
-        local: 'Window',
-        global: 'Window'
+      angle: {
+        display: 'Angle(A)',
+        local: 'Angle',
+        global: 'Angle'
+      },
+      style: {
+        display: 'Style(T)',
+        local: 'Style',
+        global: 'HatchStyle'
+      },
+      associative: {
+        display: 'Associative(AS)',
+        local: 'Associative',
+        global: 'AssociativeMode'
+      },
+      normal: {
+        display: 'Normal(N)',
+        local: 'Normal',
+        global: 'Normal'
+      },
+      outer: {
+        display: 'Outer(O)',
+        local: 'Outer',
+        global: 'Outer'
+      },
+      ignore: {
+        display: 'Ignore(I)',
+        local: 'Ignore',
+        global: 'Ignore'
+      },
+      yes: {
+        display: 'Yes(Y)',
+        local: 'Yes',
+        global: 'Yes'
+      },
+      no: {
+        display: 'No(N)',
+        local: 'No',
+        global: 'No'
       }
     }
   },
@@ -543,6 +328,140 @@ export default {
       }
     }
   },
+  layon: {
+    alreadyOn: 'All layers are already on.',
+    turnedOn: 'Turned on layers'
+  },
+  laycur: {
+    prompt: 'Select objects to be changed to the current layer',
+    currentLayerNotFound: 'Current layer not found.',
+    noObjects: 'No valid objects were selected.',
+    alreadyCurrent: 'Selected objects are already on the current layer.',
+    changed: 'Changed objects to current layer'
+  },
+  layfrz: {
+    prompt: 'Select object on layer to freeze or',
+    invalidSelection: 'Invalid object selected.',
+    settingsPrompt: 'Enter LAYFRZ setting to change',
+    viewportPrompt: 'Specify viewport freeze behavior',
+    blockSelectionPrompt: 'Specify nested block selection behavior',
+    vpfreezeFallback:
+      'Current viewer does not support per-viewport layer freeze; using Freeze behavior instead.',
+    nestedSelectionLimited:
+      'Nested block selection settings are stored, but current picking still resolves the top-level entity layer.',
+    layerNotFound: 'Layer not found',
+    cannotFreezeCurrent: 'Cannot freeze the current layer.',
+    alreadyFrozen: 'Layer is already frozen',
+    frozen: 'Frozen layer',
+    restored: 'Restored layer',
+    nothingToUndo: 'There is no LAYFRZ action to undo.',
+    keywords: {
+      settings: {
+        display: 'Settings(S)',
+        local: 'Settings',
+        global: 'Settings'
+      },
+      undo: {
+        display: 'Undo(U)',
+        local: 'Undo',
+        global: 'Undo'
+      },
+      viewports: {
+        display: 'Viewports(V)',
+        local: 'Viewports',
+        global: 'Viewports'
+      },
+      blockSelection: {
+        display: 'Block selection(B)',
+        local: 'Block selection',
+        global: 'BlockSelection'
+      },
+      freeze: {
+        display: 'Freeze(F)',
+        local: 'Freeze',
+        global: 'Freeze'
+      },
+      vpfreeze: {
+        display: 'Vpfreeze(V)',
+        local: 'Vpfreeze',
+        global: 'Vpfreeze'
+      },
+      block: {
+        display: 'Block(B)',
+        local: 'Block',
+        global: 'Block'
+      },
+      entity: {
+        display: 'Entity(E)',
+        local: 'Entity',
+        global: 'Entity'
+      },
+      none: {
+        display: 'None(N)',
+        local: 'None',
+        global: 'None'
+      }
+    }
+  },
+  layiso: {
+    prompt: 'Select objects on the layer(s) to be isolated or',
+    settingsPrompt: 'Enter setting for layers not isolated',
+    offModePrompt: 'Enter off behavior for layers not isolated',
+    noLayers: 'No valid layers were selected.',
+    layerNotFound: 'Layer not found',
+    isolated: 'Isolated layer(s)',
+    affectedLayers: 'affected layers',
+    vpfreezeFallback:
+      'Current viewer does not support per-viewport layer freeze; using Off behavior instead.',
+    lockFadeFallback:
+      'Current viewer does not support layer fade display; non-isolated layers will be locked without fade.',
+    keywords: {
+      settings: {
+        display: 'Settings(S)',
+        local: 'Settings',
+        global: 'Settings'
+      },
+      off: {
+        display: 'Off(O)',
+        local: 'Off',
+        global: 'Off'
+      },
+      lockAndFade: {
+        display: 'Lock and fade(L)',
+        local: 'Lock and fade',
+        global: 'LockAndFade'
+      },
+      vpfreeze: {
+        display: 'Vpfreeze(V)',
+        local: 'Vpfreeze',
+        global: 'Vpfreeze'
+      }
+    }
+  },
+  layuniso: {
+    noPrevious: 'No previous LAYISO layer state to restore.',
+    layerNotFound: 'Layer not found',
+    nothingRestored: 'No LAYISO layer changes were restored.',
+    restored: 'Restored layers'
+  },
+  laythw: {
+    alreadyThawed: 'All layers are already thawed.',
+    thawed: 'Thawed layers'
+  },
+  laylck: {
+    prompt: 'Select an object on the layer to be locked',
+    invalidSelection: 'Invalid object selected.',
+    layerNotFound: 'Layer not found',
+    alreadyLocked: 'Layer is already locked',
+    locked: 'Locked layer'
+  },
+  layulk: {
+    prompt: 'Select an object on the layer to be unlocked',
+    invalidSelection: 'Invalid object selected.',
+    layerNotFound: 'Layer not found',
+    alreadyUnlocked: 'Layer is already unlocked',
+    unlocked: 'Unlocked layer'
+  },
   layoff: {
     prompt: 'Select object on layer to turn off or',
     invalidSelection: 'Invalid object selected.',
@@ -607,78 +526,258 @@ export default {
       }
     }
   },
-  hatch: {
-    prompt: 'Select boundary object or',
-    pickPoint: 'Specify internal point (or press Enter to finish):',
-    select: 'Select objects to hatch:',
-    patternName: 'Enter hatch pattern name:',
-    scale: 'Specify hatch pattern scale:',
-    angle: 'Specify hatch pattern angle:',
-    style: 'Enter hatch style',
-    associative: 'Specify associativity',
-    invalidBoundary: 'Selected objects do not form a closed boundary.',
+  line: {
+    firstPoint: 'Specify the first point:',
+    firstPointOrContinue: 'Specify first point or',
+    nextPoint: 'Specify the next point:',
+    nextPointWithOptions: 'Specify next point or',
     keywords: {
-      pick: {
-        display: 'Pick points(P)',
-        local: 'Pick points',
-        global: 'PickPoints'
+      continue: {
+        display: 'Continue(C)',
+        local: 'Continue',
+        global: 'Continue'
       },
-      select: {
-        display: 'Select objects(S)',
-        local: 'Select objects',
-        global: 'SelectObjects'
+      undo: {
+        display: 'Undo(U)',
+        local: 'Undo',
+        global: 'Undo'
       },
-      pattern: {
-        display: 'Pattern(P)',
-        local: 'Pattern',
-        global: 'Pattern'
+      close: {
+        display: 'Close(C)',
+        local: 'Close',
+        global: 'Close'
+      }
+    }
+  },
+  measureAngle: {
+    vertex: 'Specify vertex point:',
+    arm1: 'Specify point on first arm:',
+    arm2: 'Specify point on second arm:'
+  },
+  measureArc: {
+    startPoint: 'Specify arc start point:',
+    throughPoint: 'Specify a point on the arc:',
+    endPoint: 'Specify arc end point:'
+  },
+  measureArea: {
+    firstPoint: 'Specify first point:',
+    nextPoint: 'Specify next point (or press Enter to finish):'
+  },
+  measureDistance: {
+    firstPoint: 'Specify first point:',
+    secondPoint: 'Specify second point:'
+  },
+  move: {
+    basePointOrDisplacement: 'Specify base point or',
+    secondPointOrDisplacement: 'Specify second point or',
+    displacement: 'Specify displacement:',
+    keywords: {
+      displacement: {
+        display: 'Displacement(D)',
+        local: 'Displacement',
+        global: 'Displacement'
+      }
+    }
+  },
+  mtext: {
+    point: 'Specify mtext insertion point:'
+  },
+  pngout: {
+    boundsFirstCorner: 'Specify first corner of bounds',
+    boundsSecondCorner: 'Specify opposite corner',
+    longSidePrompt: 'Enter long side size in pixels'
+  },
+  point: {
+    point: 'Specify a point'
+  },
+  polygon: {
+    numberOfSides: 'Enter number of sides:',
+    centerOrEdge: 'Specify center of polygon or',
+    radiusOrType: 'Enter options',
+    edgeStart: 'Specify first endpoint of edge:',
+    edgeEnd: 'Specify second endpoint of edge:',
+    keywords: {
+      edge: {
+        display: 'Edge(E)',
+        local: 'Edge',
+        global: 'Edge'
       },
-      scale: {
-        display: 'Scale(S)',
-        local: 'Scale',
-        global: 'Scale'
+      inscribed: {
+        display: 'Inscribed in circle(I)',
+        local: 'Inscribed in circle',
+        global: 'Inscribed'
+      },
+      circumscribed: {
+        display: 'Circumscribed about circle(C)',
+        local: 'Circumscribed about circle',
+        global: 'Circumscribed'
+      }
+    },
+    invalid: {
+      sides: 'Invalid number of sides. Enter an integer between 3 and 1024.',
+      radius: 'Invalid radius. Radius must be greater than 0.',
+      edge: 'Invalid edge. The edge length must be greater than 0.'
+    }
+  },
+  polyline: {
+    firstPoint: 'Specify the first point:',
+    nextPoint: 'Specify the next point (or press Enter to finish):',
+    nextPointWithOptions: 'Specify next point or',
+    nextPointWithArcOptions: 'Specify next point or',
+    keywords: {
+      arc: {
+        display: 'Arc(A)',
+        local: 'Arc',
+        global: 'Arc'
+      },
+      undo: {
+        display: 'Undo(U)',
+        local: 'Undo',
+        global: 'Undo'
+      },
+      close: {
+        display: 'Close(C)',
+        local: 'Close',
+        global: 'Close'
+      },
+      line: {
+        display: 'Line(L)',
+        local: 'Line',
+        global: 'Line'
       },
       angle: {
         display: 'Angle(A)',
         local: 'Angle',
         global: 'Angle'
       },
-      style: {
-        display: 'Style(T)',
-        local: 'Style',
-        global: 'HatchStyle'
+      center: {
+        display: 'Center(C)',
+        local: 'Center',
+        global: 'Center'
       },
-      associative: {
-        display: 'Associative(AS)',
-        local: 'Associative',
-        global: 'AssociativeMode'
+      secondPoint: {
+        display: 'Second point(P)',
+        local: 'Second point',
+        global: 'SecondPoint'
       },
-      normal: {
-        display: 'Normal(N)',
-        local: 'Normal',
-        global: 'Normal'
+      radius: {
+        display: 'Radius(R)',
+        local: 'Radius',
+        global: 'Radius'
+      }
+    },
+    arcAngle: 'Specify arc angle:',
+    arcCenter: 'Specify center point:',
+    arcSecondPoint: 'Specify second point on arc:',
+    arcEndPoint: 'Specify arc end point:',
+    arcRadius: 'Specify arc radius:'
+  },
+  rect: {
+    firstPoint: 'Specify first corner point:',
+    nextPoint: 'Specify other corner point:',
+    firstPointWithOptions: 'Specify first corner point or',
+    otherCornerWithOptions: 'Specify other corner point or',
+    chamferFirst: 'Specify first chamfer distance:',
+    chamferSecond: 'Specify second chamfer distance:',
+    filletRadius: 'Specify fillet radius:',
+    segmentWidth: 'Specify rectangle line width:',
+    elevationValue: 'Specify elevation:',
+    thicknessValue: 'Specify thickness:',
+    rotationAngle: 'Specify rectangle rotation angle:',
+    dimensionLength: 'Specify rectangle length:',
+    dimensionWidth: 'Specify rectangle width:',
+    areaValue: 'Specify rectangle area:',
+    areaLengthOrWidth: 'Specify rectangle length',
+    areaSpecifyWidth: 'Specify rectangle width:',
+    invalidPositive: 'Invalid input. Please enter a value greater than 0.',
+    invalidRect:
+      'Unable to create rectangle. Please specify valid corners or dimensions.',
+    thicknessNotSupported:
+      'Rectangle thickness is currently not written to entity data. The thickness setting is ignored.',
+    keywords: {
+      chamfer: {
+        display: 'Chamfer(C)',
+        local: 'Chamfer',
+        global: 'Chamfer'
       },
-      outer: {
-        display: 'Outer(O)',
-        local: 'Outer',
-        global: 'Outer'
+      elevation: {
+        display: 'Elevation(E)',
+        local: 'Elevation',
+        global: 'Elevation'
       },
-      ignore: {
-        display: 'Ignore(I)',
-        local: 'Ignore',
-        global: 'Ignore'
+      fillet: {
+        display: 'Fillet(F)',
+        local: 'Fillet',
+        global: 'Fillet'
       },
-      yes: {
-        display: 'Yes(Y)',
-        local: 'Yes',
-        global: 'Yes'
+      thickness: {
+        display: 'Thickness(T)',
+        local: 'Thickness',
+        global: 'Thickness'
       },
-      no: {
-        display: 'No(N)',
-        local: 'No',
-        global: 'No'
+      width: {
+        display: 'Width(W)',
+        local: 'Width',
+        global: 'Width'
+      },
+      area: {
+        display: 'Area(A)',
+        local: 'Area',
+        global: 'Area'
+      },
+      dimensions: {
+        display: 'Dimensions(D)',
+        local: 'Dimensions',
+        global: 'Dimensions'
+      },
+      rotation: {
+        display: 'Rotation(R)',
+        local: 'Rotation',
+        global: 'Rotation'
+      },
+      length: {
+        display: 'Length(L)',
+        local: 'Length',
+        global: 'Length'
+      },
+      rectWidth: {
+        display: 'Width(W)',
+        local: 'Width',
+        global: 'Width'
       }
     }
+  },
+  rotate: {
+    basePoint: 'Specify base point:',
+    rotationAngleOrOptions: 'Specify rotation angle or',
+    referenceAngleOrPoints: 'Specify reference angle or',
+    firstReferencePoint: 'Specify first point of reference angle:',
+    secondReferencePoint: 'Specify second point:',
+    newAngle: 'Specify new angle:',
+    keywords: {
+      copy: {
+        display: 'Copy(C)',
+        local: 'Copy',
+        global: 'Copy'
+      },
+      reference: {
+        display: 'Reference(R)',
+        local: 'Reference',
+        global: 'Reference'
+      },
+      points: {
+        display: 'Points(P)',
+        local: 'Points',
+        global: 'Points'
+      }
+    },
+    invalid: {
+      referencePoints: 'Invalid reference points: points must be different.'
+    }
+  },
+  sketch: {
+    firstPoint: 'Specify the first point:',
+    nextPoint: 'Specify the end point:'
   },
   spline: {
     firstPoint: 'Specify the first point:',
@@ -744,5 +843,45 @@ export default {
   },
   sysvar: {
     prompt: 'Please input new value:'
+  },
+  zoom: {
+    mainPrompt: 'Specify corner of window or',
+    firstCorner: 'Specify first corner:',
+    secondCorner: 'Specify opposite corner:',
+    centerPoint: 'Specify center point:',
+    heightOrScale: 'Enter height or scale factor (nX or nXP):',
+    scaleFactor: 'Enter scale factor (nX or nXP):',
+    keywords: {
+      all: {
+        display: 'All(A)',
+        local: 'All',
+        global: 'All'
+      },
+      center: {
+        display: 'Center(C)',
+        local: 'Center',
+        global: 'Center'
+      },
+      extents: {
+        display: 'Extents(E)',
+        local: 'Extents',
+        global: 'Extents'
+      },
+      previous: {
+        display: 'Previous(P)',
+        local: 'Previous',
+        global: 'Previous'
+      },
+      scale: {
+        display: 'Scale(S)',
+        local: 'Scale',
+        global: 'Scale'
+      },
+      window: {
+        display: 'Window(W)',
+        local: 'Window',
+        global: 'Window'
+      }
+    }
   }
 }

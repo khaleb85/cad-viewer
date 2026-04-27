@@ -1,7 +1,17 @@
-import { AcGiSubEntityTraits, deepClone } from '@mlightcad/data-model'
+import {
+  AcGiLineWeight,
+  AcGiSubEntityTraits,
+  deepClone
+} from '@mlightcad/data-model'
 import * as THREE from 'three'
 
 import { AcTrMaterialUtil } from '../util'
+import {
+  AcTrByLayerBindingFlags,
+  getMaterialMetadata,
+  hasByLayerBinding,
+  setMaterialMetadata
+} from './AcTrMaterialMetadata'
 import { AcTrStyleManagerOptions } from './AcTrStyleManagerOptions'
 
 /**
@@ -71,10 +81,11 @@ export abstract class AcTrMaterialManager<T> {
 
   /**
    * Updates all materials belonging to a given layer and whose style is
-   * partially or fully ByLayer (color or line type).
+   * partially or fully ByLayer.
    *
    * A material qualifies for replacement if:
-   *   material.userData.layer === layerName && material.userData.isLayer === true
+   *   metadata.layer === layerName &&
+   *   one of {isByLayerColor,isByLayerLineType,isByLayerLineWeight,isByLayerTransparency} is true
    *
    * For each qualifying material:
    * 1. Rebuild merged traits (old traits + new layer-level traits)
@@ -93,16 +104,26 @@ export abstract class AcTrMaterialManager<T> {
     // iterate all cached materials and check userData
     for (const oldKey of Object.keys(this.cache)) {
       const oldMaterial = this.cache[oldKey]
-      const data = oldMaterial.userData || {}
+      const metadata = getMaterialMetadata(oldMaterial)
 
-      const isTarget = data.layer === layerName && data.isByLayer
+      const isTarget =
+        metadata.layer === layerName && hasByLayerBinding(metadata)
       if (!isTarget) continue
 
       const oldTraits = this.keyToTraits[oldKey]
       if (!oldTraits) continue
 
-      // Step 1: merged traits
-      const mergedTraits = { ...deepClone(oldTraits), ...newTraits }
+      const byLayerBindings = this.resolveByLayerBindings(
+        oldTraits,
+        oldMaterial
+      )
+
+      // Step 1: merged traits (only mutate traits that are actually ByLayer)
+      const mergedTraits = deepClone(oldTraits)
+      this.applyInheritedLayerTraits(mergedTraits, newTraits, byLayerBindings)
+      if (newTraits.layer != null) {
+        mergedTraits.layer = newTraits.layer
+      }
 
       // Step 2: build new key
       const newKey = this.buildKey(mergedTraits, mergedTraits)
@@ -118,7 +139,8 @@ export abstract class AcTrMaterialManager<T> {
       const newMaterial = this.createMaterial(
         newKey,
         mergedTraits,
-        mergedTraits
+        mergedTraits,
+        byLayerBindings
       )
 
       // Step 5: store merged traits
@@ -141,9 +163,44 @@ export abstract class AcTrMaterialManager<T> {
     // iterate all cached materials and check userData
     for (const oldKey of Object.keys(this.cache)) {
       const oldMaterial = this.cache[oldKey]
-      const data = oldMaterial.userData || {}
+      const metadata = getMaterialMetadata(oldMaterial)
 
-      const isTarget = data.isForeground
+      const isTarget = metadata.isForeground === true
+      if (!isTarget) continue
+
+      const oldTraits = this.keyToTraits[oldKey]
+      if (!oldTraits) continue
+
+      AcTrMaterialUtil.setMaterialColor(oldMaterial, new THREE.Color(color))
+    }
+  }
+
+  /**
+   * Changes material color to the specified color if its userData
+   * 'isBackgroundFill' is true — i.e. fills that should fuse with the
+   * canvas background instead of carrying an absolute RGB.
+   *
+   * AutoCAD renders solid hatches whose colour resolves to the
+   * foreground (ACI 7) by painting them with the **background** colour,
+   * so they vanish against the paper in both light and dark themes and
+   * only the overlaid wireframe remains visible.  `changeForeground`
+   * handles the inverse flip (lines/text stay legible); this method is
+   * the symmetric counterpart for fills that must follow the canvas
+   * colour rather than its inverse.
+   *
+   * Only the fill material manager opts materials into this behaviour
+   * (see `AcTrFillMaterialManager.shouldTrackBackground`); managers for
+   * lines, points and text glyphs return `false` by default, so their
+   * caches are a no-op here.
+   *
+   * @param color - New rendering color (typically the canvas background).
+   */
+  changeBackground(color: number) {
+    for (const oldKey of Object.keys(this.cache)) {
+      const oldMaterial = this.cache[oldKey]
+      const metadata = getMaterialMetadata(oldMaterial)
+
+      const isTarget = metadata.isBackgroundFill === true
       if (!isTarget) continue
 
       const oldTraits = this.keyToTraits[oldKey]
@@ -176,31 +233,246 @@ export abstract class AcTrMaterialManager<T> {
   }
 
   /**
+   * Returns a cached material bound to the specified effective layer.
+   *
+   * This is primarily used for block contents that are authored on layer `0` but inherit the
+   * layer of the INSERT that owns them. The returned material preserves visual traits and
+   * cache semantics, but future layer updates will target the effective layer instead of the
+   * original source layer.
+   *
+   * @param material - Existing cached material to bind.
+   * @param layerName - Effective layer name that should own the returned material.
+   * @returns The layer-bound cached material, or `undefined` when the input material is not owned
+   * by this manager.
+   */
+  getLayerBoundMaterial(
+    material: THREE.Material,
+    layerName: string,
+    layerTraits?: Partial<AcGiSubEntityTraits>
+  ): THREE.Material | undefined {
+    const metadata = getMaterialMetadata(material)
+    const key = metadata.materialKey
+    if (!key) return undefined
+
+    const traits = this.keyToTraits[key]
+    if (!traits) return undefined
+
+    if (traits.layer === layerName && !layerTraits) {
+      return material
+    }
+
+    const remappedTraits: AcGiSubEntityTraits & T = {
+      ...deepClone(traits),
+      layer: layerName
+    }
+    const byLayerBindings = this.resolveByLayerBindings(traits, material)
+    this.applyInheritedLayerTraits(remappedTraits, layerTraits, byLayerBindings)
+    const remappedKey = this.buildKey(remappedTraits, remappedTraits)
+
+    if (this.cache[remappedKey]) {
+      return this.cache[remappedKey]
+    }
+
+    this.keyToTraits[remappedKey] = remappedTraits
+    return this.createMaterial(
+      remappedKey,
+      remappedTraits,
+      remappedTraits,
+      byLayerBindings
+    )
+  }
+
+  /**
+   * Applies target-layer traits only to attributes that are actually ByLayer on this entity.
+   *
+   * This preserves explicit per-entity settings while resolving inherited values during
+   * block layer-0 remapping.
+   */
+  private applyInheritedLayerTraits(
+    traits: AcGiSubEntityTraits & T,
+    layerTraits?: Partial<AcGiSubEntityTraits>,
+    byLayerBindings?: AcTrByLayerBindingFlags
+  ) {
+    if (!layerTraits) return
+
+    const isByLayerColor = byLayerBindings?.isByLayerColor === true
+    const isByLayerLineType = byLayerBindings?.isByLayerLineType === true
+    const isByLayerLineWeight = byLayerBindings?.isByLayerLineWeight === true
+    const isByLayerTransparency =
+      byLayerBindings?.isByLayerTransparency === true
+
+    if (isByLayerColor) {
+      if (layerTraits.rgbColor != null) {
+        traits.rgbColor = layerTraits.rgbColor
+      } else if (layerTraits.color) {
+        const inheritedRgb = layerTraits.color.RGB
+        if (inheritedRgb != null) {
+          traits.rgbColor = inheritedRgb
+        }
+      }
+    }
+
+    if (isByLayerLineType && layerTraits.lineType) {
+      traits.lineType = deepClone(layerTraits.lineType)
+    }
+
+    if (isByLayerLineWeight && layerTraits.lineWeight != null) {
+      traits.lineWeight = layerTraits.lineWeight
+    }
+
+    if (isByLayerTransparency && layerTraits.transparency) {
+      traits.transparency = deepClone(layerTraits.transparency)
+    }
+  }
+
+  /**
+   * Resolves ByLayer binding flags from explicit metadata first, then falls back
+   * to symbolic traits when metadata is unavailable.
+   */
+  private resolveByLayerBindings(
+    traits: AcGiSubEntityTraits,
+    material?: THREE.Material
+  ): AcTrByLayerBindingFlags {
+    const metadata = material ? getMaterialMetadata(material) : undefined
+    const inferredTransparencyByLayer =
+      (traits.transparency as Partial<{ isByLayer: boolean }>)?.isByLayer ===
+      true
+
+    return {
+      isByLayerColor:
+        metadata?.isByLayerColor ?? traits.color.isByLayer === true,
+      isByLayerLineType:
+        metadata?.isByLayerLineType ?? traits.lineType.type === 'ByLayer',
+      isByLayerLineWeight:
+        metadata?.isByLayerLineWeight ??
+        traits.lineWeight === AcGiLineWeight.ByLayer,
+      isByLayerTransparency:
+        metadata?.isByLayerTransparency ?? inferredTransparencyByLayer
+    }
+  }
+
+  /**
    * Creates a THREE.js material and stores metadata in userData:
    *   - layer
-   *   - isByLayer
+   *   - isByLayerColor/isByLayerLineType/isByLayerLineWeight/isByLayerTransparency
+   *   - isForeground      (inverts with COLORTHEME when tracked by manager)
+   *   - isBackgroundFill  (follows canvas bg when tracked by manager)
+   *   - drawOrder         (batch/render-order tier for same-plane meshes)
    *   - materialKey (cache key, used by getBackSideVariant for reverse lookup)
+   *
+   * `isForeground` and `isBackgroundFill` are mutually exclusive in
+   * practice: the former flips a material to the colour *opposite* the
+   * canvas bg (so ACI 7 text stays legible), whereas the latter paints
+   * the material with the canvas bg itself (so ACI 7 hatches fuse with
+   * the paper and leave the wireframe visible).  Subclasses enforce the
+   * split via `shouldTrackForeground` and `shouldTrackBackground`.
    */
   protected createMaterial(
     key: string,
     traits: AcGiSubEntityTraits,
-    options: T
+    options: T,
+    byLayerBindings?: AcTrByLayerBindingFlags
   ): THREE.Material {
     const material = this.createMaterialImpl(traits, options)
+    const isForeground = this.shouldTrackForeground(traits, options)
+    const isBackgroundFill = this.shouldTrackBackground(traits, options)
+
+    // Foreground-follow materials (typically ACI 7 lines/text) must be
+    // initialized against the current canvas background color, otherwise
+    // they can be created with stale white color on a light background
+    // before any theme-change repaint occurs.
+    if (isForeground) {
+      const foregroundColor =
+        this.options.currentBackgroundColor === 0 ? 0xffffff : 0x000000
+      AcTrMaterialUtil.setMaterialColor(
+        material,
+        new THREE.Color(foregroundColor)
+      )
+    }
+
+    const resolvedByLayerBindings =
+      byLayerBindings ?? this.resolveByLayerBindings(traits)
 
     // Attach metadata required for layer updates and side-variant lookups
-    material.userData.layer = traits.layer
-    material.userData.isByLayer = this.isByLayer(traits)
-    material.userData.isForeground = traits.color.isForeground
-    material.userData.materialKey = key
+    setMaterialMetadata(material, {
+      layer: traits.layer,
+      isByLayerColor: resolvedByLayerBindings.isByLayerColor,
+      isByLayerLineType: resolvedByLayerBindings.isByLayerLineType,
+      isByLayerLineWeight: resolvedByLayerBindings.isByLayerLineWeight,
+      isByLayerTransparency: resolvedByLayerBindings.isByLayerTransparency,
+      isForeground,
+      isBackgroundFill,
+      drawOrder: traits.drawOrder ?? 0,
+      materialKey: key
+    })
 
     this.cache[key] = material
     return material
   }
 
-  /** Returns true if either color or linetype is ByLayer. */
-  protected isByLayer(traits: AcGiSubEntityTraits): boolean {
+  /**
+   * Returns whether traits should be cached as layer-scoped instead of entity-scoped.
+   *
+   * This flag is used for material-key partitioning only; userData stores granular
+   * ByLayer flags per trait.
+   */
+  protected hasByLayerKeyTraits(traits: AcGiSubEntityTraits): boolean {
     return traits.color.isByLayer || traits.lineType.type === 'ByLayer'
+  }
+
+  /**
+   * Whether materials from this manager should follow COLORTHEME
+   * inversion (i.e. be flipped by `changeForeground`).
+   *
+   * The default implementation delegates to `AcCmColor.isForeground`,
+   * so lines, points and text glyph fills keep inverting ACI 7 with
+   * the theme to preserve legibility (dark stroke on light background
+   * / light stroke on dark background).
+   *
+   * Subclasses can override this to opt a primitive type out of the
+   * inversion. `AcTrFillMaterialManager` overrides this and uses
+   * `traits.drawOrder` to distinguish text / line-like fills
+   * (invert) from hatch fills (do NOT invert — AutoCAD keeps
+   * ACI 7 hatches fused with the paper colour).
+   */
+  protected shouldTrackForeground(
+    traits: AcGiSubEntityTraits,
+    _options: T
+  ): boolean {
+    return traits.color.isForeground
+  }
+
+  /**
+   * Whether materials from this manager should follow the canvas
+   * background colour — i.e. be repainted by `changeBackground` when
+   * the theme flips.
+   *
+   * Default is `false`: lines, points and text glyph fills never fuse
+   * with the background — they need to stay visible against it.
+   *
+   * `AcTrFillMaterialManager` overrides this to opt solid hatch fills
+   * whose resolved colour is the foreground (ACI 7) into the
+   * background-follow behaviour, matching AutoCAD's rendering where
+   * such hatches vanish into the paper in both light and dark themes
+   * and only the overlaid wireframe remains visible.
+   */
+  protected shouldTrackBackground(
+    _traits: AcGiSubEntityTraits,
+    _options: T
+  ): boolean {
+    return false
+  }
+
+  /**
+   * Cache-key suffix used to keep different render tiers from sharing
+   * the same material instance.
+   *
+   * This matters for mesh primitives because batching groups by
+   * material id. If two entities need different `renderOrder` values,
+   * they must not collapse onto the same cached material.
+   */
+  protected buildDrawOrderSuffix(traits: AcGiSubEntityTraits): string {
+    return traits.drawOrder === 0 ? '' : `_draw_${traits.drawOrder ?? 0}`
   }
 
   /** Subclass must build stable key. */

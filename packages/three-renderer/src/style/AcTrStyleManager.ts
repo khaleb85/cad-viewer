@@ -28,7 +28,11 @@ export class AcTrStyleManager {
     viewportScaleUniform: 1.0,
     maxFragmentUniforms: 1024,
     resolution: new THREE.Vector2(1, 1),
-    showLineWeight: false
+    showLineWeight: false,
+    // Matches DEFAULT_VIEW_2D_OPTIONS.background in cad-simple-viewer.
+    // The setter below keeps this in sync with the canvas bg and fires
+    // `changeBackground` so existing materials are repainted on a flip.
+    currentBackgroundColor: 0x000000
   }
   private pointMgr: AcTrPointMaterialManager
   private lineMgr: AcTrLineMaterialManager
@@ -89,12 +93,69 @@ export class AcTrStyleManager {
   }
 
   /**
+   * Current canvas background colour tracked by the style manager.
+   *
+   * See `AcTrStyleManagerOptions.currentBackgroundColor` for the full
+   * contract.  In short: this is the single source of truth that the
+   * fill material manager consults when creating a background-follow
+   * material so it is born with the right colour, and it is also what
+   * `changeBackground` repaints existing materials to when the theme
+   * flips mid-session.
+   */
+  get currentBackgroundColor(): number {
+    return this.options.currentBackgroundColor
+  }
+
+  /**
+   * Updates the canvas background colour and repaints existing
+   * background-follow materials so they track the new colour.
+   *
+   * Order matters:
+   * 1. Write to `options.currentBackgroundColor` first, so any material
+   *    created AFTER this point (e.g. hatches from a DWG that finishes
+   *    loading later in the boot sequence) is born with the new colour.
+   * 2. Fire `changeBackground(value)` so materials already in the
+   *    cache (created BEFORE the flip) are repainted in place.
+   *
+   * Together these cover both the mid-session theme toggle (step 2
+   * alone) and the initial boot-in-dark edge case where the theme is
+   * set before the DWG finishes parsing (step 1 alone).
+   */
+  set currentBackgroundColor(value: number) {
+    this.options.currentBackgroundColor = value
+    this.changeBackground(value)
+  }
+
+  /**
    * Returns the shader hatch material or a mesh fallback.
    *
    * @param traits - Current entity traits.
    * @param rebaseOffset - Offset used to transform pattern origins.
    */
   getFillMaterial(
+    traits: AcGiSubEntityTraits,
+    rebaseOffset: THREE.Vector2 = _rebaseOffset
+  ): THREE.Material {
+    return this.fillMgr.getMaterial(traits, {
+      rebaseOffset
+    })
+  }
+
+  /**
+   * Returns a fill material for MText glyph geometry.
+   *
+   * MText glyphs are rendered as mesh fills, so they share the fill
+   * manager with hatches and wide polylines. Their distinction now
+   * lives on `traits.drawOrder`: normal linework-tier fills stay at
+   * `0`, while hatches set `-1` upstream.
+   *
+   * @param traits - Current entity traits (built via
+   *                 `AcTrSubEntityTraitsUtil.createTraitsForMText`).
+   * @param rebaseOffset - Offset used to transform pattern origins
+   *                       (unused for solid glyph fills, kept for
+   *                       API symmetry with `getFillMaterial`).
+   */
+  getMTextFillMaterial(
     traits: AcGiSubEntityTraits,
     rebaseOffset: THREE.Vector2 = _rebaseOffset
   ): THREE.Material {
@@ -139,6 +200,31 @@ export class AcTrStyleManager {
   }
 
   /**
+   * Returns a cached material bound to an effective layer without changing symbolic traits.
+   *
+   * This is used when block contents authored on layer `0` inherit the layer of the INSERT that
+   * owns them. The returned material keeps the same appearance now, but future layer updates
+   * will target the effective layer instead of the source layer.
+   *
+   * @param material - Existing material used by a rendered object.
+   * @param layerName - Effective layer that should own future updates for this material.
+   * @param layerTraits - Optional resolved layer traits applied immediately for ByLayer attributes.
+   * @returns A cached material bound to the effective layer.
+   */
+  getLayerBoundMaterial(
+    material: THREE.Material,
+    layerName: string,
+    layerTraits?: Partial<AcGiSubEntityTraits>
+  ) {
+    return (
+      this.lineMgr.getLayerBoundMaterial(material, layerName, layerTraits) ||
+      this.pointMgr.getLayerBoundMaterial(material, layerName, layerTraits) ||
+      this.fillMgr.getLayerBoundMaterial(material, layerName, layerTraits) ||
+      material
+    )
+  }
+
+  /**
    * Changes material color to the specified color if its userData 'isForeground' is true.
    * Generally this function is used to change rendering color of entities whose color is
    * ACI 7.
@@ -148,6 +234,24 @@ export class AcTrStyleManager {
     this.lineMgr.changeForeground(color)
     this.pointMgr.changeForeground(color)
     this.fillMgr.changeForeground(color)
+  }
+
+  /**
+   * Repaints every material marked as `isBackgroundFill` with the
+   * given colour — used to keep ACI 7 solid hatches fused with the
+   * canvas bg as the theme flips (see `AcTrFillMaterialManager`).
+   *
+   * Point and line managers currently never opt materials into this
+   * behaviour, so their delegation is a no-op; keeping it symmetric
+   * with `changeForeground` allows future managers to opt in without
+   * touching the callers.
+   *
+   * @param color - New rendering color (typically the canvas bg).
+   */
+  changeBackground(color: number) {
+    this.lineMgr.changeBackground(color)
+    this.pointMgr.changeBackground(color)
+    this.fillMgr.changeBackground(color)
   }
 
   /**

@@ -19,6 +19,8 @@ import {
 import {
   AcCmColor,
   AcDbDatabase,
+  AcDbEntity,
+  AcDbObjectId,
   AcDbSysVarManager,
   AcGiLineWeight
 } from '@mlightcad/data-model'
@@ -33,9 +35,11 @@ import {
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import type { LayerStateSnapshot, LayerStateToggleKey } from '../../composable'
 import {
   useDocOpenMode,
   useDocumentOpening,
+  useLayers,
   useSettings
 } from '../../composable'
 import { markComponentConfigRaw } from '../../composable/markComponentConfigRaw'
@@ -62,24 +66,36 @@ import {
   ellipseCenter,
   hatch,
   layer,
+  layerCurrent,
+  layerFreeze,
+  layerIsolate,
+  layerLock,
+  layerOff,
+  layerOn,
+  layerPrevious,
+  layerUnfreeze,
+  layerUnisolate,
+  layerUnlock,
   line,
   measureAngle,
   measureArc,
   measureArea,
   measureDistance,
   move,
-  pointstyle1,
+  multiPoints,
   polygon,
   polyline,
   properties,
+  qselect,
   rect,
   revCircle,
   revCloud,
   revFreeDraw,
   revRect,
-  spline
+  splineFitPoints
 } from '../../svg'
 import {
+  MlLayerSelect,
   MlRibbonPropertyColorDropdown,
   MlRibbonPropertyLineTypeSelect,
   MlRibbonPropertyLineWeightSelect
@@ -100,6 +116,18 @@ interface RibbonSysVarChangeEvent {
   name: string
 }
 
+type RibbonLayerActionKey =
+  | 'layer-action-off'
+  | 'layer-action-isolate'
+  | 'layer-action-freeze'
+  | 'layer-action-lock'
+  | 'layer-action-current'
+  | 'layer-action-all-on'
+  | 'layer-action-unisolate'
+  | 'layer-action-thaw'
+  | 'layer-action-unlock'
+  | 'layer-action-restore'
+
 const props = withDefaults(defineProps<Props>(), {
   currentLocale: undefined
 })
@@ -110,17 +138,104 @@ const docOpenMode = useDocOpenMode()
 const { t, locale } = useI18n()
 const isAnnotationVisible = ref(true)
 const isRibbonDisabled = computed(() => isDocumentOpening.value)
-const ribbonColor = ref<AcCmColor>(new AcCmColor())
+const ribbonColor = ref<AcCmColor | undefined>(new AcCmColor())
 const ribbonColorDisplay = ref('#7b8794')
-const ribbonLineType = ref('ByLayer')
-const ribbonLineWeight = ref<AcGiLineWeight>(AcGiLineWeight.ByLayer)
+const ribbonLineType = ref<string | undefined>('ByLayer')
+const ribbonLineWeight = ref<AcGiLineWeight | undefined>(AcGiLineWeight.ByLayer)
+const ribbonDisplayedLayerName = ref('')
+const {
+  layers: ribbonLayers,
+  setCurrentLayer: setRibbonCurrentLayer,
+  setLayerOn: setRibbonLayerOn,
+  setLayerFrozen: setRibbonLayerFrozen,
+  setLayerLocked: setRibbonLayerLocked,
+  toggleLayerState: toggleRibbonLayerState,
+  isolateLayer: isolateRibbonLayer,
+  setAllLayersOn: setRibbonAllLayersOn,
+  captureLayerSnapshot: captureRibbonLayerSnapshot,
+  applyLayerSnapshot: applyRibbonLayerSnapshot
+} = useLayers(AcApDocManager.instance)
+const ribbonLayerOptions = computed(() =>
+  ribbonLayers.map(layer => ({
+    value: layer.name,
+    name: layer.name,
+    cssColor: layer.cssColor || '#7b8794',
+    isOn: layer.isOn,
+    isLocked: layer.isLocked,
+    isFrozen: layer.isFrozen,
+    lineType: layer.linetype
+  }))
+)
+const ribbonLayerIsolationSnapshot = ref<LayerStateSnapshot | null>(null)
+const ribbonLayerPreviousSnapshot = ref<LayerStateSnapshot | null>(null)
+
+const ribbonLayerActionIds = new Set<RibbonLayerActionKey>([
+  'layer-action-off',
+  'layer-action-isolate',
+  'layer-action-freeze',
+  'layer-action-lock',
+  'layer-action-current',
+  'layer-action-all-on',
+  'layer-action-unisolate',
+  'layer-action-thaw',
+  'layer-action-unlock',
+  'layer-action-restore'
+])
 
 let observedDatabase: AcDbDatabase | undefined
+
+/**
+ * Returns the selection set attached to the active view, if any.
+ */
+const getCurrentSelectionSet = () =>
+  AcApDocManager.instance?.curView?.selectionSet
+
+let observedSelectionSet: ReturnType<typeof getCurrentSelectionSet> | undefined
+const selectedEntityIds = ref<AcDbObjectId[]>([])
 
 /**
  * Returns the database currently attached to the active document, if any.
  */
 const getCurrentDatabase = () => AcApDocManager.instance?.curDocument?.database
+
+function createByLayerColor() {
+  const color = new AcCmColor()
+  color.setByLayer()
+  return color
+}
+
+function syncSelectedEntityIds() {
+  selectedEntityIds.value = [...(getCurrentSelectionSet()?.ids ?? [])]
+}
+
+function getSelectedEntities(db: AcDbDatabase) {
+  return selectedEntityIds.value
+    .map(id => db.tables.blockTable.getEntityById(id))
+    .filter((entity): entity is AcDbEntity => entity != null)
+}
+
+function getCommonValue<T>(
+  entities: AcDbEntity[],
+  resolve: (entity: AcDbEntity) => T
+) {
+  if (!entities.length) return undefined
+  const first = resolve(entities[0])
+  return entities.every(entity => resolve(entity) === first) ? first : undefined
+}
+
+function resolveRibbonColorDisplay(
+  color: AcCmColor | undefined,
+  db: AcDbDatabase,
+  layerName?: string
+) {
+  if (!color) return ''
+  if (color.isByLayer) {
+    if (!layerName) return '#7b8794'
+    return db.tables.layerTable.getAt(layerName)?.color.cssColor || '#7b8794'
+  }
+  if (color.isByBlock) return '#a0a8b8'
+  return color.cssColor || '#7b8794'
+}
 
 /**
  * Mirrors the active drawing's current property defaults into ribbon-local refs.
@@ -133,18 +248,44 @@ const syncRibbonProperties = (db = getCurrentDatabase()) => {
     ribbonColorDisplay.value = '#7b8794'
     ribbonLineWeight.value = AcGiLineWeight.ByLayer
     ribbonLineType.value = 'ByLayer'
+    ribbonDisplayedLayerName.value = ''
     return
   }
 
-  ribbonColor.value = db.cecolor.clone()
-  const currentLayer = db.tables.layerTable.getAt(db.clayer)
-  ribbonColorDisplay.value = ribbonColor.value.isByLayer
-    ? currentLayer?.color.cssColor || '#7b8794'
-    : ribbonColor.value.isByBlock
-      ? '#a0a8b8'
-      : ribbonColor.value.cssColor || '#7b8794'
-  ribbonLineWeight.value = db.celweight
-  ribbonLineType.value = db.celtype || 'ByLayer'
+  const selectedEntities = getSelectedEntities(db)
+  const commonLayerName = getCommonValue(
+    selectedEntities,
+    entity => entity.layer ?? ''
+  )
+  const commonLineType = getCommonValue(
+    selectedEntities,
+    entity => entity.lineType || 'ByLayer'
+  )
+  const commonLineWeight = getCommonValue(
+    selectedEntities,
+    entity => entity.lineWeight ?? AcGiLineWeight.ByLayer
+  )
+  const commonColorKey = getCommonValue(
+    selectedEntities,
+    entity => entity.color?.toString() ?? createByLayerColor().toString()
+  )
+  const commonColor =
+    commonColorKey != null
+      ? (AcCmColor.fromString(commonColorKey) ?? createByLayerColor())
+      : undefined
+
+  ribbonColor.value =
+    selectedEntities.length > 0 ? commonColor : db.cecolor.clone()
+  ribbonDisplayedLayerName.value =
+    selectedEntities.length > 0 ? (commonLayerName ?? '') : db.clayer
+  ribbonLineType.value =
+    selectedEntities.length > 0 ? commonLineType : db.celtype || 'ByLayer'
+  ribbonLineWeight.value =
+    selectedEntities.length > 0 ? commonLineWeight : db.celweight
+  ribbonColorDisplay.value =
+    selectedEntities.length > 0
+      ? resolveRibbonColorDisplay(commonColor, db, commonLayerName)
+      : resolveRibbonColorDisplay(db.cecolor, db, db.clayer)
 }
 
 const syncAnnotationVisibility = () => {
@@ -170,6 +311,25 @@ const handleAnnotationLayerChange = () => {
   syncRibbonProperties(observedDatabase)
 }
 
+const handleSelectionChanged = () => {
+  syncSelectedEntityIds()
+  syncRibbonProperties(observedDatabase)
+}
+
+const handleObservedEntityChange = (args: {
+  entity?: AcDbEntity | AcDbEntity[]
+}) => {
+  const entities = Array.isArray(args.entity) ? args.entity : [args.entity]
+  const hasSelectedEntityChanged = entities.some(
+    entity =>
+      entity?.objectId != null &&
+      selectedEntityIds.value.includes(entity.objectId)
+  )
+
+  if (!hasSelectedEntityChanged) return
+  syncRibbonProperties(observedDatabase)
+}
+
 /**
  * Updates ribbon property controls when document default drawing properties change.
  *
@@ -184,9 +344,37 @@ const handleSysVarChange = (args: RibbonSysVarChangeEvent) => {
     case 'CELWEIGHT':
       syncRibbonProperties(args.database)
       break
+    case 'CLAYER':
+      syncRibbonProperties(args.database)
+      break
     default:
       break
   }
+}
+
+const bindSelectionEvents = (selectionSet = getCurrentSelectionSet()) => {
+  if (observedSelectionSet === selectionSet) return
+
+  if (observedSelectionSet) {
+    observedSelectionSet.events.selectionAdded.removeEventListener(
+      handleSelectionChanged
+    )
+    observedSelectionSet.events.selectionRemoved.removeEventListener(
+      handleSelectionChanged
+    )
+  }
+
+  observedSelectionSet = selectionSet
+  syncSelectedEntityIds()
+
+  if (!observedSelectionSet) return
+
+  observedSelectionSet.events.selectionAdded.addEventListener(
+    handleSelectionChanged
+  )
+  observedSelectionSet.events.selectionRemoved.addEventListener(
+    handleSelectionChanged
+  )
 }
 
 const bindAnnotationVisibilityEvents = (db?: AcDbDatabase) => {
@@ -198,6 +386,12 @@ const bindAnnotationVisibilityEvents = (db?: AcDbDatabase) => {
     )
     observedDatabase.events.layerModified.removeEventListener(
       handleAnnotationLayerChange
+    )
+    observedDatabase.events.entityModified.removeEventListener(
+      handleObservedEntityChange
+    )
+    observedDatabase.events.entityErased.removeEventListener(
+      handleObservedEntityChange
     )
   }
 
@@ -211,10 +405,19 @@ const bindAnnotationVisibilityEvents = (db?: AcDbDatabase) => {
   observedDatabase.events.layerModified.addEventListener(
     handleAnnotationLayerChange
   )
+  observedDatabase.events.entityModified.addEventListener(
+    handleObservedEntityChange
+  )
+  observedDatabase.events.entityErased.addEventListener(
+    handleObservedEntityChange
+  )
 }
 
 const handleDocumentActivated = () => {
+  bindSelectionEvents(getCurrentSelectionSet())
   bindAnnotationVisibilityEvents(AcApDocManager.instance?.curDocument?.database)
+  ribbonLayerIsolationSnapshot.value = null
+  ribbonLayerPreviousSnapshot.value = null
   syncAnnotationVisibility()
   syncRibbonProperties(AcApDocManager.instance?.curDocument?.database)
 }
@@ -226,7 +429,9 @@ const handleDocumentActivated = () => {
  */
 const applyToSelectedEntities = (
   mutator: (
-    entity: ReturnType<AcDbDatabase['tables']['blockTable']['getEntityById']>
+    entity: NonNullable<
+      ReturnType<AcDbDatabase['tables']['blockTable']['getEntityById']>
+    >
   ) => void
 ) => {
   const db = getCurrentDatabase()
@@ -258,6 +463,7 @@ onUnmounted(() => {
   AcApDocManager.instance.events.documentActivated.removeEventListener(
     handleDocumentActivated
   )
+  bindSelectionEvents(undefined)
   bindAnnotationVisibilityEvents(undefined)
 })
 
@@ -312,6 +518,127 @@ const handleRibbonLineTypeChange = (value: string) => {
   syncRibbonProperties(db)
 }
 
+/**
+ * Applies a newly selected ribbon current layer to the active database.
+ *
+ * @param layerName Layer name chosen from the ribbon layer selector.
+ */
+const handleRibbonLayerChange = (layerName: string) => {
+  const db = getCurrentDatabase()
+  if (!db || !layerName) return
+
+  let changed = false
+  if (selectedEntityIds.value.length > 0) {
+    applyToSelectedEntities(entity => {
+      if (entity.layer === layerName) return
+      entity.layer = layerName
+      changed = true
+    })
+  } else {
+    changed = setRibbonCurrentLayer(layerName)
+  }
+
+  if (!changed) return
+  syncRibbonProperties(db)
+}
+
+const isLayerActionKey = (value: string): value is RibbonLayerActionKey =>
+  ribbonLayerActionIds.has(value as RibbonLayerActionKey)
+
+const handleRibbonLayerAction = (action: RibbonLayerActionKey) => {
+  const db = getCurrentDatabase()
+  if (!db) return
+
+  if (action === 'layer-action-restore') {
+    if (!ribbonLayerPreviousSnapshot.value) return
+    const snapshot = ribbonLayerPreviousSnapshot.value
+    ribbonLayerPreviousSnapshot.value = null
+    applyRibbonLayerSnapshot(snapshot, db)
+    syncRibbonProperties(db)
+    return
+  }
+
+  if (
+    action === 'layer-action-unisolate' &&
+    ribbonLayerIsolationSnapshot.value == null
+  ) {
+    return
+  }
+
+  const selectedLayer = db.tables.layerTable.getAt(
+    ribbonDisplayedLayerName.value
+  )
+  const requiresSelectedLayer = action !== 'layer-action-all-on'
+  if (requiresSelectedLayer && !selectedLayer) return
+
+  const previousSnapshot = captureRibbonLayerSnapshot(db)
+  if (!previousSnapshot) return
+  let changed = false
+
+  switch (action) {
+    case 'layer-action-off':
+      if (!selectedLayer) return
+      changed = setRibbonLayerOn(selectedLayer.name, false)
+      break
+    case 'layer-action-isolate':
+      if (!selectedLayer) return
+      ribbonLayerIsolationSnapshot.value = previousSnapshot
+      changed = isolateRibbonLayer(selectedLayer.name)
+      break
+    case 'layer-action-freeze':
+      if (!selectedLayer) return
+      changed = setRibbonLayerFrozen(selectedLayer.name, true)
+      break
+    case 'layer-action-lock':
+      if (!selectedLayer) return
+      changed = setRibbonLayerLocked(selectedLayer.name, true)
+      break
+    case 'layer-action-current':
+      if (!selectedLayer) return
+      changed = setRibbonCurrentLayer(selectedLayer.name)
+      break
+    case 'layer-action-all-on':
+      changed = setRibbonAllLayersOn()
+      break
+    case 'layer-action-unisolate':
+      if (!ribbonLayerIsolationSnapshot.value) return
+      applyRibbonLayerSnapshot(ribbonLayerIsolationSnapshot.value, db)
+      ribbonLayerIsolationSnapshot.value = null
+      changed = true
+      break
+    case 'layer-action-thaw':
+      if (!selectedLayer) return
+      changed = setRibbonLayerFrozen(selectedLayer.name, false)
+      break
+    case 'layer-action-unlock':
+      if (!selectedLayer) return
+      changed = setRibbonLayerLocked(selectedLayer.name, false)
+      break
+    default:
+      return
+  }
+
+  if (!changed) return
+  ribbonLayerPreviousSnapshot.value = previousSnapshot
+  syncRibbonProperties(db)
+}
+
+const handleRibbonLayerStateToggle = (payload: {
+  layerName: string
+  state: LayerStateToggleKey
+}) => {
+  const db = getCurrentDatabase()
+  if (!db || !payload.layerName) return
+
+  const previousSnapshot = captureRibbonLayerSnapshot(db)
+  if (!previousSnapshot) return
+  const changed = toggleRibbonLayerState(payload.layerName, payload.state)
+
+  if (!changed) return
+  ribbonLayerPreviousSnapshot.value = previousSnapshot
+  syncRibbonProperties(db)
+}
+
 const buildBaseTabs = (
   openMode: AcEdOpenMode,
   annotationVisible: boolean
@@ -330,7 +657,45 @@ const buildBaseTabs = (
     rotate: t('main.ribbon.tooltip.rotate'),
     copy: t('main.ribbon.tooltip.copy'),
     erase: t('main.ribbon.tooltip.erase'),
-    properties: t('main.ribbon.tooltip.properties')
+    properties: t('main.ribbon.tooltip.properties'),
+    quickSelect: t('main.ribbon.tooltip.quickSelect'),
+    propertyColor: t('main.ribbon.tooltip.propertyColor'),
+    propertyLineType: t('main.ribbon.tooltip.propertyLineType'),
+    propertyLineWeight: t('main.ribbon.tooltip.propertyLineWeight')
+  }
+  const ribbonDropdownOptionTooltips = {
+    circleCenterRadius: t('main.ribbon.tooltip.circleOption.centerRadius'),
+    circleCenterDiameter: t('main.ribbon.tooltip.circleOption.centerDiameter'),
+    circleTwoPoint: t('main.ribbon.tooltip.circleOption.twoPoint'),
+    circleThreePoint: t('main.ribbon.tooltip.circleOption.threePoint'),
+    circleTanTanRadius: t('main.ribbon.tooltip.circleOption.tanTanRadius'),
+    circleTanTanTan: t('main.ribbon.tooltip.circleOption.tanTanTan'),
+    arcThreePoint: t('main.ribbon.tooltip.arcOption.threePoint'),
+    arcStartCenterEnd: t('main.ribbon.tooltip.arcOption.startCenterEnd'),
+    arcStartCenterAngle: t('main.ribbon.tooltip.arcOption.startCenterAngle'),
+    arcStartCenterLength: t('main.ribbon.tooltip.arcOption.startCenterLength'),
+    arcStartEndAngle: t('main.ribbon.tooltip.arcOption.startEndAngle'),
+    arcStartEndDirection: t('main.ribbon.tooltip.arcOption.startEndDirection'),
+    arcStartEndRadius: t('main.ribbon.tooltip.arcOption.startEndRadius'),
+    arcCenterStartEnd: t('main.ribbon.tooltip.arcOption.centerStartEnd'),
+    arcCenterStartAngle: t('main.ribbon.tooltip.arcOption.centerStartAngle'),
+    arcCenterStartLength: t('main.ribbon.tooltip.arcOption.centerStartLength'),
+    rectang: t('main.ribbon.tooltip.rectOption.rectangle'),
+    polygon: t('main.ribbon.tooltip.rectOption.polygon'),
+    ellipse: t('main.ribbon.tooltip.ellipseOption.ellipse'),
+    ellipseArc: t('main.ribbon.tooltip.ellipseOption.arc')
+  }
+  const ribbonLayerActionTooltips = {
+    off: t('main.ribbon.tooltip.layerAction.off'),
+    isolate: t('main.ribbon.tooltip.layerAction.isolate'),
+    freeze: t('main.ribbon.tooltip.layerAction.freeze'),
+    lock: t('main.ribbon.tooltip.layerAction.lock'),
+    current: t('main.ribbon.tooltip.layerAction.current'),
+    allOn: t('main.ribbon.tooltip.layerAction.allOn'),
+    unisolate: t('main.ribbon.tooltip.layerAction.unisolate'),
+    thaw: t('main.ribbon.tooltip.layerAction.thaw'),
+    unlock: t('main.ribbon.tooltip.layerAction.unlock'),
+    restore: t('main.ribbon.tooltip.layerAction.restore')
   }
   const verticalToolbarDescriptions = {
     revFreehand: t('main.verticalToolbar.revFreehand.description'),
@@ -482,6 +847,22 @@ const buildBaseTabs = (
           id: 'home-draw',
           title: t('main.ribbon.group.draw'),
           orientation: 'row',
+          footerMenuItems: [
+            {
+              id: 'cmd-spline',
+              type: 'button',
+              label: t('main.ribbon.command.spline'),
+              tooltip: ribbonTooltips.spline,
+              props: { icon: splineFitPoints }
+            },
+            {
+              id: 'cmd-point',
+              type: 'button',
+              label: t('main.ribbon.command.point'),
+              tooltip: ribbonTooltips.point,
+              props: { icon: multiPoints }
+            }
+          ],
           collections: [
             {
               id: 'home-draw-main',
@@ -504,14 +885,6 @@ const buildBaseTabs = (
                   props: { icon: polyline }
                 },
                 {
-                  id: 'cmd-spline',
-                  type: 'button',
-                  label: t('main.ribbon.command.spline'),
-                  tooltip: ribbonTooltips.spline,
-                  size: 'large',
-                  props: { icon: spline }
-                },
-                {
                   id: 'cmd-circle',
                   type: 'dropdown',
                   label: t('main.ribbon.command.circle'),
@@ -523,31 +896,40 @@ const buildBaseTabs = (
                       {
                         value: 'circle-center-radius',
                         label: t('main.ribbon.circle.centerRadius'),
+                        tooltip:
+                          ribbonDropdownOptionTooltips.circleCenterRadius,
                         icon: circleCenterRadius
                       },
                       {
                         value: 'circle-center-diameter',
                         label: t('main.ribbon.circle.centerDiameter'),
+                        tooltip:
+                          ribbonDropdownOptionTooltips.circleCenterDiameter,
                         icon: circleCenterDiameter
                       },
                       {
                         value: 'circle-2-point',
                         label: t('main.ribbon.circle.twoPoint'),
+                        tooltip: ribbonDropdownOptionTooltips.circleTwoPoint,
                         icon: circleTwoPoints
                       },
                       {
                         value: 'circle-3-point',
                         label: t('main.ribbon.circle.threePoint'),
+                        tooltip: ribbonDropdownOptionTooltips.circleThreePoint,
                         icon: circleThreePoints
                       },
                       {
                         value: 'circle-tan-tan-radius',
                         label: t('main.ribbon.circle.tanTanRadius'),
+                        tooltip:
+                          ribbonDropdownOptionTooltips.circleTanTanRadius,
                         icon: circleTanTanRadius
                       },
                       {
                         value: 'circle-tan-tan-tan',
                         label: t('main.ribbon.circle.tanTanTan'),
+                        tooltip: ribbonDropdownOptionTooltips.circleTanTanTan,
                         icon: circleTanTanTan
                       }
                     ]
@@ -565,52 +947,99 @@ const buildBaseTabs = (
                       {
                         value: 'arc-3-point',
                         label: t('main.ribbon.arc.threePoint'),
+                        tooltip: ribbonDropdownOptionTooltips.arcThreePoint,
                         icon: arcThreePoints
                       },
                       {
                         value: 'arc-start-center-end',
                         label: t('main.ribbon.arc.startCenterEnd'),
+                        tooltip: ribbonDropdownOptionTooltips.arcStartCenterEnd,
                         icon: arcStartCenterEnd
                       },
                       {
                         value: 'arc-start-center-angle',
                         label: t('main.ribbon.arc.startCenterAngle'),
+                        tooltip:
+                          ribbonDropdownOptionTooltips.arcStartCenterAngle,
                         icon: arcStartCenterAngle
                       },
                       {
                         value: 'arc-start-center-length',
                         label: t('main.ribbon.arc.startCenterLength'),
+                        tooltip:
+                          ribbonDropdownOptionTooltips.arcStartCenterLength,
                         icon: arcStartCenterLength
                       },
                       {
                         value: 'arc-start-end-angle',
                         label: t('main.ribbon.arc.startEndAngle'),
+                        tooltip: ribbonDropdownOptionTooltips.arcStartEndAngle,
                         icon: arcStartEndAngle
                       },
                       {
                         value: 'arc-start-end-direction',
                         label: t('main.ribbon.arc.startEndDirection'),
+                        tooltip:
+                          ribbonDropdownOptionTooltips.arcStartEndDirection,
                         icon: arcStartEndDirection
                       },
                       {
                         value: 'arc-start-end-radius',
                         label: t('main.ribbon.arc.startEndRadius'),
+                        tooltip: ribbonDropdownOptionTooltips.arcStartEndRadius,
                         icon: arcStartEndRadius
                       },
                       {
                         value: 'arc-center-start-end',
                         label: t('main.ribbon.arc.centerStartEnd'),
+                        tooltip: ribbonDropdownOptionTooltips.arcCenterStartEnd,
                         icon: arcCenterStartEnd
                       },
                       {
                         value: 'arc-center-start-angle',
                         label: t('main.ribbon.arc.centerStartAngle'),
+                        tooltip:
+                          ribbonDropdownOptionTooltips.arcCenterStartAngle,
                         icon: arcCenterStartAngle
                       },
                       {
                         value: 'arc-center-start-length',
                         label: t('main.ribbon.arc.centerStartLength'),
+                        tooltip:
+                          ribbonDropdownOptionTooltips.arcCenterStartLength,
                         icon: arcCenterStartLength
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              id: 'home-draw-compact-tools',
+              layout: 'column',
+              rows: 3,
+              items: [
+                {
+                  id: 'cmd-rect',
+                  type: 'dropdown',
+                  label: t('main.ribbon.command.rect'),
+                  tooltip: ribbonTooltips.rect,
+                  hideLabel: true,
+                  size: 'small',
+                  props: {
+                    icon: rect,
+                    options: [
+                      {
+                        value: 'rectang',
+                        label: t('main.ribbon.command.rectangle'),
+                        tooltip: ribbonDropdownOptionTooltips.rectang,
+                        icon: rect
+                      },
+                      {
+                        value: 'polygon',
+                        label: t('main.ribbon.command.polygon'),
+                        tooltip: ribbonDropdownOptionTooltips.polygon,
+                        icon: polygon
                       }
                     ]
                   }
@@ -620,53 +1049,24 @@ const buildBaseTabs = (
                   type: 'dropdown',
                   label: t('main.ribbon.command.ellipse'),
                   tooltip: ribbonTooltips.ellipse,
-                  size: 'large',
+                  hideLabel: true,
+                  size: 'small',
                   props: {
                     icon: ellipseCenter,
                     options: [
                       {
                         value: 'ellipse',
                         label: t('main.ribbon.ellipse.ellipse'),
+                        tooltip: ribbonDropdownOptionTooltips.ellipse,
                         icon: ellipseCenter
                       },
                       {
                         value: 'ellipse-arc',
                         label: t('main.ribbon.ellipse.arc'),
+                        tooltip: ribbonDropdownOptionTooltips.ellipseArc,
                         icon: ellipseArc
                       }
                     ]
-                  }
-                },
-                {
-                  id: 'cmd-rect',
-                  type: 'dropdown',
-                  label: t('main.ribbon.command.rect'),
-                  tooltip: ribbonTooltips.rect,
-                  size: 'large',
-                  props: {
-                    icon: rect,
-                    options: [
-                      {
-                        value: 'rectang',
-                        label: t('main.ribbon.command.rectangle'),
-                        icon: rect
-                      },
-                      {
-                        value: 'polygon',
-                        label: t('main.ribbon.command.polygon'),
-                        icon: polygon
-                      }
-                    ]
-                  }
-                },
-                {
-                  id: 'cmd-point',
-                  type: 'button',
-                  label: t('main.ribbon.command.point'),
-                  tooltip: ribbonTooltips.point,
-                  size: 'large',
-                  props: {
-                    icon: pointstyle1
                   }
                 },
                 {
@@ -674,10 +1074,9 @@ const buildBaseTabs = (
                   type: 'button',
                   label: t('main.ribbon.command.hatch'),
                   tooltip: ribbonTooltips.hatch,
-                  size: 'large',
-                  props: {
-                    icon: hatch
-                  }
+                  hideLabel: true,
+                  size: 'small',
+                  props: { icon: hatch }
                 }
               ]
             }
@@ -690,14 +1089,15 @@ const buildBaseTabs = (
           collections: [
             {
               id: 'home-modify-main',
-              layout: 'row',
+              layout: 'column',
+              rows: 3,
               items: [
                 {
                   id: 'cmd-move',
                   type: 'button',
                   label: t('main.ribbon.command.move'),
                   tooltip: ribbonTooltips.move,
-                  size: 'large',
+                  size: 'small',
                   props: { icon: move }
                 },
                 {
@@ -705,7 +1105,7 @@ const buildBaseTabs = (
                   type: 'button',
                   label: t('main.ribbon.command.rotate'),
                   tooltip: ribbonTooltips.rotate,
-                  size: 'large',
+                  size: 'small',
                   props: { icon: RefreshRight }
                 },
                 {
@@ -713,9 +1113,15 @@ const buildBaseTabs = (
                   type: 'button',
                   label: t('main.ribbon.command.copy'),
                   tooltip: ribbonTooltips.copy,
-                  size: 'large',
+                  size: 'small',
                   props: { icon: DocumentCopy }
-                },
+                }
+              ]
+            },
+            {
+              id: 'home-modify-delete',
+              layout: 'row',
+              items: [
                 {
                   id: 'cmd-erase',
                   type: 'button',
@@ -723,6 +1129,140 @@ const buildBaseTabs = (
                   tooltip: ribbonTooltips.erase,
                   size: 'large',
                   props: { icon: Delete }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          id: 'home-layer',
+          title: t('main.ribbon.group.layer'),
+          orientation: 'row',
+          enableGroupOverflow: true,
+          priority: 90,
+          collections: [
+            {
+              id: 'home-layer-button',
+              layout: 'row',
+              items: [
+                {
+                  id: 'cmd-layer',
+                  type: 'button',
+                  label: t('main.verticalToolbar.layer.text'),
+                  tooltip: verticalToolbarDescriptions.layer,
+                  size: 'large',
+                  props: { icon: layer }
+                }
+              ]
+            },
+            {
+              id: 'home-layer-main',
+              layout: 'column',
+              rows: 3,
+              items: [
+                {
+                  id: 'layer-select',
+                  type: 'custom',
+                  size: 'small',
+                  tooltip: t('main.ribbon.layerTools.select'),
+                  disabled: ribbonLayerOptions.value.length === 0,
+                  props: {
+                    width: 'full',
+                    component: MlLayerSelect,
+                    componentProps: {
+                      modelValue: ribbonDisplayedLayerName.value,
+                      options: ribbonLayerOptions.value,
+                      disabled: ribbonLayerOptions.value.length === 0,
+                      'onUpdate:modelValue': handleRibbonLayerChange,
+                      onLayerStateToggle: handleRibbonLayerStateToggle
+                    }
+                  }
+                },
+                {
+                  id: 'layer-actions-primary',
+                  type: 'buttonGroup',
+                  hideLabel: true,
+                  size: 'small',
+                  disabled: ribbonLayerOptions.value.length === 0,
+                  props: {
+                    wrap: false,
+                    buttonSize: 'small',
+                    options: [
+                      {
+                        label: '',
+                        value: 'layer-action-off',
+                        icon: layerOff,
+                        tooltip: ribbonLayerActionTooltips.off
+                      },
+                      {
+                        label: '',
+                        value: 'layer-action-isolate',
+                        icon: layerIsolate,
+                        tooltip: ribbonLayerActionTooltips.isolate
+                      },
+                      {
+                        label: '',
+                        value: 'layer-action-freeze',
+                        icon: layerFreeze,
+                        tooltip: ribbonLayerActionTooltips.freeze
+                      },
+                      {
+                        label: '',
+                        value: 'layer-action-lock',
+                        icon: layerLock,
+                        tooltip: ribbonLayerActionTooltips.lock
+                      },
+                      {
+                        label: t('main.ribbon.layerTools.current'),
+                        value: 'layer-action-current',
+                        icon: layerCurrent,
+                        tooltip: ribbonLayerActionTooltips.current
+                      }
+                    ]
+                  }
+                },
+                {
+                  id: 'layer-actions-secondary',
+                  type: 'buttonGroup',
+                  hideLabel: true,
+                  size: 'small',
+                  disabled: ribbonLayerOptions.value.length === 0,
+                  props: {
+                    wrap: false,
+                    buttonSize: 'small',
+                    options: [
+                      {
+                        label: '',
+                        value: 'layer-action-all-on',
+                        icon: layerOn,
+                        tooltip: ribbonLayerActionTooltips.allOn
+                      },
+                      {
+                        label: '',
+                        value: 'layer-action-unisolate',
+                        icon: layerUnisolate,
+                        tooltip: ribbonLayerActionTooltips.unisolate
+                      },
+                      {
+                        label: '',
+                        value: 'layer-action-thaw',
+                        icon: layerUnfreeze,
+                        tooltip: ribbonLayerActionTooltips.thaw
+                      },
+                      {
+                        label: '',
+                        value: 'layer-action-unlock',
+                        icon: layerUnlock,
+                        tooltip: ribbonLayerActionTooltips.unlock
+                      },
+                      {
+                        label: t('main.ribbon.layerTools.restore'),
+                        value: 'layer-action-restore',
+                        icon: layerPrevious,
+                        tooltip: ribbonLayerActionTooltips.restore
+                      }
+                    ]
+                  }
                 }
               ]
             }
@@ -758,7 +1298,7 @@ const buildBaseTabs = (
                   id: 'entity-color',
                   type: 'custom',
                   size: 'small',
-                  tooltip: t('main.ribbon.property.color'),
+                  tooltip: ribbonTooltips.propertyColor,
                   props: {
                     component: MlRibbonPropertyColorDropdown,
                     componentProps: {
@@ -770,10 +1310,24 @@ const buildBaseTabs = (
                   }
                 },
                 {
+                  id: 'entity-line-weight',
+                  type: 'custom',
+                  size: 'small',
+                  tooltip: ribbonTooltips.propertyLineWeight,
+                  props: {
+                    component: MlRibbonPropertyLineWeightSelect,
+                    componentProps: {
+                      modelValue: ribbonLineWeight.value,
+                      placeholder: t('main.ribbon.property.lineWeight'),
+                      'onUpdate:modelValue': handleRibbonLineWeightChange
+                    }
+                  }
+                },
+                {
                   id: 'entity-line-type',
                   type: 'custom',
                   size: 'small',
-                  tooltip: t('main.ribbon.property.lineType'),
+                  tooltip: ribbonTooltips.propertyLineType,
                   props: {
                     component: MlRibbonPropertyLineTypeSelect,
                     componentProps: {
@@ -782,40 +1336,27 @@ const buildBaseTabs = (
                       'onUpdate:modelValue': handleRibbonLineTypeChange
                     }
                   }
-                },
-                {
-                  id: 'entity-line-weight',
-                  type: 'custom',
-                  size: 'small',
-                  tooltip: t('main.ribbon.property.lineWeight'),
-                  props: {
-                    component: MlRibbonPropertyLineWeightSelect,
-                    componentProps: {
-                      modelValue: ribbonLineWeight.value,
-                      'onUpdate:modelValue': handleRibbonLineWeightChange
-                    }
-                  }
                 }
               ]
             }
           ]
         },
         {
-          id: 'home-layer',
-          title: t('main.ribbon.group.layer'),
+          id: 'home-utilities',
+          title: t('main.ribbon.group.utilities'),
           orientation: 'row',
           collections: [
             {
-              id: 'home-layer-main',
+              id: 'home-utilities-main',
               layout: 'row',
               items: [
                 {
-                  id: 'cmd-layer',
+                  id: 'cmd-qselect',
                   type: 'button',
-                  label: t('main.verticalToolbar.layer.text'),
-                  tooltip: verticalToolbarDescriptions.layer,
+                  label: t('main.ribbon.command.quickSelect'),
+                  tooltip: ribbonTooltips.quickSelect,
                   size: 'large',
-                  props: { icon: layer }
+                  props: { icon: qselect }
                 }
               ]
             }
@@ -877,6 +1418,7 @@ const ribbonData = computed(() => {
   commandByItemId.set('cmd-erase', 'erase')
   commandByItemId.set('cmd-layer', 'layer')
   commandByItemId.set('cmd-properties', 'properties')
+  commandByItemId.set('cmd-qselect', 'qselect')
   commandByItemId.set('cmd-tool-rev-freehand', 'sketch')
   commandByItemId.set('cmd-tool-rev-rect', 'revrect')
   commandByItemId.set('cmd-tool-rev-cloud', 'revcloud')
@@ -909,6 +1451,10 @@ const fileMenuItems = computed<FileMenuItemModel[]>(() => {
     {
       id: 'Convert',
       label: t('main.mainMenu.export')
+    },
+    {
+      id: 'PngOut',
+      label: t('main.mainMenu.exportImage')
     }
   ]
 })
@@ -926,6 +1472,17 @@ const handleRibbonItemClick = (payload: {
   itemId: string
 }) => {
   if (isRibbonDisabled.value) return
+  if (isLayerActionKey(payload.itemId)) {
+    handleRibbonLayerAction(payload.itemId)
+    return
+  }
+  if (
+    payload.groupId === 'home-layer' &&
+    ribbonLayerOptions.value.some(item => item.value === payload.itemId)
+  ) {
+    handleRibbonLayerChange(payload.itemId)
+    return
+  }
   const command = ribbonData.value.commandByItemId.get(payload.itemId)
   if (!command) return
   AcApDocManager.instance.sendStringToExecute(command)
@@ -936,6 +1493,8 @@ const handleFileMenuSelect = (command: string) => {
   if (command === 'Convert') {
     const cmd = new AcApConvertToDxfCmd()
     cmd.trigger(AcApDocManager.instance.context)
+  } else if (command === 'PngOut') {
+    AcApDocManager.instance.sendStringToExecute('pngout')
   } else if (command === 'QNew') {
     const cmd = new AcApQNewCmd()
     cmd.trigger(AcApDocManager.instance.context)
@@ -960,7 +1519,6 @@ const handleFileMenuSelect = (command: string) => {
       :show-open-backstage="false"
       :tabs="ribbonData.tabs"
       :texts="ribbonTexts"
-      size="small"
       hide-key-tips-toggle
       hide-layout-switcher
       @file-menu-select="handleFileMenuSelect"

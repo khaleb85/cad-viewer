@@ -4,6 +4,7 @@ import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeome
 
 import { AcTrPointSymbolCreator } from '../geometry/AcTrPointSymbolCreator'
 import { AcTrEntity } from '../object'
+import { getMaterialMetadata } from '../style/AcTrMaterialMetadata'
 import { AcTrStyleManager } from '../style/AcTrStyleManager'
 import { AcTrMaterialUtil } from '../util'
 import { AcTrBatchGeometryUserData } from './AcTrBatchedGeometryInfo'
@@ -336,10 +337,17 @@ export class AcTrBatchedGroup extends THREE.Group {
    */
   addEntity(entity: AcTrEntity) {
     const objectId = entity.objectId
-    const entityInfo: AcTrEntityInBatchedObject[] = []
-    this._entitiesMap.set(objectId, entityInfo)
-    this._unbatchedEntities.delete(objectId)
-    const unbatchedObjects: THREE.Object3D[] = []
+    // One logical entity (same objectId) can be appended in multiple passes
+    // (e.g. INSERT decomposition by source layer and inherited layer-0 bucket).
+    // Keep accumulating geometry mappings instead of overwriting previous ones.
+    let entityInfo = this._entitiesMap.get(objectId)
+    if (!entityInfo) {
+      entityInfo = []
+      this._entitiesMap.set(objectId, entityInfo)
+    }
+
+    const existingUnbatched = this._unbatchedEntities.get(objectId)
+    const unbatchedObjects: THREE.Object3D[] = existingUnbatched ?? []
     let hasUnbatched = false
     const styleManager = entity.styleManager
 
@@ -687,11 +695,20 @@ export class AcTrBatchedGroup extends THREE.Group {
     const batches = this.getMatchedMeshBatches(object)
     let batchedMesh = batches.get(material.id)
     if (batchedMesh == null) {
+      const metadata = getMaterialMetadata(material)
+      const drawOrder = metadata.drawOrder ?? 0
       batchedMesh = new AcTrBatchedMesh(
         AcTrBatchedGroup.INITIAL_MESH_VERTEX_CAPACITY,
         AcTrBatchedGroup.INITIAL_MESH_INDEX_CAPACITY,
         material
       )
+      // All CAD geometry lives on the same Z plane, so depth test alone
+      // cannot decide which primitive wins on a shared pixel. Use the
+      // material's explicit draw-order tier, derived from
+      // `AcGiSubEntityTraits.drawOrder`, so hatch fills sit below
+      // linework while wide polylines and text glyph meshes stay at the
+      // normal linework tier.
+      batchedMesh.renderOrder = drawOrder
       batches.set(material.id, batchedMesh)
       this.add(batchedMesh)
     }

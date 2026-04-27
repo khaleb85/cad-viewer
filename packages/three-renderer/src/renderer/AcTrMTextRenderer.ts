@@ -23,7 +23,10 @@ class AcTrMTextStyleManager implements StyleManager {
 
   getMeshBasicMaterial(traits: ColorSettings): THREE.Material {
     const entityTraits = AcTrSubEntityTraitsUtil.createTraitsForMText(traits)
-    return this._styleManager.getFillMaterial(entityTraits)
+    // Route MText glyph fills through the dedicated helper so their
+    // linework-tier `drawOrder` semantics stay explicit even though
+    // they are rasterized as meshes.
+    return this._styleManager.getMTextFillMaterial(entityTraits)
   }
 
   getLineBasicMaterial(traits: ColorSettings): THREE.Material {
