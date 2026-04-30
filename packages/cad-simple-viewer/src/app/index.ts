@@ -1,5 +1,6 @@
 export * from './AcApAnnotation'
 export * from './AcApContext'
+export * from './AcApDefaultFontMapping'
 export * from './AcApDocument'
 export * from './AcApDocManager'
 export * from './AcApSettingManager'

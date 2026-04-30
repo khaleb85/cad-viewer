@@ -1,4 +1,5 @@
 import { AcDbFontInfo, AcDbFontLoader } from '@mlightcad/data-model'
+import { FontManager } from '@mlightcad/mtext-renderer'
 import { AcTrFontLoader } from '@mlightcad/three-renderer'
 
 import { AcEdFontNotLoadedInfo, eventBus } from '../editor'
@@ -39,6 +40,9 @@ export class AcApFontLoader implements AcDbFontLoader {
    */
   constructor() {
     this._loader = new AcTrFontLoader()
+    // Configure the global fallback so any font that escapes the mapping
+    // renders as simplex instead of producing missing-glyph boxes.
+    FontManager.instance.defaultFont = 'simplex'
   }
 
   /**

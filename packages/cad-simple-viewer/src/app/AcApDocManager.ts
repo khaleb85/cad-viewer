@@ -397,6 +397,11 @@ export class AcApDocManager {
 
     this._fontLoader = new AcApFontLoader()
     this._fontLoader.baseUrl = this._baseUrl + 'fonts/'
+    // Eagerly load the fallback font so it is ready as soon as a DWG with
+    // missing fonts is opened.
+    this._fontLoader.load(['simplex']).catch(() => {
+      /* ignored */
+    })
     acdbHostApplicationServices().workingDatabase = doc.database
 
     this._commandManager = new AcEdCommandStack()

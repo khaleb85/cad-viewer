@@ -32,7 +32,11 @@ import * as THREE from 'three'
 import Stats from 'three/examples/jsm/libs/stats.module'
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 
-import { AcApDocManager, AcApSettingManager } from '../app'
+import {
+  AcApDocManager,
+  AcApSettingManager,
+  DEFAULT_FONT_MAPPING
+} from '../app'
 import {
   AcEdBaseView,
   AcEdCalculateSizeCallback,
@@ -157,7 +161,11 @@ export class AcTrView2d extends AcEdBaseView {
     renderer.setSize(this.width, this.height)
 
     this._renderer = new AcTrRenderer(renderer)
-    const fontMapping = AcApSettingManager.instance.fontMapping
+    // Baked-in mapping always applies; user-stored settings (if any) win on conflict.
+    const fontMapping = {
+      ...DEFAULT_FONT_MAPPING,
+      ...AcApSettingManager.instance.fontMapping
+    }
     this._renderer.setFontMapping(fontMapping)
     this._renderer.events.fontNotFound.addEventListener(args => {
       eventBus.emit('font-not-found', {
