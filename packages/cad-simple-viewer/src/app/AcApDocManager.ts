@@ -33,6 +33,7 @@ import {
   AcApLayerIsoCmd,
   AcApLayerLockCmd,
   AcApLayerOnCmd,
+  AcApLayerPCmd,
   AcApLayerThawCmd,
   AcApLayerUnisoCmd,
   AcApLayerUnlockCmd,
@@ -859,6 +860,7 @@ export class AcApDocManager {
     addSystemCommand('laythw', 'laythw', new AcApLayerThawCmd())
     addSystemCommand('layuniso', 'layuniso', new AcApLayerUnisoCmd())
     addSystemCommand('layulk', 'layulk', new AcApLayerUnlockCmd())
+    addSystemCommand('layerp', 'layerp', new AcApLayerPCmd())
     addSystemCommand('layerclose', 'layerclose', new AcApLayerCloseCmd())
     addSystemCommand('line', 'line', new AcApLineCmd())
     addSystemCommand('mtext', 'mtext', new AcApMTextCmd())
@@ -1046,8 +1048,9 @@ export class AcApDocManager {
    */
   setActiveLayout() {
     const currentView = this.curView as AcTrView2d
-    currentView.activeLayoutBtrId = this.curDocument.database.currentSpaceId
-    currentView.modelSpaceBtrId = this.curDocument.database.currentSpaceId
+    const db = this.curDocument.database
+    currentView.activeLayoutBtrId = db.currentSpaceId
+    currentView.modelSpaceBtrId = db.tables.blockTable.modelSpace.objectId
   }
 
   /**
