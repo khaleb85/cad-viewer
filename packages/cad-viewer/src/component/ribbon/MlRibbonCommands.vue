@@ -20,6 +20,7 @@ import {
   AcCmColor,
   AcDbDatabase,
   AcDbEntity,
+  AcDbHatch,
   AcDbObjectId,
   AcDbSysVarManager,
   AcGiLineWeight
@@ -81,26 +82,29 @@ import {
   measureArc,
   measureArea,
   measureDistance,
+  mline,
   move,
+  mtext,
   multiPoints,
   polygon,
   polyline,
   properties,
   qselect,
+  ray,
   rect,
   revCircle,
   revCloud,
   revFreeDraw,
   revRect,
-  splineFitPoints
+  splineFitPoints,
+  xline
 } from '../../svg'
-import {
-  MlLayerSelect,
-  MlRibbonPropertyColorDropdown,
-  MlRibbonPropertyLineTypeSelect,
-  MlRibbonPropertyLineWeightSelect
-} from '../common'
+import MlLayerSelect from '../common/MlLayerSelect.vue'
 import MlRibbonLanguageSelector from './MlRibbonLanguageSelector.vue'
+import MlRibbonPropertyColorDropdown from './MlRibbonPropertyColorDropdown.vue'
+import MlRibbonPropertyLineTypeSelect from './MlRibbonPropertyLineTypeSelect.vue'
+import MlRibbonPropertyLineWeightSelect from './MlRibbonPropertyLineWeightSelect.vue'
+import { useHatchContextualRibbon } from './useHatchContextualRibbon'
 
 interface Props {
   currentLocale?: LocaleProp
@@ -131,6 +135,17 @@ const ribbonColorDisplay = ref('#7b8794')
 const ribbonLineType = ref<string | undefined>('ByLayer')
 const ribbonLineWeight = ref<AcGiLineWeight | undefined>(AcGiLineWeight.ByLayer)
 const ribbonDisplayedLayerName = ref('')
+const activeRibbonTabId = ref('home')
+const {
+  handleCommandWillStart: handleHatchCommandWillStart,
+  handleCommandEnded: handleHatchCommandEnded,
+  handleSelectionContextChanged: handleHatchSelectionContextChanged,
+  handleItem: handleHatchItem,
+  buildContextualTab: buildHatchContextualTab
+} = useHatchContextualRibbon({
+  activeTabId: activeRibbonTabId,
+  clearSelection: () => getCurrentSelectionSet()?.clear()
+})
 const {
   layers: ribbonLayers,
   setCurrentLayer: setRibbonCurrentLayer,
@@ -181,6 +196,19 @@ function getSelectedEntities(db: AcDbDatabase) {
   return selectedEntityIds.value
     .map(id => db.tables.blockTable.getEntityById(id))
     .filter((entity): entity is AcDbEntity => entity != null)
+}
+
+function syncHatchSelectionContext(db = getCurrentDatabase()) {
+  if (!db || selectedEntityIds.value.length === 0) {
+    handleHatchSelectionContextChanged(false)
+    return
+  }
+
+  const selectedEntities = getSelectedEntities(db)
+  const isOnlyHatchSelection =
+    selectedEntities.length === selectedEntityIds.value.length &&
+    selectedEntities.every(entity => entity instanceof AcDbHatch)
+  handleHatchSelectionContextChanged(isOnlyHatchSelection)
 }
 
 function getCommonValue<T>(
@@ -283,6 +311,7 @@ const handleAnnotationLayerChange = () => {
 const handleSelectionChanged = () => {
   syncSelectedEntityIds()
   syncRibbonProperties(observedDatabase)
+  syncHatchSelectionContext(observedDatabase)
 }
 
 const handleObservedEntityChange = (args: {
@@ -297,6 +326,7 @@ const handleObservedEntityChange = (args: {
 
   if (!hasSelectedEntityChanged) return
   syncRibbonProperties(observedDatabase)
+  syncHatchSelectionContext(observedDatabase)
 }
 
 /**
@@ -389,6 +419,7 @@ const handleDocumentActivated = () => {
   ribbonLayerPreviousSnapshot.value = null
   syncAnnotationVisibility()
   syncRibbonProperties(AcApDocManager.instance?.curDocument?.database)
+  syncHatchSelectionContext(AcApDocManager.instance?.curDocument?.database)
 }
 
 /**
@@ -419,6 +450,12 @@ onMounted(() => {
   AcDbSysVarManager.instance().events.sysVarChanged.addEventListener(
     handleSysVarChange
   )
+  AcApDocManager.instance.editor.events.commandWillStart.addEventListener(
+    handleHatchCommandWillStart
+  )
+  AcApDocManager.instance.editor.events.commandEnded.addEventListener(
+    handleHatchCommandEnded
+  )
   AcApDocManager.instance.events.documentActivated.addEventListener(
     handleDocumentActivated
   )
@@ -428,6 +465,12 @@ onMounted(() => {
 onUnmounted(() => {
   AcDbSysVarManager.instance().events.sysVarChanged.removeEventListener(
     handleSysVarChange
+  )
+  AcApDocManager.instance.editor.events.commandWillStart.removeEventListener(
+    handleHatchCommandWillStart
+  )
+  AcApDocManager.instance.editor.events.commandEnded.removeEventListener(
+    handleHatchCommandEnded
   )
   AcApDocManager.instance.events.documentActivated.removeEventListener(
     handleDocumentActivated
@@ -537,10 +580,14 @@ const buildBaseTabs = (
     spline: t('main.ribbon.tooltip.spline'),
     circle: t('main.ribbon.tooltip.circle'),
     arc: t('main.ribbon.tooltip.arc'),
+    mline: t('main.ribbon.tooltip.mline'),
+    ray: t('main.ribbon.tooltip.ray'),
+    xline: t('main.ribbon.tooltip.xline'),
     ellipse: t('main.ribbon.tooltip.ellipse'),
     rect: t('main.ribbon.tooltip.rect'),
     point: t('main.ribbon.tooltip.point'),
     hatch: t('main.ribbon.tooltip.hatch'),
+    text: t('main.ribbon.tooltip.text'),
     move: t('main.ribbon.tooltip.move'),
     rotate: t('main.ribbon.tooltip.rotate'),
     copy: t('main.ribbon.tooltip.copy'),
@@ -742,6 +789,27 @@ const buildBaseTabs = (
               label: t('main.ribbon.command.spline'),
               tooltip: ribbonTooltips.spline,
               props: { icon: splineFitPoints }
+            },
+            {
+              id: 'cmd-mline',
+              type: 'button',
+              label: t('main.ribbon.command.mline'),
+              tooltip: ribbonTooltips.mline,
+              props: { icon: mline }
+            },
+            {
+              id: 'cmd-ray',
+              type: 'button',
+              label: t('main.ribbon.command.ray'),
+              tooltip: ribbonTooltips.ray,
+              props: { icon: ray }
+            },
+            {
+              id: 'cmd-xline',
+              type: 'button',
+              label: t('main.ribbon.command.xline'),
+              tooltip: ribbonTooltips.xline,
+              props: { icon: xline }
             },
             {
               id: 'cmd-point',
@@ -1160,7 +1228,6 @@ const buildBaseTabs = (
           id: 'home-properties',
           title: t('main.ribbon.group.properties'),
           orientation: 'row',
-          autoWidth: true,
           priority: 20,
           collections: [
             {
@@ -1230,6 +1297,27 @@ const buildBaseTabs = (
           ]
         },
         {
+          id: 'home-annotation',
+          title: t('main.ribbon.group.annotation'),
+          orientation: 'row',
+          collections: [
+            {
+              id: 'home-annotation-main',
+              layout: 'row',
+              items: [
+                {
+                  id: 'cmd-mtext',
+                  type: 'button',
+                  label: t('main.ribbon.command.text'),
+                  tooltip: ribbonTooltips.text,
+                  size: 'large',
+                  props: { icon: mtext }
+                }
+              ]
+            }
+          ]
+        },
+        {
           id: 'home-utilities',
           title: t('main.ribbon.group.utilities'),
           orientation: 'row',
@@ -1252,6 +1340,7 @@ const buildBaseTabs = (
         }
       ]
     },
+    buildHatchContextualTab(t),
     {
       id: 'tools',
       title: t('main.ribbon.tab.tools'),
@@ -1299,7 +1388,11 @@ const ribbonData = computed(() => {
   commandByItemId.set('rectang', 'rectang')
   commandByItemId.set('polygon', 'polygon')
   commandByItemId.set('cmd-point', 'point')
-  commandByItemId.set('cmd-hatch', '-hatch')
+  commandByItemId.set('cmd-ray', 'ray')
+  commandByItemId.set('cmd-hatch', 'hatch')
+  commandByItemId.set('cmd-mtext', 'mtext')
+  commandByItemId.set('cmd-mline', 'mline')
+  commandByItemId.set('cmd-xline', 'xline')
   commandByItemId.set('cmd-move', 'move')
   commandByItemId.set('cmd-rotate', 'rotate')
   commandByItemId.set('cmd-copy', 'copy')
@@ -1371,6 +1464,7 @@ const handleRibbonItemClick = (payload: {
   itemId: string
 }) => {
   if (isRibbonDisabled.value) return
+  if (handleHatchItem(payload.itemId)) return
   if (
     payload.groupId === 'home-layer' &&
     ribbonLayerOptions.value.some(item => item.value === payload.itemId)
@@ -1407,6 +1501,7 @@ const handleFileMenuSelect = (command: string) => {
     class="ml-ribbon-toolbar-container"
   >
     <ml-ribbon
+      v-model:active-tab="activeRibbonTabId"
       :disabled="isRibbonDisabled"
       :file-menu-items="fileMenuItems"
       :minimized="false"

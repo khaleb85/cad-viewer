@@ -44,6 +44,7 @@ import {
   AcApMeasureArcCmd,
   AcApMeasureAreaCmd,
   AcApMeasureDistanceCmd,
+  AcApMLineCmd,
   AcApMoveCmd,
   AcApMTextCmd,
   AcApOpenCmd,
@@ -52,6 +53,7 @@ import {
   AcApPolygonCmd,
   AcApPolylineCmd,
   AcApQNewCmd,
+  AcApRayCmd,
   AcApRectCmd,
   AcApRegenCmd,
   AcApRevCircleCmd,
@@ -64,6 +66,7 @@ import {
   AcApSplineCmd,
   AcApSwitchBgCmd,
   AcApSysVarCmd,
+  AcApXLineCmd,
   AcApZoomCmd
 } from '../command'
 import {
@@ -109,6 +112,7 @@ const DEFAULT_COMMAND_ALIASES: Record<string, string[]> = {
   LAYER: ['LA'],
   '-LAYER': ['-LA'],
   LINE: ['L'],
+  MLINE: ['ML'],
   MTEXT: ['T'],
   MOVE: ['M'],
   COPY: ['CO'],
@@ -118,10 +122,12 @@ const DEFAULT_COMMAND_ALIASES: Record<string, string[]> = {
   POINT: ['PO'],
   POLYGON: ['POL'],
   PLINE: ['PL'],
+  RAY: ['RA'],
   RECTANG: ['REC'],
   REGEN: ['RE'],
   SELECT: ['SE'],
   SPLINE: ['SPL'],
+  XLINE: ['XL'],
   ZOOM: ['Z']
 }
 
@@ -863,6 +869,7 @@ export class AcApDocManager {
     addSystemCommand('layerp', 'layerp', new AcApLayerPCmd())
     addSystemCommand('layerclose', 'layerclose', new AcApLayerCloseCmd())
     addSystemCommand('line', 'line', new AcApLineCmd())
+    addSystemCommand('mline', 'mline', new AcApMLineCmd())
     addSystemCommand('mtext', 'mtext', new AcApMTextCmd())
     addSystemCommand('copy', 'copy', new AcApCopyCmd())
     addSystemCommand('move', 'move', new AcApMoveCmd())
@@ -874,6 +881,7 @@ export class AcApDocManager {
     addSystemCommand('polygon', 'polygon', new AcApPolygonCmd())
     addSystemCommand('pline', 'pline', new AcApPolylineCmd())
     addSystemCommand('qnew', 'qnew', new AcApQNewCmd())
+    addSystemCommand('ray', 'ray', new AcApRayCmd())
     addSystemCommand('rectang', 'rectang', new AcApRectCmd())
     addSystemCommand('regen', 'regen', new AcApRegenCmd())
     addSystemCommand('revcircle', 'revcircle', new AcApRevCircleCmd())
@@ -884,6 +892,7 @@ export class AcApDocManager {
     addSystemCommand('sketch', 'sketch', new AcApSketchCmd())
     addSystemCommand('spline', 'spline', new AcApSplineCmd())
     addSystemCommand('switchbg', 'switchbg', new AcApSwitchBgCmd())
+    addSystemCommand('xline', 'xline', new AcApXLineCmd())
     addSystemCommand('zoom', 'zoom', new AcApZoomCmd())
 
     // Register system variables as commands

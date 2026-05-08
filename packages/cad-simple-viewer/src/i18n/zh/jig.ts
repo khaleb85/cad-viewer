@@ -182,6 +182,11 @@ export default {
         local: '选择对象',
         global: 'SelectObjects'
       },
+      cancel: {
+        display: '放弃(C)',
+        local: '放弃',
+        global: 'Cancel'
+      },
       pattern: {
         display: '图案(P)',
         local: '图案',
@@ -540,6 +545,86 @@ export default {
         display: '闭合(C)',
         local: '闭合',
         global: 'Close'
+      }
+    }
+  },
+  xline: {
+    firstPointOrOptions: '指定点或',
+    secondPoint: '指定第二个点：',
+    throughPoint: '指定穿过点：',
+    angle: '输入构造线角度：',
+    invalidDirection: 'XLINE 的方向无效。',
+    keywords: {
+      hor: {
+        display: '水平(H)',
+        local: '水平',
+        global: 'Hor'
+      },
+      ver: {
+        display: '垂直(V)',
+        local: '垂直',
+        global: 'Ver'
+      },
+      ang: {
+        display: '角度(A)',
+        local: '角度',
+        global: 'Ang'
+      }
+    }
+  },
+  ray: {
+    startPoint: '指定起点：',
+    throughPoint: '指定通过点：'
+  },
+  mline: {
+    startPointWithOptions: '指定起点或',
+    nextPointWithOptions: '指定下一点或',
+    justificationPrompt: '输入对正方式',
+    scalePrompt: '指定多线比例：',
+    stylePrompt: '输入多线样式名或 [?] 列出样式：',
+    styleNotFound: '未找到多线样式',
+    styleListHeader: '已加载的多线样式：',
+    styleListEmpty: '当前图纸没有已加载的多线样式。',
+    keywords: {
+      justification: {
+        display: '对正(J)',
+        local: '对正',
+        global: 'Justification'
+      },
+      scale: {
+        display: '比例(S)',
+        local: '比例',
+        global: 'Scale'
+      },
+      style: {
+        display: '样式(ST)',
+        local: '样式',
+        global: 'Style'
+      },
+      undo: {
+        display: '放弃(U)',
+        local: '放弃',
+        global: 'Undo'
+      },
+      close: {
+        display: '闭合(C)',
+        local: '闭合',
+        global: 'Close'
+      },
+      top: {
+        display: '上(T)',
+        local: '上',
+        global: 'Top'
+      },
+      zero: {
+        display: '零(Z)',
+        local: '零',
+        global: 'Zero'
+      },
+      bottom: {
+        display: '下(B)',
+        local: '下',
+        global: 'Bottom'
       }
     }
   },

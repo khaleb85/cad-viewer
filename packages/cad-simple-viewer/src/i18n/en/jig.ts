@@ -190,6 +190,11 @@ export default {
         local: 'Select objects',
         global: 'SelectObjects'
       },
+      cancel: {
+        display: 'Cancel(C)',
+        local: 'Cancel',
+        global: 'Cancel'
+      },
       pattern: {
         display: 'Pattern(P)',
         local: 'Pattern',
@@ -550,6 +555,86 @@ export default {
         display: 'Close(C)',
         local: 'Close',
         global: 'Close'
+      }
+    }
+  },
+  xline: {
+    firstPointOrOptions: 'Specify a point or',
+    secondPoint: 'Specify second point:',
+    throughPoint: 'Specify through point:',
+    angle: 'Enter angle of xline:',
+    invalidDirection: 'Invalid direction for XLINE.',
+    keywords: {
+      hor: {
+        display: 'Hor(H)',
+        local: 'Hor',
+        global: 'Hor'
+      },
+      ver: {
+        display: 'Ver(V)',
+        local: 'Ver',
+        global: 'Ver'
+      },
+      ang: {
+        display: 'Ang(A)',
+        local: 'Ang',
+        global: 'Ang'
+      }
+    }
+  },
+  ray: {
+    startPoint: 'Specify start point:',
+    throughPoint: 'Specify through point:'
+  },
+  mline: {
+    startPointWithOptions: 'Specify start point or',
+    nextPointWithOptions: 'Specify next point or',
+    justificationPrompt: 'Enter justification type',
+    scalePrompt: 'Specify mline scale:',
+    stylePrompt: 'Enter mline style name or [?] for list:',
+    styleNotFound: 'Mline style not found',
+    styleListHeader: 'Loaded mline styles:',
+    styleListEmpty: 'No mline style is loaded in current drawing.',
+    keywords: {
+      justification: {
+        display: 'Justification(J)',
+        local: 'Justification',
+        global: 'Justification'
+      },
+      scale: {
+        display: 'Scale(S)',
+        local: 'Scale',
+        global: 'Scale'
+      },
+      style: {
+        display: 'Style(ST)',
+        local: 'Style',
+        global: 'Style'
+      },
+      undo: {
+        display: 'Undo(U)',
+        local: 'Undo',
+        global: 'Undo'
+      },
+      close: {
+        display: 'Close(C)',
+        local: 'Close',
+        global: 'Close'
+      },
+      top: {
+        display: 'Top(T)',
+        local: 'Top',
+        global: 'Top'
+      },
+      zero: {
+        display: 'Zero(Z)',
+        local: 'Zero',
+        global: 'Zero'
+      },
+      bottom: {
+        display: 'Bottom(B)',
+        local: 'Bottom',
+        global: 'Bottom'
       }
     }
   },

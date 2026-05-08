@@ -35,10 +35,16 @@
     "pnpm": ">=8"
   },
   "pnpm": {
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "esbuild",
+      "nx",
+      "vue-demi"
+    ],
     "overrides": {
-      "@mlightcad/data-model": "^1.7.28",
-      "@mlightcad/libredwg-converter": "^3.5.28",
-      "@mlightcad/mtext-renderer": "^0.10.7",
+      "@mlightcad/data-model": "^1.7.32",
+      "@mlightcad/libredwg-converter": "^3.5.32",
+      "@mlightcad/mtext-renderer": "^0.10.8",
       "element-plus": "^2.12.0",
       "three": "^0.172.0",
       "vue": "^3.4.21",
