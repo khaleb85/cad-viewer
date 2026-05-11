@@ -14,16 +14,74 @@ import * as THREE from 'three'
 import { AcApDocManager } from '../../../app'
 import { AcTrView2d } from '../../../view'
 
+export type AcEdMTextEditorCurrentFormatChangeListener = () => void
+export interface AcEdMTextEditorCurrentFormatObservable {
+  addCurrentFormatChangeListener: (
+    listener: AcEdMTextEditorCurrentFormatChangeListener
+  ) => void
+  removeCurrentFormatChangeListener: (
+    listener: AcEdMTextEditorCurrentFormatChangeListener
+  ) => void
+}
+export type AcEdMTextEditorActiveInputBox = MTextInputBox &
+  Partial<AcEdMTextEditorCurrentFormatObservable> & {
+    /**
+     * Returns keyboard focus to the hidden IME input used by the editor.
+     *
+     * Contextual ribbon controls use this after formatting commands so the
+     * inline editor keeps behaving like its built-in toolbar.
+     */
+    focusEditor?: () => void
+    /** Returns whether the current selection is a non-script stacked fraction. */
+    isStackSelectionActive?: () => boolean
+  }
+export type AcEdMTextEditorActiveInputBoxChangeListener = (
+  inputBox: AcEdMTextEditorActiveInputBox | null
+) => void
+
+type MTextInputBoxRuntimeMethod = (...args: unknown[]) => unknown
+type MTextInputBoxRuntimeMethodName =
+  | 'setCurrentFormat'
+  | 'refreshCurrentFormatFromDocument'
+  | 'toggleCase'
+  | 'toggleStackSelection'
+  | 'toggleScriptSelection'
+
+const mtextFormatBridgeKey = '__mlightcadMTextFormatBridge'
+
+interface MTextInputBoxFormatBridge
+  extends AcEdMTextEditorCurrentFormatObservable {
+  dispose: () => void
+}
+
+type MTextInputBoxRuntime = MTextInputBox &
+  Partial<Record<MTextInputBoxRuntimeMethodName, MTextInputBoxRuntimeMethod>> &
+  Partial<AcEdMTextEditorCurrentFormatObservable> & {
+    focusEditor?: () => void
+    isStackSelectionActive?: () => boolean
+    [mtextFormatBridgeKey]?: MTextInputBoxFormatBridge
+  }
+interface MTextInputBoxRuntimeStackNode {
+  type?: string
+  divider?: string
+  numerator?: string
+  denominator?: string
+}
+
 /**
  * Result payload returned by the MTEXT editor when editing is finished.
  */
 export interface AcEdMTextEditorResult {
   /** Final MTEXT contents (including inline formatting codes). */
   contents: string
+  /** Final MTEXT insertion location in world coordinates. */
+  location: AcGePoint3dLike
   /** Final text box width in world units. */
   width: number
   /** Final text box height in world units. */
   height: number
+  /** Line spacing factor used by the MTEXT input box renderer. */
+  lineSpacingFactor: number
 }
 
 /**
@@ -53,6 +111,11 @@ export interface AcEdMTextEditorOptions {
    * color input in the MTEXT toolbar.
    */
   toolbarColorPicker?: MTextToolbarColorPickerFactory
+  /**
+   * Controls the built-in MTEXT input box toolbar for this editor instance.
+   * Defaults to {@link AcEdMTextEditor.defaultToolbarEnabled}.
+   */
+  toolbarEnabled?: boolean
 }
 
 /**
@@ -62,12 +125,25 @@ export interface AcEdMTextEditorOptions {
  * render loop and handles lifecycle cleanup when the editor is closed.
  */
 export class AcEdMTextEditor {
+  static readonly defaultLineSpacingFactor = 0.3
+
+  private static activeInputBox: MTextInputBox | null = null
+  private static readonly activeInputBoxChangeListeners =
+    new Set<AcEdMTextEditorActiveInputBoxChangeListener>()
+
   /**
    * Default toolbar color picker factory used when opening the editor if
    * per-call options do not provide {@link AcEdMTextEditorOptions.toolbarColorPicker}.
    * Set via {@link AcEdMTextEditor.setDefaultColorPicker}.
    */
   static defaultColorPicker: MTextToolbarColorPickerFactory | null = null
+
+  /**
+   * Default visibility for the built-in MTEXT input box toolbar. Applications
+   * with their own contextual ribbon can disable this while keeping the input
+   * box editor active.
+   */
+  static defaultToolbarEnabled = true
 
   /**
    * Registers a default toolbar color picker factory. The factory is used for
@@ -80,6 +156,190 @@ export class AcEdMTextEditor {
     factory: MTextToolbarColorPickerFactory | null
   ): void {
     AcEdMTextEditor.defaultColorPicker = factory
+  }
+
+  /**
+   * Registers the default built-in toolbar visibility for subsequent
+   * {@link open} calls.
+   *
+   * @param enabled - `true` to show the MTEXT input box toolbar by default.
+   */
+  static setDefaultToolbarEnabled(enabled: boolean): void {
+    AcEdMTextEditor.defaultToolbarEnabled = enabled
+  }
+
+  /**
+   * Returns the MTEXT input box currently being edited, if any.
+   */
+  static getActiveInputBox(): AcEdMTextEditorActiveInputBox | null {
+    return AcEdMTextEditor.activeInputBox
+  }
+
+  /**
+   * Subscribes to active MTEXT input box changes.
+   */
+  static addActiveInputBoxChangeListener(
+    listener: AcEdMTextEditorActiveInputBoxChangeListener
+  ): void {
+    AcEdMTextEditor.activeInputBoxChangeListeners.add(listener)
+  }
+
+  /**
+   * Removes an active MTEXT input box listener.
+   */
+  static removeActiveInputBoxChangeListener(
+    listener: AcEdMTextEditorActiveInputBoxChangeListener
+  ): void {
+    AcEdMTextEditor.activeInputBoxChangeListeners.delete(listener)
+  }
+
+  private static setActiveInputBox(inputBox: MTextInputBox | null): void {
+    if (AcEdMTextEditor.activeInputBox === inputBox) return
+    AcEdMTextEditor.activeInputBox = inputBox
+    AcEdMTextEditor.activeInputBoxChangeListeners.forEach(listener => {
+      listener(inputBox)
+    })
+  }
+
+  private static createHiddenToolbarContainer(
+    parent: HTMLElement
+  ): HTMLElement {
+    const container = parent.ownerDocument.createElement('div')
+    container.setAttribute('aria-hidden', 'true')
+    Object.assign(container.style, {
+      display: 'none',
+      pointerEvents: 'none'
+    })
+    parent.appendChild(container)
+    return container
+  }
+
+  private static attachFormatBridge(inputBox: MTextInputBox): void {
+    const runtime = inputBox as MTextInputBoxRuntime
+    if (runtime[mtextFormatBridgeKey]) return
+
+    const listeners = new Set<AcEdMTextEditorCurrentFormatChangeListener>()
+    const restoreMethods: Array<() => void> = []
+    const notifyFormatChanged = () => {
+      listeners.forEach(listener => {
+        listener()
+      })
+    }
+    const wrapMethod = (methodName: MTextInputBoxRuntimeMethodName) => {
+      const original = runtime[methodName]
+      if (typeof original !== 'function') return
+
+      runtime[methodName] = (...args: unknown[]) => {
+        const result = original.apply(runtime, args)
+        notifyFormatChanged()
+        return result
+      }
+      restoreMethods.push(() => {
+        runtime[methodName] = original
+      })
+    }
+
+    ;(
+      [
+        'setCurrentFormat',
+        'refreshCurrentFormatFromDocument',
+        'toggleCase',
+        'toggleStackSelection',
+        'toggleScriptSelection'
+      ] as const
+    ).forEach(wrapMethod)
+
+    runtime.addCurrentFormatChangeListener = listener => {
+      listeners.add(listener)
+    }
+    runtime.removeCurrentFormatChangeListener = listener => {
+      listeners.delete(listener)
+    }
+    runtime.focusEditor = () => {
+      const runtimeMethods = runtime as unknown as Record<
+        string,
+        MTextInputBoxRuntimeMethod | undefined
+      >
+      const focus = runtimeMethods.focusImeInput
+      if (typeof focus === 'function') {
+        focus.call(runtime)
+        return
+      }
+
+      const refocusSoon = runtimeMethods.refocusImeInputSoon
+      if (typeof refocusSoon === 'function') {
+        refocusSoon.call(runtime)
+      }
+    }
+    runtime.isStackSelectionActive = () => {
+      const runtimeMethods = runtime as unknown as Record<string, unknown>
+      const getSelectionRange = runtimeMethods.getSelectionRange
+      const toDocumentIndexFromLogicalIndex =
+        runtimeMethods.toDocumentIndexFromLogicalIndex
+      const isScriptOnlyStack = runtimeMethods.isScriptOnlyStack
+      const document = runtimeMethods.document as
+        | { ast?: { nodes?: MTextInputBoxRuntimeStackNode[] } }
+        | undefined
+
+      if (
+        typeof getSelectionRange !== 'function' ||
+        typeof toDocumentIndexFromLogicalIndex !== 'function'
+      ) {
+        return false
+      }
+
+      const selection = getSelectionRange.call(runtime) as
+        | { start: number; end: number; isCollapsed: boolean }
+        | undefined
+      if (!selection || selection.isCollapsed) return false
+
+      const start = toDocumentIndexFromLogicalIndex.call(
+        runtime,
+        selection.start,
+        true
+      ) as number
+      const end = toDocumentIndexFromLogicalIndex.call(
+        runtime,
+        selection.end,
+        false
+      ) as number
+      const selectedNodes = document?.ast?.nodes?.slice(start, end) ?? []
+      const stackNode = selectedNodes[0]
+      if (selectedNodes.length !== 1 || stackNode?.type !== 'stack') {
+        return false
+      }
+
+      if (typeof isScriptOnlyStack === 'function') {
+        return !isScriptOnlyStack.call(runtime, stackNode)
+      }
+
+      if (stackNode.divider !== '^') return true
+      const hasNumerator = (stackNode.numerator ?? '').trim().length > 0
+      const hasDenominator = (stackNode.denominator ?? '').trim().length > 0
+      return hasNumerator === hasDenominator
+    }
+    runtime[mtextFormatBridgeKey] = {
+      addCurrentFormatChangeListener:
+        runtime.addCurrentFormatChangeListener,
+      removeCurrentFormatChangeListener:
+        runtime.removeCurrentFormatChangeListener,
+      dispose: () => {
+        restoreMethods.forEach(restore => {
+          restore()
+        })
+        listeners.clear()
+        delete runtime.addCurrentFormatChangeListener
+        delete runtime.removeCurrentFormatChangeListener
+        delete runtime.focusEditor
+        delete runtime.isStackSelectionActive
+        delete runtime[mtextFormatBridgeKey]
+      }
+    }
+  }
+
+  private static detachFormatBridge(inputBox: MTextInputBox): void {
+    const runtime = inputBox as MTextInputBoxRuntime
+    runtime[mtextFormatBridgeKey]?.dispose()
   }
 
   /**
@@ -103,7 +363,8 @@ export class AcEdMTextEditor {
       textHeight,
       initialText = '',
       toolbarFontFamilies = [],
-      toolbarColorPicker
+      toolbarColorPicker,
+      toolbarEnabled = AcEdMTextEditor.defaultToolbarEnabled
     } = options
     const origin = new THREE.Vector3(location.x, location.y, location.z ?? 0)
     const isLightBackground = view.backgroundColor === 0xffffff
@@ -146,6 +407,13 @@ export class AcEdMTextEditor {
           lastHeight: normalizedTextHeight
         }
       : undefined
+    // MTextInputBox still uses its shared toolbar object for internal format
+    // sync while editing. Keep that object alive when the app hides the built-in
+    // toolbar, but mount it into a hidden host so only the contextual ribbon is
+    // visible.
+    const hiddenToolbarContainer = toolbarEnabled
+      ? null
+      : AcEdMTextEditor.createHiddenToolbarContainer(view.container)
 
     const mtextInputBox = new MTextInputBox({
       scene: view.internalScene,
@@ -158,6 +426,9 @@ export class AcEdMTextEditor {
         color: cursorColor,
         glowColor: cursorColor
       },
+      boundingBoxStyle: {
+        padding: 0
+      },
       imeTarget: view.canvas,
       colorSettings: {
         layer: database.clayer,
@@ -169,12 +440,14 @@ export class AcEdMTextEditor {
         enabled: true,
         theme: getToolbarTheme(),
         fontFamilies,
-        container: view.container,
+        container: hiddenToolbarContainer ?? view.container,
         offsetY: 10,
         colorPicker:
           toolbarColorPicker ?? AcEdMTextEditor.defaultColorPicker ?? undefined
       }
     })
+    AcEdMTextEditor.attachFormatBridge(mtextInputBox)
+    AcEdMTextEditor.setActiveInputBox(mtextInputBox)
 
     return new Promise(resolve => {
       let done = false
@@ -197,7 +470,12 @@ export class AcEdMTextEditor {
       }
 
       const cleanup = () => {
+        if (AcEdMTextEditor.activeInputBox === mtextInputBox) {
+          AcEdMTextEditor.setActiveInputBox(null)
+        }
+        AcEdMTextEditor.detachFormatBridge(mtextInputBox)
         mtextInputBox.dispose()
+        hiddenToolbarContainer?.remove()
         view.events.renderFrame.removeEventListener(onRenderFrame)
         mtextInputBox.off('close', onClose)
         AcDbSysVarManager.instance().events.sysVarChanged.removeEventListener(
@@ -214,10 +492,17 @@ export class AcEdMTextEditor {
       }
 
       const onClose = () => {
+        const insertionPoint = mtextInputBox.getMTextInsertionPoint()
         finish({
           contents: mtextInputBox.getText(),
+          location: {
+            x: insertionPoint.x,
+            y: insertionPoint.y,
+            z: insertionPoint.z
+          },
           width,
-          height: textHeight
+          height: normalizedTextHeight,
+          lineSpacingFactor: AcEdMTextEditor.defaultLineSpacingFactor
         })
       }
 

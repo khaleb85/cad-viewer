@@ -58,10 +58,11 @@ export class AcApMTextCmd extends AcEdCommand {
     if (!contents) return
 
     const mtext = new AcDbMText()
-    mtext.location = location
+    mtext.location = result.location
     mtext.contents = result.contents
     mtext.width = result.width
     mtext.height = result.height
+    mtext.lineSpacingFactor = result.lineSpacingFactor
 
     context.doc.database.tables.blockTable.modelSpace.appendEntity(mtext)
   }
