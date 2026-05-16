@@ -13,7 +13,6 @@ export default {
       mtextEditorContext: 'Text Editor'
     },
     hatch: {
-      contextTitle: 'Hatch Creation',
       group: {
         boundary: 'Boundaries',
         pattern: 'Pattern',
@@ -75,7 +74,6 @@ export default {
       }
     },
     mtext: {
-      contextTitle: 'Text Editor',
       group: {
         textStyle: 'Text Style',
         format: 'Format',
@@ -87,7 +85,19 @@ export default {
         textStyle: 'Text Style',
         font: 'Font',
         color: 'Color',
-        height: 'Height'
+        height: 'Height',
+        obliqueAngle: 'Oblique angle',
+        tracking: 'Tracking',
+        widthFactor: 'Width factor'
+      },
+      characterMap: {
+        title: 'Character Map',
+        font: 'Font(F):',
+        charsToCopy: 'Characters to copy(A):',
+        select: 'Select(S)',
+        copy: 'Copy(C)',
+        noGlyphs: 'No characters are available for this font.',
+        copyFailed: 'Unable to copy to the clipboard.'
       },
       command: {
         bold: 'Bold',
@@ -120,6 +130,12 @@ export default {
         font: 'Set the current text font.',
         color: 'Set the current text color.',
         height: 'Set the current text height. Custom values are allowed.',
+        obliqueAngle:
+          'Set the slant angle in degrees for selected characters (negative tilts the other way).',
+        tracking:
+          'Increase or decrease spacing between selected characters (1 is default).',
+        widthFactor:
+          'Stretch or compress selected characters horizontally (1 is default).',
         attachment: 'Set the multiline text attachment point.',
         list: 'Insert or configure bullets and numbering.',
         lineSpacing: 'Set line spacing.',

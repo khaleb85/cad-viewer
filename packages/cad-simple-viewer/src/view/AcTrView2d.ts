@@ -688,6 +688,7 @@ export class AcTrView2d extends AcEdBaseView {
       width: this.resolveMTextEditorWidth(mtext),
       textHeight: this.resolveMTextEditorTextHeight(mtext),
       initialText: mtext.contents,
+      initialAttachmentPoint: mtext.attachmentPoint,
       toolbarFontFamilies: this.getMTextToolbarFontFamilies()
     })
     if (!result) return
@@ -697,6 +698,7 @@ export class AcTrView2d extends AcEdBaseView {
     mtext.width = result.width
     mtext.height = result.height
     mtext.lineSpacingFactor = result.lineSpacingFactor
+    mtext.attachmentPoint = result.attachmentPoint
     mtext.triggerModifiedEvent()
   }
 
