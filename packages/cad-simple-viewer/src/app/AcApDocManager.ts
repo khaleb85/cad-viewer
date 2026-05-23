@@ -24,6 +24,7 @@ import {
   AcApDimLinearCmd,
   AcApEllipseCmd,
   AcApEraseCmd,
+  AcApExportHtmlCmd,
   AcApHatchCmd,
   AcApLayerCloseCmd,
   AcApLayerCmd,
@@ -217,6 +218,19 @@ export interface AcApDocManagerOptions {
   webworkerFileUrls?: AcApWebworkerFiles
 
   /**
+   * URL of the offline HTML viewer runtime bundle (`viewer-runtime.iife.js`).
+   * Used by {@link AcApExportHtmlCmd} when packaging standalone HTML files.
+   */
+  htmlViewerRuntimeUrl?: string | URL
+
+  /**
+   * Host element for the busy overlay (e.g. HTML export spinner).
+   * Set to the viewer shell so the mask covers ribbon, toolbars, and status bar.
+   * Defaults to the canvas container when omitted.
+   */
+  busyIndicatorHost?: HTMLElement
+
+  /**
    * Configuration for automatic plugin loading.
    *
    * Plugins can be loaded automatically during initialization from:
@@ -305,8 +319,12 @@ export class AcApDocManager {
   private _fontLoader: AcApFontLoader
   /** Base URL to get fonts, templates, and example files */
   private _baseUrl: string
-  /** Progress animation */
+  /** URL of the HTML viewer runtime bundle for export */
+  private _htmlViewerRuntimeUrl?: string | URL
+  /** Progress animation while opening/parsing files */
   private _progress: AcApProgress
+  /** Full-viewer busy overlay (e.g. HTML export) */
+  private _busyProgress: AcApProgress
   /** Command manager */
   private _commandManager: AcEdCommandStack
   /** Plugin manager */
@@ -322,6 +340,10 @@ export class AcApDocManager {
    * registering built-in and system-variable commands.
    */
   private _commandAliasOverrides: Map<string, string[]>
+  /** Peak open-file percentage for the current open operation (monotonic) */
+  private _openFileProgressPeak = 0
+  /** Last open-file progress stage (FETCH_FILE or CONVERSION) */
+  private _openFileProgressStage?: AcDbProgressdEventArgs['stage']
   /** Singleton instance */
   private static _instance?: AcApDocManager
 
@@ -346,6 +368,7 @@ export class AcApDocManager {
    */
   private constructor(options: AcApDocManagerOptions = {}) {
     this._baseUrl = options.baseUrl ?? DEFAULT_BASE_URL
+    this._htmlViewerRuntimeUrl = options.htmlViewerRuntimeUrl
     this._commandAliasOverrides = this.normalizeCommandAliasConfig(
       options.commandAliases
     )
@@ -355,17 +378,21 @@ export class AcApDocManager {
       AcTrMTextRenderer.getInstance().setRenderMode('worker')
     }
 
+    this.events.documentToBeOpened.addEventListener(() => {
+      this.resetOpenFileProgress()
+    })
+
     // Create one empty drawing
     const doc = new AcApDocument()
     doc.database.events.openProgress.addEventListener(args => {
-      const progress = {
+      const progress = this.normalizeOpenFileProgress({
         database: doc.database,
         percentage: args.percentage,
         stage: args.stage,
         subStage: args.subStage,
         subStageStatus: args.subStageStatus,
         data: args.data
-      }
+      })
       eventBus.emit('open-file-progress', progress)
       this.updateProgress(progress)
 
@@ -419,6 +446,9 @@ export class AcApDocManager {
     )
     this._progress = new AcApProgress({ host: view.container })
     this._progress.hide()
+    const busyHost = options.busyIndicatorHost ?? view.container
+    this._busyProgress = new AcApProgress({ host: busyHost })
+    this._busyProgress.hide()
     if (!options.notLoadDefaultFonts) {
       this.loadDefaultFonts()
     }
@@ -543,6 +573,13 @@ export class AcApDocManager {
    */
   get baseUrl() {
     return this._baseUrl
+  }
+
+  /**
+   * URL of the offline HTML viewer runtime bundle used for HTML export.
+   */
+  get htmlViewerRuntimeUrl() {
+    return this._htmlViewerRuntimeUrl
   }
 
   /**
@@ -837,6 +874,7 @@ export class AcApDocManager {
     addSystemCommand('circle', 'circle', new AcApCircleCmd())
     addSystemCommand('cdxf', 'cdxf', new AcApConvertToDxfCmd())
     addSystemCommand('csvg', 'csvg', new AcApConvertToSvgCmd())
+    addSystemCommand('chtml', 'chtml', new AcApExportHtmlCmd())
     addSystemCommand('pngout', 'pngout', new AcApConvertToPngCmd())
     addSystemCommand('ellipse', 'ellipse', new AcApEllipseCmd())
     addSystemCommand('erase', 'erase', new AcApEraseCmd())
@@ -1101,12 +1139,53 @@ export class AcApDocManager {
       this.setActiveLayout()
       const db = doc.database
 
-      // The extents of drawing database may be empty. Espically dxf files.
-      if (db.extents.isEmpty()) {
-        this.curView.zoomToFitDrawing()
-      } else {
+      // Three-way fit strategy at document open time:
+      //
+      // 1. **Paper space + has LIMMIN/LIMMAX**: frame the authoritative
+      //    paper sheet rectangle (`AcDbLayout.limits`). Real-world DWGs
+      //    frequently mix scales inside paper space (e.g. a title block
+      //    authored in mm alongside viewport rectangles authored in m),
+      //    so the entity bounding box is unreliable here — it gets
+      //    dominated by the largest-scale outliers and shrinks the
+      //    actual paper to a grain.
+      //
+      // 2. **Model space + non-empty database extents**: frame
+      //    EXTMIN/EXTMAX. Eager-zoom shortcut for the common case of
+      //    opening straight into model space; avoids waiting on the
+      //    converter (`zoomToFitDrawing` polls until entities are
+      //    converted).
+      //
+      // 3. **Fallback** (paper without limits, or model with empty
+      //    extents — typically DXF): poll `zoomToFitDrawing` and frame
+      //    the populated layout bounding box once entities land.
+      //
+      // The pre-fix code used `db.extmin/db.extmax` (always model-space
+      // EXTMIN/EXTMAX sysvars) even when opening into paper, landing on
+      // coordinates that don't exist in paper WCS. Paper layout would
+      // render zoomed into a random quadrant — title block looking
+      // giant, viewport collapsed to pixels. See
+      // `next_14_viewports_full.md` Bug C-open.
+      const modelSpaceId = db.tables.blockTable.modelSpace.objectId
+      const isPaperSpaceActive = db.currentSpaceId !== modelSpaceId
+      const activeLayout =
+        acdbHostApplicationServices().layoutManager.getActiveLayout(db)
+      const layoutLimits = activeLayout?.limits
+
+      if (isPaperSpaceActive && layoutLimits && !layoutLimits.isEmpty()) {
+        this.curView.zoomTo(layoutLimits)
+      } else if (!isPaperSpaceActive && !db.extents.isEmpty()) {
         this.curView.zoomTo(new AcGeBox2d(db.extmin, db.extmax))
+      } else {
+        this.curView.zoomToFitDrawing()
       }
+
+      // Tell the view we've already framed the startup layout, so that
+      // when the user later switches to a different tab and back, the
+      // `layoutSwitched` handler doesn't re-zoom and trash their pan/zoom
+      // state on this layout. Cast is intentional: `setActiveLayout`
+      // above relies on `curView` being an `AcTrView2d`, and the
+      // markLayoutAsInitialized method is part of that contract.
+      ;(this.curView as AcTrView2d).markLayoutAsInitialized(db.currentSpaceId)
     }
   }
 
@@ -1140,6 +1219,64 @@ export class AcApDocManager {
   }
 
   /**
+   * Shows a spinner overlay without text (e.g. HTML export).
+   */
+  showBusyIndicator(): void {
+    this._busyProgress.setMessage('')
+    this._busyProgress.show()
+  }
+
+  /**
+   * Hides the spinner overlay shown by {@link showBusyIndicator}.
+   */
+  hideBusyIndicator(): void {
+    this._busyProgress.hide()
+  }
+
+  /**
+   * Resets tracked open-file progress for a new open operation.
+   */
+  private resetOpenFileProgress() {
+    this._openFileProgressPeak = 0
+    this._openFileProgressStage = undefined
+  }
+
+  /**
+   * Returns monotonic open-file progress for UI display.
+   *
+   * Entity conversion reports 0–100% within the ENTITY sub-stage while the
+   * pipeline accumulator is still ~33%; sub-stage END callbacks can therefore
+   * briefly report a lower percentage after IN-PROGRESS already reached 100%.
+   */
+  private normalizeOpenFileProgress(
+    data: AcDbProgressdEventArgs
+  ): AcDbProgressdEventArgs {
+    const stage = data.stage
+    if (stage !== this._openFileProgressStage) {
+      if (
+        this._openFileProgressStage === 'FETCH_FILE' &&
+        stage === 'CONVERSION'
+      ) {
+        this._openFileProgressPeak = 0
+      }
+      this._openFileProgressStage = stage
+    }
+    this._openFileProgressPeak = Math.max(
+      this._openFileProgressPeak,
+      data.percentage
+    )
+    return { ...data, percentage: this._openFileProgressPeak }
+  }
+
+  private isOpenFileProgressComplete(data: AcDbProgressdEventArgs) {
+    return (
+      data.percentage >= 100 &&
+      data.subStage === 'END' &&
+      data.subStageStatus === 'END'
+    )
+  }
+
+  /**
    * Shows progress animation and progress message
    * @param data - Progress data
    */
@@ -1154,9 +1291,9 @@ export class AcApDocManager {
       this._progress.setMessage(AcApI18n.t('main.message.fetchingDrawingFile'))
     }
 
-    const percentage = data.percentage
-    if (percentage >= 100) {
+    if (this.isOpenFileProgressComplete(data)) {
       this._progress.hide()
+      this.resetOpenFileProgress()
     } else {
       this._progress.show()
     }

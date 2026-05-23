@@ -2,7 +2,9 @@ export default {
   mainMenu: {
     new: 'New Drawing',
     open: 'Open Drawing',
+    drawingUnits: 'Drawing Units',
     export: 'Export to DXF',
+    exportHtml: 'Export to HTML',
     exportImage: 'Export to Image'
   },
   ribbon: {
@@ -272,6 +274,8 @@ export default {
       properties: 'Open the Properties palette for the current selection.',
       quickSelect:
         'Open Quick Select to filter and select entities by criteria.',
+      drawingUnits:
+        'Open Drawing Units to set coordinate formats, precision, and insertion scale.',
       propertyColor:
         'Set the color for newly created objects or selected entities.',
       propertyLineType:
@@ -364,7 +368,8 @@ export default {
       copy: 'Copy',
       erase: 'Erase',
       properties: 'Properties',
-      quickSelect: 'Quick Select'
+      quickSelect: 'Quick Select',
+      drawingUnits: 'Drawing Units'
     }
   },
   verticalToolbar: {

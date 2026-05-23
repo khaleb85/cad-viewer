@@ -96,6 +96,7 @@ import {
   revCloud,
   revFreeDraw,
   revRect,
+  setting,
   splineFitPoints,
   xline
 } from '../../svg'
@@ -620,6 +621,7 @@ const buildBaseTabs = (
     erase: t('main.ribbon.tooltip.erase'),
     properties: t('main.ribbon.tooltip.properties'),
     quickSelect: t('main.ribbon.tooltip.quickSelect'),
+    drawingUnits: t('main.ribbon.tooltip.drawingUnits'),
     propertyColor: t('main.ribbon.tooltip.propertyColor'),
     propertyLineType: t('main.ribbon.tooltip.propertyLineType'),
     propertyLineWeight: t('main.ribbon.tooltip.propertyLineWeight')
@@ -1359,6 +1361,14 @@ const buildBaseTabs = (
                   tooltip: ribbonTooltips.quickSelect,
                   size: 'large',
                   props: { icon: qselect }
+                },
+                {
+                  id: 'cmd-drawing-units',
+                  type: 'button',
+                  label: t('main.ribbon.command.drawingUnits'),
+                  tooltip: ribbonTooltips.drawingUnits,
+                  size: 'large',
+                  props: { icon: setting }
                 }
               ]
             }
@@ -1427,6 +1437,7 @@ const ribbonData = computed(() => {
   commandByItemId.set('cmd-layer', 'layer')
   commandByItemId.set('cmd-properties', 'properties')
   commandByItemId.set('cmd-qselect', 'qselect')
+  commandByItemId.set('cmd-drawing-units', 'units')
   commandByItemId.set('cmd-tool-rev-freehand', 'sketch')
   commandByItemId.set('cmd-tool-rev-rect', 'revrect')
   commandByItemId.set('cmd-tool-rev-cloud', 'revcloud')
@@ -1468,8 +1479,16 @@ const fileMenuItems = computed<FileMenuItemModel[]>(() => {
       label: t('main.mainMenu.open')
     },
     {
+      id: 'DrawingUnits',
+      label: t('main.mainMenu.drawingUnits')
+    },
+    {
       id: 'Convert',
       label: t('main.mainMenu.export')
+    },
+    {
+      id: 'ExportHtml',
+      label: t('main.mainMenu.exportHtml')
     },
     {
       id: 'PngOut',
@@ -1510,6 +1529,8 @@ const handleFileMenuSelect = (command: string) => {
   if (command === 'Convert') {
     const cmd = new AcApConvertToDxfCmd()
     cmd.trigger(AcApDocManager.instance.context)
+  } else if (command === 'ExportHtml') {
+    AcApDocManager.instance.sendStringToExecute('chtml')
   } else if (command === 'PngOut') {
     AcApDocManager.instance.sendStringToExecute('pngout')
   } else if (command === 'QNew') {
@@ -1518,6 +1539,8 @@ const handleFileMenuSelect = (command: string) => {
   } else if (command === 'Open') {
     const cmd = new AcApOpenCmd()
     cmd.trigger(AcApDocManager.instance.context)
+  } else if (command === 'DrawingUnits') {
+    AcApDocManager.instance.sendStringToExecute('units')
   }
 }
 </script>

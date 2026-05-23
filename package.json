@@ -20,6 +20,9 @@
     "dev": "nx run @mlightcad/cad-viewer-example:dev",
     "dev:simple": "nx run @mlightcad/cad-simple-viewer-example:dev",
     "doc": "typedoc",
+    "export:html": "nx run @mlightcad/cad-html-exporter-cli:build && node packages/cad-html-exporter-cli/dist/cli.js packages/cad-viewer-example/e2e/fixtures/minimal-line.dxf -o tmp/minimal-line.html",
+    "export:html:run": "node packages/cad-html-exporter-cli/dist/cli.js",
+    "export:html:setup": "pnpm --filter @mlightcad/cad-html-exporter-cli install-browser",
     "format": "prettier --config ./.prettierrc.js --write \"packages/**/*.{ts,js,vue,json}\"",
     "lint": "nx run-many -t lint",
     "lint:fix": "nx run-many -t lint:fix",
@@ -34,6 +37,7 @@
     "test:e2e": "pnpm --filter @mlightcad/cad-viewer-example test:e2e"
   },
   "engines": {
+    "node": ">=24",
     "pnpm": ">=10"
   },
   "pnpm": {
@@ -44,11 +48,11 @@
       "vue-demi"
     ],
     "overrides": {
-      "@mlightcad/data-model": "^1.7.34",
-      "@mlightcad/libredwg-converter": "^3.5.34",
-      "@mlightcad/mtext-input-box": "^0.2.10",
+      "@mlightcad/data-model": "^1.7.38",
+      "@mlightcad/libredwg-converter": "^3.5.38",
+      "@mlightcad/mtext-input-box": "^0.2.11",
       "@mlightcad/mtext-renderer": "^0.10.14",
-      "@mlightcad/ribbon": "^0.1.8",
+      "@mlightcad/ribbon": "^0.1.9",
       "element-plus": "^2.12.0",
       "three": "^0.172.0",
       "vue": "^3.4.21",
@@ -62,7 +66,7 @@
     "@nx/js": "20.0.4",
     "@types/jest": "^29.5.12",
     "@types/lodash-es": "^4.17.12",
-    "@types/node": "^20.14.9",
+    "@types/node": "^24.0.0",
     "@types/rollup-plugin-peer-deps-external": "^2.2.5",
     "@typescript-eslint/parser": "^8.4.0",
     "eslint": "^9.9.1",
