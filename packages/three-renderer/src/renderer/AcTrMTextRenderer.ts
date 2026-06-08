@@ -1,9 +1,11 @@
 import {
   ColorSettings,
   createDefaultColorSettings,
+  DefaultFontsPreset,
   MTextData,
   MTextObject,
   RenderMode,
+  ShapeData,
   StyleManager,
   TextStyle,
   UnifiedRenderer
@@ -45,6 +47,7 @@ export class AcTrMTextRenderer {
   private _fontUrl?: string
   private _renderMode?: RenderMode
   private _styleManager?: AcTrStyleManager
+  private _defaultFonts?: DefaultFontsPreset | string | readonly string[]
 
   private constructor() {
     // Do nothing for now
@@ -91,6 +94,19 @@ export class AcTrMTextRenderer {
   }
 
   /**
+   * Sets the default text and symbol font fallback chains on the active renderer
+   * and syncs them to Web Workers.
+   *
+   * @param fonts - A preset name, a single font name, or an ordered list of font names
+   */
+  async setDefaultFonts(
+    fonts: DefaultFontsPreset | string | readonly string[]
+  ): Promise<void> {
+    this._defaultFonts = fonts
+    await this.applyDefaultFonts()
+  }
+
+  /**
    * Render MText using the current mode asynchronously
    */
   async asyncRenderMText(
@@ -129,6 +145,37 @@ export class AcTrMTextRenderer {
     return mtext
   }
 
+  async asyncRenderShape(
+    shapeContent: ShapeData,
+    textStyle: TextStyle,
+    colorSettings: ColorSettings = createDefaultColorSettings()
+  ): Promise<MTextObject> {
+    if (!this._renderer) {
+      throw new Error('AcTrMTextRenderer not initialized!')
+    }
+    return this._renderer.asyncRenderShape(
+      shapeContent,
+      textStyle,
+      colorSettings
+    )
+  }
+
+  syncRenderShape(
+    shapeContent: ShapeData,
+    textStyle: TextStyle,
+    colorSettings: ColorSettings = createDefaultColorSettings()
+  ): MTextObject {
+    this.ensureRendererCreated()
+    if (!this._renderer) {
+      throw new Error('AcTrMTextRenderer not initialized!')
+    }
+    return this._renderer.syncRenderShape(
+      shapeContent,
+      textStyle,
+      colorSettings
+    )
+  }
+
   /**
    * Initialize the renderer with worker URL
    * @param workerUrl - URL to the worker script
@@ -140,6 +187,7 @@ export class AcTrMTextRenderer {
       this._renderer.setDefaultMode(this._renderMode)
     }
     this.applyFontUrl()
+    void this.applyDefaultFonts()
     if (this._styleManager) {
       const styleManager = new AcTrMTextStyleManager(this._styleManager)
       this._renderer.setStyleManager(styleManager)
@@ -166,6 +214,12 @@ export class AcTrMTextRenderer {
   private applyFontUrl() {
     if (this._renderer && this._fontUrl) {
       this._renderer.setFontUrl(this._fontUrl)
+    }
+  }
+
+  private async applyDefaultFonts() {
+    if (this._renderer && this._defaultFonts !== undefined) {
+      await this._renderer.setDefaultFonts(this._defaultFonts)
     }
   }
 }

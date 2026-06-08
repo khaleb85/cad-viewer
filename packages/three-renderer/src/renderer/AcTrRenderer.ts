@@ -10,10 +10,11 @@ import {
   AcGiMTextData,
   AcGiPointStyle,
   AcGiRenderer,
+  AcGiShapeData,
   AcGiSubEntityTraits,
   AcGiTextStyle
 } from '@mlightcad/data-model'
-import { FontManager, FontManagerEventArgs } from '@mlightcad/mtext-renderer'
+import { FontManager } from '@mlightcad/mtext-renderer'
 import * as THREE from 'three'
 
 import {
@@ -25,7 +26,8 @@ import {
   AcTrMText,
   AcTrObject,
   AcTrPoint,
-  AcTrPolygon
+  AcTrPolygon,
+  AcTrShape
 } from '../object'
 import { AcTrMaterialManager } from '../style/AcTrMaterialManager'
 import { AcTrStyleManager } from '../style/AcTrStyleManager'
@@ -33,13 +35,23 @@ import { AcTrSubEntityTraitsUtil } from '../util'
 import { AcTrCamera } from '../viewport'
 import { AcTrMTextRenderer } from './AcTrMTextRenderer'
 
+/** Event payload when a mapped font cannot be resolved during rendering. */
+export interface AcTrFontNotFoundEventArgs {
+  /** Name of the font that could not be found. */
+  fontName: string
+  /** Number of characters using this font; set when the font is missing. */
+  count?: number
+}
+
 export class AcTrRenderer implements AcGiRenderer<AcTrEntity> {
   private _styleManager: AcTrStyleManager
   private _renderer: THREE.WebGLRenderer
   private _subEntityTraits: AcGiSubEntityTraits
 
-  public readonly events = {
-    fontNotFound: new AcCmEventManager<FontManagerEventArgs>()
+  public readonly events: {
+    fontNotFound: AcCmEventManager<AcTrFontNotFoundEventArgs>
+  } = {
+    fontNotFound: new AcCmEventManager<AcTrFontNotFoundEventArgs>()
   }
 
   constructor(renderer: THREE.WebGLRenderer) {
@@ -77,6 +89,20 @@ export class AcTrRenderer implements AcGiRenderer<AcTrEntity> {
     this._styleManager.updateLineResolution(width, height)
   }
 
+  /**
+   * Updates wide-line shader resolution without resizing the canvas.
+   */
+  updateLineResolution(width: number, height: number) {
+    this._styleManager.updateLineResolution(width, height)
+  }
+
+  /**
+   * Syncs shader uniforms that depend on the active camera zoom.
+   */
+  syncCameraZoom(zoom: number) {
+    this.updateCameraZoomUniform(zoom)
+  }
+
   getViewport(target: THREE.Vector4) {
     return this._renderer.getViewport(target)
   }
@@ -92,17 +118,11 @@ export class AcTrRenderer implements AcGiRenderer<AcTrEntity> {
     this._renderer.clearDepth()
   }
 
-  render(scene: THREE.Object3D, camera: AcTrCamera) {
+  render(scene: THREE.Object3D, camera: AcTrCamera): boolean {
     this.updateCameraZoomUniform(camera.zoom)
     this._renderer.render(scene, camera.internalCamera)
-  }
-
-  /**
-   * Changes rendering color to the specified color for entities whose color is ACI 7.
-   * @param color - New rendering color for ACI 7.
-   */
-  changeForeground(color: number) {
-    this._styleManager.changeForeground(color)
+    // RTE frame scheduling is added in the large-coordinate feature branch.
+    return false
   }
 
   /**
@@ -325,6 +345,19 @@ export class AcTrRenderer implements AcGiRenderer<AcTrEntity> {
   mtext(mtext: AcGiMTextData, style: AcGiTextStyle, delay?: boolean) {
     return new AcTrMText(
       mtext,
+      this._subEntityTraits,
+      style,
+      this._styleManager,
+      delay
+    )
+  }
+
+  /**
+   * @inheritdoc
+   */
+  shape(shape: AcGiShapeData, style: AcGiTextStyle, delay?: boolean) {
+    return new AcTrShape(
+      shape,
       this._subEntityTraits,
       style,
       this._styleManager,

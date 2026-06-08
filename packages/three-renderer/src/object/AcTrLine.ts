@@ -5,7 +5,7 @@ import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js'
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js'
 
 import { AcTrStyleManager } from '../style/AcTrStyleManager'
-import { AcTrBufferGeometryUtil } from '../util'
+import { AcTrBufferGeometryUtil, getSceneDrawableUserData } from '../util'
 import { AcTrEntity } from './AcTrEntity'
 
 export class AcTrLine extends AcTrEntity {
@@ -51,7 +51,7 @@ export class AcTrLine extends AcTrEntity {
 
       const line = new LineSegments2(lineGeometry, material)
       line.position.set(localOrigin.x, localOrigin.y, localOrigin.z)
-      line.userData.styleMaterialId = material.id
+      getSceneDrawableUserData(line).styleMaterialId = material.id
       this.add(line)
       return
     }
@@ -88,8 +88,11 @@ export class AcTrLine extends AcTrEntity {
     geometry: THREE.BufferGeometry,
     localOrigin: THREE.Vector3
   ) {
-    geometry.computeBoundingBox()
-    const worldBox = geometry.boundingBox!.clone()
+    const boundingBox = AcTrBufferGeometryUtil.safeComputeBoundingBox(geometry)
+    if (!boundingBox) {
+      return
+    }
+    const worldBox = boundingBox.clone()
     worldBox.translate(localOrigin)
     this.box = worldBox
   }

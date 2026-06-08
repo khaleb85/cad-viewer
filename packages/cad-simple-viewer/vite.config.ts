@@ -1,16 +1,27 @@
 import peerDepsExternal from 'rollup-plugin-peer-deps-external'
 import { defineConfig, PluginOption } from 'vite'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
+import {
+  createLibEntryFileName
+} from '../vite-config/pluginRollupOutput'
+
+const packageId = 'cad-simple-viewer'
 
 export default defineConfig({
   build: {
     outDir: 'dist',
+    emptyOutDir: true,
     lib: {
       entry: 'src/index.ts',
-      name: 'cad-simple-viewer',
-      fileName: 'index'
+      name: packageId,
+      fileName: format => createLibEntryFileName(packageId, format)
     },
-    minify: true
+    minify: true,
+    rollupOptions: {
+      output: {
+        chunkFileNames: `${packageId}-[name]-[hash].js`
+      }
+    }
   },
   plugins: [
     peerDepsExternal() as PluginOption,
@@ -22,10 +33,6 @@ export default defineConfig({
         },
         {
           src: './node_modules/@mlightcad/mtext-renderer/dist/mtext-renderer-worker.js',
-          dest: ''
-        },
-        {
-          src: './node_modules/@mlightcad/cad-html-exporter/dist/viewer-runtime.iife.js',
           dest: ''
         }
       ]

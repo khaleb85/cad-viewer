@@ -7,10 +7,10 @@ import {
   acdbHostApplicationServices,
   AcDbProgressdEventArgs,
   AcDbSysVarManager,
-  AcGeBox2d,
   log
 } from '@mlightcad/data-model'
 import { AcDbLibreDwgConverter } from '@mlightcad/libredwg-converter'
+import { FontManager } from '@mlightcad/mtext-renderer'
 import { AcTrMTextRenderer } from '@mlightcad/three-renderer'
 
 import {
@@ -19,13 +19,12 @@ import {
   AcApClearMeasurementsCmd,
   AcApConvertToDxfCmd,
   AcApConvertToPngCmd,
-  AcApConvertToSvgCmd,
   AcApCopyCmd,
   AcApDimLinearCmd,
   AcApEllipseCmd,
   AcApEraseCmd,
-  AcApExportHtmlCmd,
   AcApHatchCmd,
+  AcApHideObjectsCmd,
   AcApLayerCloseCmd,
   AcApLayerCmd,
   AcApLayerCurCmd,
@@ -68,6 +67,7 @@ import {
   AcApSplineCmd,
   AcApSwitchBgCmd,
   AcApSysVarCmd,
+  AcApUnisolateObjectsCmd,
   AcApXLineCmd,
   AcApZoomCmd
 } from '../command'
@@ -86,8 +86,9 @@ import { AcApDocument } from './AcApDocument'
 import { AcApFontLoader } from './AcApFontLoader'
 import { AcApProgress } from './AcApProgress'
 import { AcApOpenDatabaseOptions } from './AcDbOpenDatabaseOptions'
+import { isOpenFileProgressComplete } from './openFileProgress'
 
-const DEFAULT_BASE_URL = 'https://mlightcad.gitlab.io/cad-data/'
+const DEFAULT_BASE_URL = 'https://cdn.jsdelivr.net/gh/mlightcad/cad-data'
 /**
  * Built-in command alias table used when users do not provide explicit alias overrides.
  *
@@ -176,6 +177,9 @@ export interface AcApWebworkerFiles {
   mtextRender?: string | URL
 }
 
+/** AutoCAD-era default font fallback chain used when glyphs are missing. */
+const DEFAULT_FONTS_PRESET = 'modern' as const
+
 /**
  * Options for creating AcApDocManager instance
  */
@@ -221,7 +225,7 @@ export interface AcApDocManagerOptions {
 
   /**
    * URL of the offline HTML viewer runtime bundle (`viewer-runtime.iife.js`).
-   * Used by {@link AcApExportHtmlCmd} when packaging standalone HTML files.
+   * Used by the HTML export plugin when packaging standalone HTML files.
    */
   htmlViewerRuntimeUrl?: string | URL
 
@@ -379,6 +383,7 @@ export class AcApDocManager {
     } else {
       AcTrMTextRenderer.getInstance().setRenderMode('worker')
     }
+    FontManager.instance.setDefaultFonts(DEFAULT_FONTS_PRESET)
 
     this.events.documentToBeOpened.addEventListener(() => {
       this.resetOpenFileProgress()
@@ -498,10 +503,6 @@ export class AcApDocManager {
     AcApDocManager._instance = undefined
   }
 
-  get progress() {
-    return this._progress
-  }
-
   /**
    * Gets the current application context.
    *
@@ -568,6 +569,15 @@ export class AcApDocManager {
    */
   get pluginManager() {
     return this._pluginManager
+  }
+
+  /**
+   * Gets the progress indicator used to report document open/loading status.
+   *
+   * @returns The progress indicator
+   */
+  get progress() {
+    return this._progress
   }
 
   /**
@@ -663,20 +673,21 @@ export class AcApDocManager {
   /**
    * Loads default fonts for CAD text rendering.
    *
-   * This method loads either the specified fonts or falls back to default Chinese fonts
-   * (specifically 'simkai') if no fonts are provided. The loaded fonts are used for
-   * rendering CAD text entities like MText and Text in the viewer.
+   * This method loads either the specified fonts or the configured default font
+   * fallback chains ({@link DEFAULT_FONTS_PRESET}, currently `modern`: text
+   * `hztxt` → `simsun`, symbol `amgdt`) if no fonts are provided. The loaded
+   * fonts are used for rendering CAD text entities like MText and Text in the viewer.
    *
    * It is better to load default fonts when viewer is initialized so that the viewer can
    * render text correctly if fonts used in the document are not available.
    *
    * @param fonts - Optional array of font names to load. If not provided or null,
-   *               defaults to ['simkai'] for Chinese text support
+   *               loads the active {@link FontManager.getFontsToLoad} chains
    * @returns Promise that resolves when all specified fonts are loaded
    *
    * @example
    * ```typescript
-   * // Load default fonts (simkai)
+   * // Load the modern default font chain
    * await docManager.loadDefaultFonts();
    *
    * // Load specific fonts
@@ -691,7 +702,7 @@ export class AcApDocManager {
    */
   async loadDefaultFonts(fonts?: string[]) {
     if (fonts == null) {
-      await this._fontLoader.load(['simkai'])
+      await this._fontLoader.load([...FontManager.instance.getFontsToLoad()])
     } else {
       await this._fontLoader.load(fonts)
     }
@@ -832,7 +843,7 @@ export class AcApDocManager {
    *
    * This method sets up the command system by registering built-in commands including:
    * - cdxf: Convert to DXF
-   * - csvg: Convert to SVG
+   * - pngout: Export to PNG
    * - log: Output debug information in console
    * - open: Open document
    * - qnew: Quick new document
@@ -875,11 +886,10 @@ export class AcApDocManager {
     addSystemCommand('arc', 'arc', new AcApArcCmd())
     addSystemCommand('circle', 'circle', new AcApCircleCmd())
     addSystemCommand('cdxf', 'cdxf', new AcApConvertToDxfCmd())
-    addSystemCommand('csvg', 'csvg', new AcApConvertToSvgCmd())
-    addSystemCommand('chtml', 'chtml', new AcApExportHtmlCmd())
     addSystemCommand('pngout', 'pngout', new AcApConvertToPngCmd())
     addSystemCommand('ellipse', 'ellipse', new AcApEllipseCmd())
     addSystemCommand('erase', 'erase', new AcApEraseCmd())
+    addSystemCommand('hideobjects', 'hideobjects', new AcApHideObjectsCmd())
     addSystemCommand('dimlinear', 'dimlinear', new AcApDimLinearCmd())
     addSystemCommand(
       'measuredistance',
@@ -933,6 +943,11 @@ export class AcApDocManager {
     addSystemCommand('sketch', 'sketch', new AcApSketchCmd())
     addSystemCommand('spline', 'spline', new AcApSplineCmd())
     addSystemCommand('switchbg', 'switchbg', new AcApSwitchBgCmd())
+    addSystemCommand(
+      'unisolateobjects',
+      'unisolateobjects',
+      new AcApUnisolateObjectsCmd()
+    )
     addSystemCommand('xline', 'xline', new AcApXLineCmd())
     addSystemCommand('zoom', 'zoom', new AcApZoomCmd())
 
@@ -1029,6 +1044,8 @@ export class AcApDocManager {
    * Executes a command by its string name.
    *
    * This method looks up a registered command by name and executes it with the current context.
+   * If the command is not registered yet, it attempts to load a lazy plugin whose trigger
+   * matches the command name (see {@link AcApPluginManager.loadByTrigger}).
    * It checks if the command's required mode is compatible with the document's current mode.
    * If the command is not found or not compatible, an error is thrown.
    *
@@ -1042,6 +1059,22 @@ export class AcApDocManager {
    * ```
    */
   sendStringToExecute(cmdStr: string) {
+    void this.executeCommandString(cmdStr).catch(error => {
+      const message = error instanceof Error ? error.message : String(error)
+      this.editor.showMessage(message, 'error')
+      log.error(`[AcApDocManager] Command failed: ${cmdStr}`, error)
+    })
+  }
+
+  /**
+   * Executes a command script, loading lazy plugins when needed.
+   *
+   * When the command is missing from the command stack, {@link AcApPluginManager.loadByTrigger}
+   * is invoked so plugins registered via {@link AcApPluginManager.registerLazyPlugin} can load.
+   *
+   * @param cmdStr - Command script (first line is the command name)
+   */
+  private async executeCommandString(cmdStr: string) {
     const lines = this.splitCommandScript(cmdStr)
     if (!lines.length) {
       throw new Error('Command string is empty')
@@ -1049,9 +1082,18 @@ export class AcApDocManager {
 
     const [cmdName, ...scriptInputs] = lines
     const documentMode = this.context.doc.openMode
-    const cmd =
+    let cmd =
       this._commandManager.lookupGlobalCmd(cmdName) ??
       this._commandManager.lookupLocalCmd(cmdName, documentMode)
+
+    if (!cmd) {
+      const loaded = await this._pluginManager.loadByTrigger(cmdName)
+      if (loaded) {
+        cmd =
+          this._commandManager.lookupGlobalCmd(cmdName) ??
+          this._commandManager.lookupLocalCmd(cmdName, documentMode)
+      }
+    }
 
     if (!cmd) {
       throw new Error(`Command '${cmdName}' not found`)
@@ -1066,7 +1108,7 @@ export class AcApDocManager {
 
     this.editor.clearScriptInputs()
     this.editor.enqueueScriptInputs(scriptInputs)
-    void cmd.trigger(this.context).finally(() => {
+    await cmd.trigger(this.context).finally(() => {
       this.editor.clearScriptInputs()
     })
   }
@@ -1140,9 +1182,10 @@ export class AcApDocManager {
         mode: this.getDocumentEventMode(options)
       })
       this.setActiveLayout()
+      ;(this.curView as AcTrView2d).syncDisplaySysVars(doc.database)
       const db = doc.database
 
-      // Three-way fit strategy at document open time:
+      // Fit strategy at document open time:
       //
       // 1. **Paper space + has LIMMIN/LIMMAX**: frame the authoritative
       //    paper sheet rectangle (`AcDbLayout.limits`). Real-world DWGs
@@ -1152,15 +1195,8 @@ export class AcApDocManager {
       //    dominated by the largest-scale outliers and shrinks the
       //    actual paper to a grain.
       //
-      // 2. **Model space + non-empty database extents**: frame
-      //    EXTMIN/EXTMAX. Eager-zoom shortcut for the common case of
-      //    opening straight into model space; avoids waiting on the
-      //    converter (`zoomToFitDrawing` polls until entities are
-      //    converted).
-      //
-      // 3. **Fallback** (paper without limits, or model with empty
-      //    extents — typically DXF): poll `zoomToFitDrawing` and frame
-      //    the populated layout bounding box once entities land.
+      // 2. **Otherwise**: poll `zoomToFitDrawing` and frame batch-derived
+      //    geometry bounds once entities land.
       //
       // The pre-fix code used `db.extmin/db.extmax` (always model-space
       // EXTMIN/EXTMAX sysvars) even when opening into paper, landing on
@@ -1176,8 +1212,6 @@ export class AcApDocManager {
 
       if (isPaperSpaceActive && layoutLimits && !layoutLimits.isEmpty()) {
         this.curView.zoomTo(layoutLimits)
-      } else if (!isPaperSpaceActive && !db.extents.isEmpty()) {
-        this.curView.zoomTo(new AcGeBox2d(db.extmin, db.extmax))
       } else {
         this.curView.zoomToFitDrawing()
       }
@@ -1271,14 +1305,6 @@ export class AcApDocManager {
     return { ...data, percentage: this._openFileProgressPeak }
   }
 
-  private isOpenFileProgressComplete(data: AcDbProgressdEventArgs) {
-    return (
-      data.percentage >= 100 &&
-      data.subStage === 'END' &&
-      data.subStageStatus === 'END'
-    )
-  }
-
   /**
    * Shows progress animation and progress message
    * @param data - Progress data
@@ -1294,7 +1320,7 @@ export class AcApDocManager {
       this._progress.setMessage(AcApI18n.t('main.message.fetchingDrawingFile'))
     }
 
-    if (this.isOpenFileProgressComplete(data)) {
+    if (isOpenFileProgressComplete(data)) {
       this._progress.hide()
       this.resetOpenFileProgress()
     } else {
@@ -1365,11 +1391,13 @@ export class AcApDocManager {
    */
   private registerWorkers(webworkerFileUrls?: AcApWebworkerFiles) {
     this.registerConverters(webworkerFileUrls)
-    AcTrMTextRenderer.getInstance().initialize(
+    const mtextRenderer = AcTrMTextRenderer.getInstance()
+    mtextRenderer.initialize(
       webworkerFileUrls && webworkerFileUrls.mtextRender
         ? webworkerFileUrls.mtextRender
         : './assets/mtext-renderer-worker.js'
     )
+    void mtextRenderer.setDefaultFonts(DEFAULT_FONTS_PRESET)
   }
 
   /**

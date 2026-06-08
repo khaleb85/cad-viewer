@@ -3,8 +3,11 @@ export default {
     new: '新建图纸',
     open: '打开图纸',
     drawingUnits: '图形单位',
+    exportMenu: '导出',
     export: '导出为DXF',
     exportHtml: '导出为 HTML',
+    exportPdf: '导出为PDF',
+    exportSvg: '导出为 SVG',
     exportImage: '导出图片'
   },
   ribbon: {
@@ -464,6 +467,14 @@ export default {
       on: '隐藏线宽',
       off: '显示线宽'
     },
+    orthoMode: {
+      on: '关闭正交模式',
+      off: '打开正交模式'
+    },
+    polarTracking: {
+      on: '关闭极轴追踪',
+      off: '打开极轴追踪'
+    },
     theme: {
       dark: '切换到暗黑主题',
       light: '切换到明亮主题'
@@ -547,6 +558,9 @@ export default {
     loadingDwgConverter: '正在加载DWG转换器...',
     fontsNotFound: '在字体库中找不到字体：{fonts}。',
     fontsNotLoaded: '无法加载字体：{fonts}。',
+    fontMissedInDrawing:
+      '字体 "{font}" 被 {count} 个文字对象使用，但不可用，已使用 "{replacementFont}" 显示。',
+    fontMissedReplacement: '"{font}"（已用 "{replacement}" 显示）',
     failedToGetAvaiableFonts: '无法从"{url}"获取可用的字体信息！',
     failedToOpenFile: '无法打开文件"{fileName}"！',
     fetchingDrawingFile: '正在加载图纸文件...',

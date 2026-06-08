@@ -28,6 +28,9 @@ export default {
     cdxf: {
       description: 'Exports current drawing to DXF'
     },
+    cpdf: {
+      description: 'Exports current drawing to PDF'
+    },
     cecolor: {
       description: 'Sets the current default color for newly created objects'
     },
@@ -91,9 +94,16 @@ export default {
       description: 'Deletes selected entities from the drawing',
       prompt: 'Select entities'
     },
+    hideobjects: {
+      description: 'Temporarily suppresses the display of selected objects',
+      prompt: 'Select objects'
+    },
     hatch: {
       description:
         'Fills an enclosed area or selected objects with a hatch pattern'
+    },
+    ipdf: {
+      description: 'Imports vector geometry from a PDF file'
     },
     hpang: {
       description:
@@ -199,6 +209,9 @@ export default {
     lwdisplay: {
       description: 'Controls whether lineweights are displayed in the drawing'
     },
+    clearmeasurements: {
+      description: 'Removes all active measurements from the view'
+    },
     measurearea: {
       description:
         'Calculates the area and perimeter of selected objects or points'
@@ -301,8 +314,11 @@ export default {
       description:
         'Controls fractional display of coordinates when LUNITS is Architectural or Fractional'
     },
-    whitebkcolor: {
+    switchbg: {
       description: 'Toggles the drawing area background between white and black'
+    },
+    unisolateobjects: {
+      description: 'Redisplay all objects hidden by HIDEOBJECTS'
     },
     xline: {
       description:

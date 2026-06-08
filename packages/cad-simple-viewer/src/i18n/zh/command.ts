@@ -24,6 +24,9 @@ export default {
     cdxf: {
       description: '导出当前图纸为DXF格式'
     },
+    cpdf: {
+      description: '导出当前图纸为PDF格式'
+    },
     cecolor: {
       description: '设置新创建对象的当前默认颜色'
     },
@@ -83,8 +86,15 @@ export default {
       description: '从图纸中删除所选对象',
       prompt: '选择对象'
     },
+    hideobjects: {
+      description: '临时隐藏所选对象的显示',
+      prompt: '选择对象'
+    },
     hatch: {
       description: '用填充图案填充封闭区域或所选对象'
+    },
+    ipdf: {
+      description: '从 PDF 文件导入矢量几何'
     },
     hpang: {
       description: '设置新创建填充图案的默认角度（弧度）'
@@ -179,6 +189,9 @@ export default {
     lwdisplay: {
       description: '用于控制是否在图纸中显示线宽效果'
     },
+    clearmeasurements: {
+      description: '清除视图中的所有测量标注'
+    },
     measurearea: {
       description: '计算所选对象或点定义区域的面积和周长'
     },
@@ -271,8 +284,11 @@ export default {
     unitmode: {
       description: '当 LUNITS 为建筑或分数格式时，控制坐标的分数显示格式'
     },
-    whitebkcolor: {
+    switchbg: {
       description: '切换绘图区域背景颜色，在白色和黑色背景之间切换'
+    },
+    unisolateobjects: {
+      description: '重新显示 HIDEOBJECTS 隐藏的所有对象'
     },
     xline: {
       description: '创建在两个方向上无限延伸的构造线'

@@ -3,8 +3,11 @@ export default {
     new: 'New Drawing',
     open: 'Open Drawing',
     drawingUnits: 'Drawing Units',
+    exportMenu: 'Export',
     export: 'Export to DXF',
     exportHtml: 'Export to HTML',
+    exportPdf: 'Export to PDF',
+    exportSvg: 'Export to SVG',
     exportImage: 'Export to Image'
   },
   ribbon: {
@@ -500,6 +503,14 @@ export default {
       on: 'Hide line widths',
       off: 'Show line widths'
     },
+    orthoMode: {
+      on: 'Turn off ortho mode',
+      off: 'Turn on ortho mode'
+    },
+    polarTracking: {
+      on: 'Turn off polar tracking',
+      off: 'Turn on polar tracking'
+    },
     theme: {
       dark: 'Switch to light light',
       light: 'Switch to dark theme'
@@ -581,8 +592,11 @@ export default {
   message: {
     loadingFonts: 'Loading fonts ...',
     loadingDwgConverter: 'Loading DWG converter...',
-    fontsNotFound: 'Fonts "{fonts}" can not be found in font repository!',
-    fontsNotLoaded: 'Fonts "{fonts}" can not be loaded!',
+    fontsNotFound: 'Fonts {fonts} can not be found in font repository!',
+    fontsNotLoaded: 'Fonts {fonts} can not be loaded!',
+    fontMissedInDrawing:
+      'Font "{font}" is required by {count} text object(s) but is not available. Displaying with "{replacementFont}".',
+    fontMissedReplacement: '"{font}" (displaying with "{replacement}")',
     failedToGetAvaiableFonts: 'Failed to get avaiable fonts from "{url}"!',
     failedToOpenFile: 'Failed to open file "{fileName}"!',
     fetchingDrawingFile: 'Fetching file ...',

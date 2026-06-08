@@ -6,7 +6,13 @@ import { AcTrPointSymbolCreator } from '../geometry/AcTrPointSymbolCreator'
 import { AcTrEntity } from '../object'
 import { getMaterialMetadata } from '../style/AcTrMaterialMetadata'
 import { AcTrStyleManager } from '../style/AcTrStyleManager'
-import { AcTrMaterialUtil } from '../util'
+import { AcTrBufferGeometryUtil, AcTrMaterialUtil } from '../util'
+import {
+  copyHighlightObjectFlags,
+  getHighlightUserData,
+  getSceneDrawableUserData
+} from '../util/AcTrObjectUserData'
+import { isObjectHierarchyVisible } from '../util/AcTrVisibility'
 import { AcTrBatchGeometryUserData } from './AcTrBatchedGeometryInfo'
 import { AcTrBatchedLine } from './AcTrBatchedLine'
 import { AcTrBatchedLine2 } from './AcTrBatchedLine2'
@@ -277,6 +283,60 @@ export class AcTrBatchedGroup extends THREE.Group {
   }
 
   /**
+   * Computes axis-aligned bounds from packed batch vertex data and visible
+   * unbatched drawables. Prefer this over entity-level bounding boxes when
+   * framing the view — it reflects what is actually rendered in GPU buffers.
+   */
+  computeBoundingBox(
+    target = new THREE.Box3(),
+    options?: { excludeObjectIds?: ReadonlySet<string> }
+  ) {
+    target.makeEmpty()
+    const scratch = new THREE.Box3()
+
+    const unionBatchMap = (
+      map: Map<
+        number,
+        | AcTrBatchedLine
+        | AcTrBatchedLine2
+        | AcTrBatchedMesh
+        | AcTrBatchedPoint
+      >
+    ) => {
+      map.forEach(batch => {
+        batch.unionActiveVisibleBoundingBoxInto(target, options)
+      })
+    }
+
+    unionBatchMap(this._lineBatches)
+    unionBatchMap(this._lineWithIndexBatches)
+    unionBatchMap(this._line2Batches)
+    unionBatchMap(this._meshBatches)
+    unionBatchMap(this._meshWithIndexBatches)
+    unionBatchMap(this._pointBatches)
+    unionBatchMap(this._pointSymbolBatches)
+
+    this._unbatchedEntities.forEach((objects, objectId) => {
+      if (options?.excludeObjectIds?.has(objectId)) {
+        return
+      }
+      for (const child of objects) {
+        if (!child.visible) continue
+        const geometry = (
+          child as THREE.Mesh | THREE.LineSegments | THREE.Points
+        ).geometry
+        if (!geometry) continue
+        AcTrBufferGeometryUtil.safeComputeBoundingBox(geometry)
+        if (!geometry.boundingBox) continue
+        scratch.copy(geometry.boundingBox).applyMatrix4(child.matrixWorld)
+        target.union(scratch)
+      }
+    })
+
+    return target
+  }
+
+  /**
    * Clears all batched/unbatched data and disposes owned resources.
    */
   clear() {
@@ -314,10 +374,10 @@ export class AcTrBatchedGroup extends THREE.Group {
     })
     this._unbatchedObjects.traverse(object => {
       if (!('material' in object)) return
-      const userDataMaterialId = object.userData.styleMaterialId as number
-      if (userDataMaterialId === oldId) {
+      const drawableUserData = getSceneDrawableUserData(object)
+      if (drawableUserData.styleMaterialId === oldId) {
         object.material = material
-        object.userData.styleMaterialId = material.id
+        drawableUserData.styleMaterialId = material.id
       }
     })
   }
@@ -329,14 +389,82 @@ export class AcTrBatchedGroup extends THREE.Group {
    * return false.
    */
   hasEntity(objectId: string) {
-    return this._entitiesMap.has(objectId)
+    return (
+      this._entitiesMap.has(objectId) || this._unbatchedEntities.has(objectId)
+    )
+  }
+
+  /**
+   * Updates visibility for one entity without removing it from batch containers.
+   *
+   * @param objectId - Entity object id.
+   * @param visible - Desired visibility state.
+   * @returns `true` when the entity exists in this group.
+   */
+  setEntityVisible(objectId: string, visible: boolean) {
+    const entityInfo = this._entitiesMap.get(objectId)
+    const unbatchedObjects = this._unbatchedEntities.get(objectId)
+    if (!entityInfo && !unbatchedObjects) {
+      return false
+    }
+
+    entityInfo?.forEach(item => {
+      const batchedObject = this.getObjectById(
+        item.batchedObjectId
+      ) as AcTrBatchedObject
+      batchedObject?.setVisibleAt(item.batchId, visible)
+    })
+
+    unbatchedObjects?.forEach(object => {
+      object.visible = visible
+    })
+
+    if (!visible) {
+      this.unhighlight(objectId, this._selectedObjects)
+      this.unhighlight(objectId, this._hoverObjects)
+    }
+
+    return true
+  }
+
+  /**
+   * Returns the current scene visibility for one entity, or `undefined` when
+   * the entity is not present in this group.
+   */
+  getEntityVisible(objectId: string): boolean | undefined {
+    const entityInfo = this._entitiesMap.get(objectId)
+    const unbatchedObjects = this._unbatchedEntities.get(objectId)
+    if (!entityInfo && !unbatchedObjects) {
+      return undefined
+    }
+
+    let visible: boolean | undefined
+
+    if (entityInfo && entityInfo.length > 0) {
+      visible = entityInfo.every(item => this.getBatchItemVisible(item))
+    }
+
+    if (unbatchedObjects && unbatchedObjects.length > 0) {
+      const unbatchedVisible = unbatchedObjects.some(object => object.visible)
+      visible =
+        visible === undefined ? unbatchedVisible : visible && unbatchedVisible
+    }
+
+    return visible
   }
 
   /**
    * Adds one converted entity into batch/unbatched containers.
    */
   addEntity(entity: AcTrEntity) {
+    // Skip invisible entities on initial insert so invisible DWG/DXF content does
+    // not allocate batch memory. Runtime visibility toggles use setEntityVisible.
+    if (!entity.visible) {
+      return
+    }
+
     const objectId = entity.objectId
+    const entityVisible = entity.visible
     // One logical entity (same objectId) can be appended in multiple passes
     // (e.g. INSERT decomposition by source layer and inherited layer-0 bucket).
     // Keep accumulating geometry mappings instead of overwriting previous ones.
@@ -353,52 +481,60 @@ export class AcTrBatchedGroup extends THREE.Group {
 
     entity.updateMatrixWorld(true)
     entity.traverse(object => {
-      const bboxIntersectionCheck = !!object.userData.bboxIntersectionCheck
-
-      if (object instanceof LineSegments2) {
-        entityInfo.push(
-          this.addLine2(object, {
-            objectId,
-            bboxIntersectionCheck: bboxIntersectionCheck
-          })
-        )
+      // traverse() visits descendants even when an intermediate AcTrEntity is invisible.
+      if (!isObjectHierarchyVisible(object)) {
         return
       }
 
-      if (object.userData[AcTrEntity.NO_BATCH_FLAG]) {
+      const drawableUserData = getSceneDrawableUserData(object)
+      const bboxIntersectionCheck = !!drawableUserData.bboxIntersectionCheck
+
+      if (object instanceof LineSegments2) {
+        const item = this.addLine2(object, {
+          objectId,
+          bboxIntersectionCheck: bboxIntersectionCheck
+        })
+        entityInfo.push(item)
+        this.applyBatchSlotVisibility(item, entityVisible && object.visible)
+        return
+      }
+
+      if (drawableUserData.noBatch) {
         const cloned = this.cloneUnbatchedObject(object)
-        cloned.userData.bboxIntersectionCheck = bboxIntersectionCheck
+        cloned.visible = entityVisible && object.visible
+        getSceneDrawableUserData(cloned).bboxIntersectionCheck =
+          bboxIntersectionCheck
         this._unbatchedObjects.add(cloned)
         unbatchedObjects.push(cloned)
         hasUnbatched = true
         return
       }
       if (object instanceof THREE.LineSegments) {
-        entityInfo.push(
-          this.addLine(object, {
-            position: object.userData.position,
-            objectId,
-            bboxIntersectionCheck: bboxIntersectionCheck
-          })
-        )
+        const item = this.addLine(object, {
+          position: drawableUserData.position,
+          objectId,
+          bboxIntersectionCheck: bboxIntersectionCheck
+        })
+        entityInfo.push(item)
+        this.applyBatchSlotVisibility(item, entityVisible && object.visible)
       } else if (object instanceof THREE.Mesh) {
-        entityInfo.push(
-          this.addMesh(
-            object,
-            {
-              objectId,
-              bboxIntersectionCheck: bboxIntersectionCheck
-            },
-            styleManager
-          )
-        )
-      } else if (object instanceof THREE.Points) {
-        entityInfo.push(
-          this.addPoint(object, {
+        const item = this.addMesh(
+          object,
+          {
             objectId,
             bboxIntersectionCheck: bboxIntersectionCheck
-          })
+          },
+          styleManager
         )
+        entityInfo.push(item)
+        this.applyBatchSlotVisibility(item, entityVisible && object.visible)
+      } else if (object instanceof THREE.Points) {
+        const item = this.addPoint(object, {
+          objectId,
+          bboxIntersectionCheck: bboxIntersectionCheck
+        })
+        entityInfo.push(item)
+        this.applyBatchSlotVisibility(item, entityVisible && object.visible)
       }
     })
 
@@ -534,12 +670,11 @@ export class AcTrBatchedGroup extends THREE.Group {
         ) as AcTrBatchedObject
         const object = batchedObject.getObjectAt(item.batchId)
 
-        const clonedMaterial = AcTrMaterialUtil.cloneMaterial(object.material)
-        AcTrMaterialUtil.setMaterialColor(clonedMaterial)
-        object.material = clonedMaterial
-
-        object.userData.objectId = objectId
-        object.userData.disposeGeometryOnRemove =
+        this.copyHighlightMetadata(batchedObject, object)
+        this.applyHighlightMaterial(object)
+        const highlightUserData = getHighlightUserData(object)
+        highlightUserData.objectId = objectId
+        highlightUserData.disposeGeometryOnRemove =
           batchedObject instanceof AcTrBatchedLine2
         containerGroup.add(object)
       })
@@ -549,14 +684,9 @@ export class AcTrBatchedGroup extends THREE.Group {
     if (unbatchedObjects && unbatchedObjects.length < 1000) {
       unbatchedObjects.forEach(obj => {
         const highlightObj = obj.clone()
-        if (this.hasMaterial(highlightObj)) {
-          const clonedMaterial = AcTrMaterialUtil.cloneMaterial(
-            highlightObj.material
-          )
-          AcTrMaterialUtil.setMaterialColor(clonedMaterial)
-          highlightObj.material = clonedMaterial
-        }
-        highlightObj.userData.objectId = objectId
+        this.copyHighlightMetadata(obj, highlightObj)
+        this.applyHighlightMaterial(highlightObj)
+        getHighlightUserData(highlightObj).objectId = objectId
         containerGroup.add(highlightObj)
       })
     }
@@ -572,16 +702,47 @@ export class AcTrBatchedGroup extends THREE.Group {
     object.children.forEach(child => this.applyHighlightMaterial(child))
   }
 
+  private copyHighlightMetadata(
+    source: THREE.Object3D,
+    target: THREE.Object3D
+  ) {
+    copyHighlightObjectFlags(source, target)
+  }
+
   /**
    * Removes and disposes highlight objects for one entity id.
    */
   protected unhighlight(objectId: string, containerGroup: THREE.Group) {
     const objects: THREE.Object3D[] = []
     containerGroup.children.forEach(obj => {
-      if (obj.userData.objectId === objectId) objects.push(obj)
+      if (getHighlightUserData(obj).objectId === objectId) objects.push(obj)
     })
     objects.forEach(obj => this.disposeHighlightObject(obj))
     containerGroup.remove(...objects)
+  }
+
+  /**
+   * Applies entity-level visibility to one batched geometry slot.
+   *
+   * Batched geometry defaults to visible; DXF group code 60 and AcDbEntity
+   * visibility must be reflected per slot so invisible entities are not drawn.
+   */
+  private applyBatchSlotVisibility(
+    item: AcTrEntityInBatchedObject,
+    visible: boolean
+  ) {
+    const batchedObject = this.getObjectById(item.batchedObjectId) as
+      | AcTrBatchedObject
+      | undefined
+    batchedObject?.setVisibleAt(item.batchId, visible)
+  }
+
+  private getBatchItemVisible(item: AcTrEntityInBatchedObject): boolean {
+    const batchedObject = this.getObjectById(item.batchedObjectId) as
+      | (AcTrBatchedObject & { getVisibleAt(geometryId: number): boolean })
+      | AcTrBatchedPoint
+      | undefined
+    return batchedObject?.getVisibleAt(item.batchId) ?? false
   }
 
   /**
@@ -768,7 +929,7 @@ export class AcTrBatchedGroup extends THREE.Group {
    * Resolves matching line batch map by geometry/index mode.
    */
   private getMatchedLineBatches(object: THREE.LineSegments) {
-    if (object.userData.isPoint) {
+    if (getSceneDrawableUserData(object).isPoint) {
       return this._pointSymbolBatches
     } else {
       const hasIndex = object.geometry.getIndex() !== null
@@ -902,8 +1063,11 @@ export class AcTrBatchedGroup extends THREE.Group {
     }
     if (this.hasMaterial(source) && this.hasMaterial(cloned)) {
       cloned.material = source.material
-      cloned.userData.styleMaterialId =
-        source.userData.styleMaterialId ?? this.getMaterialId(source.material)
+      const sourceDrawable = getSceneDrawableUserData(source)
+      const clonedDrawable = getSceneDrawableUserData(cloned)
+      clonedDrawable.styleMaterialId =
+        sourceDrawable.styleMaterialId ?? this.getMaterialId(source.material)
+      clonedDrawable.bakedWorldMatrix = source.matrixWorld.toArray()
     }
     cloned.position.set(0, 0, 0)
     cloned.rotation.set(0, 0, 0)
@@ -949,7 +1113,7 @@ export class AcTrBatchedGroup extends THREE.Group {
         source.getAttribute('instanceColorEnd').clone()
       )
     }
-    geometry.computeBoundingBox()
+    AcTrBufferGeometryUtil.safeComputeBoundingBox(geometry)
     geometry.computeBoundingSphere()
     return geometry
   }
@@ -986,7 +1150,10 @@ export class AcTrBatchedGroup extends THREE.Group {
         material.dispose()
       }
     }
-    if (this.hasGeometry(object) && object.userData.disposeGeometryOnRemove) {
+    if (
+      this.hasGeometry(object) &&
+      getHighlightUserData(object).disposeGeometryOnRemove
+    ) {
       object.geometry.dispose()
     }
   }

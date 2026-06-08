@@ -1,14 +1,13 @@
 {
   "name": "@mlightcad/cad-simple-viewer-example",
   "private": true,
-  "version": "1.5.1",
+  "version": "1.5.5",
   "type": "module",
   "repository": {
     "type": "git",
     "url": "https://github.com/mlightcad/cad-viewer.git"
   },
   "scripts": {
-    "prebuild": "pnpm --filter @mlightcad/cad-html-exporter build",
     "build": "tsc && vite build",
     "clean": "rimraf dist lib tsconfig.tsbuildinfo",
     "dev": "vite",
@@ -17,9 +16,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@mlightcad/cad-html-exporter": "workspace:*",
+    "@mlightcad/cad-html-plugin": "workspace:*",
+    "@mlightcad/cad-pdf-plugin": "workspace:*",
+    "@mlightcad/cad-svg-plugin": "workspace:*",
     "@mlightcad/cad-simple-viewer": "workspace:*",
-    "@mlightcad/data-model": "^1.7.40",
+    "@mlightcad/data-model": "^1.8.3",
+    "lodash-es": "4.17.21",
     "three": "^0.172.0"
   }
 }

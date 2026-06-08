@@ -5,7 +5,7 @@ import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js'
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js'
 
 import { AcTrStyleManager } from '../style/AcTrStyleManager'
-import { AcTrBufferGeometryUtil } from '../util'
+import { AcTrBufferGeometryUtil, getSceneDrawableUserData } from '../util'
 import { AcTrEntity } from './AcTrEntity'
 
 export class AcTrLineSegments extends AcTrEntity {
@@ -49,7 +49,7 @@ export class AcTrLineSegments extends AcTrEntity {
       this.box.copy(box)
 
       const line = new LineSegments2(lineGeometry, material)
-      line.userData.styleMaterialId = material.id
+      getSceneDrawableUserData(line).styleMaterialId = material.id
       this.add(line)
       return
     }
@@ -60,8 +60,10 @@ export class AcTrLineSegments extends AcTrEntity {
       new THREE.BufferAttribute(array, itemSize)
     )
     geometry.setIndex(new THREE.BufferAttribute(indices, 1))
-    geometry.computeBoundingBox()
-    this.box = geometry.boundingBox!
+    const boundingBox = AcTrBufferGeometryUtil.safeComputeBoundingBox(geometry)
+    if (boundingBox) {
+      this.box = boundingBox
+    }
 
     const line = new THREE.LineSegments(geometry, material)
     AcTrBufferGeometryUtil.computeLineDistances(line)

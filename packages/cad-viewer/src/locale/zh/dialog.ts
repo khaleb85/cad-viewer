@@ -11,7 +11,8 @@ export default {
     replace: '替换',
     missedFont: '缺失字体',
     replacedFont: '替换字体',
-    selectFont: '选择要替换的字体'
+    selectFont: '选择要替换的字体',
+    matchFontType: '使用相同类型的字体进行替换（SHX 替换 SHX，mesh 替换 mesh）'
   },
   pointStyleDlg: {
     title: '点样式',
@@ -104,5 +105,37 @@ export default {
     previewResult: '匹配对象: {count} / 候选对象: {total}',
     valueRequired: '请先设置筛选值',
     selectionResult: '已匹配 {count} 个对象并应用到选择集'
+  },
+  textStyleDlg: {
+    title: '文字样式',
+    currentStyle: '当前文字样式: {name}',
+    styles: '样式',
+    fontSection: '字体',
+    fontName: '字体名(F):',
+    fontStyle: '字体样式(Y):',
+    useBigFont: '使用大字体(U)',
+    bigFontName: '大字体:',
+    sizeSection: '大小',
+    textHeight: '高度(T):',
+    effectsSection: '效果',
+    upsideDown: '颠倒(E)',
+    backwards: '反向(K)',
+    vertical: '垂直(V)',
+    widthFactor: '宽度因子(W):',
+    obliqueAngle: '倾斜角度(O):',
+    setCurrent: '置为当前(C)',
+    new: '新建(N)...',
+    delete: '删除(D)',
+    newTitle: '新建文字样式',
+    newStyleName: '样式名称:',
+    newPrompt: '输入新文字样式名称:',
+    newNameRequired: '请输入文字样式名称。',
+    deleteTitle: '删除文字样式',
+    deleteConfirm: '是否删除文字样式 "{name}"？',
+    invalidName: '样式名称不能包含 ;=<>`\\/,',
+    duplicateName: '已存在同名的文字样式。',
+    created: '已创建文字样式 "{name}"。',
+    deleted: '已删除文字样式 "{name}"。',
+    setCurrentDone: '当前文字样式已设为 "{name}"。'
   }
 }

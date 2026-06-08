@@ -20,6 +20,7 @@ class MockAcApFontLoader {
 
 const mockInitialize = jest.fn()
 const mockSetRenderMode = jest.fn()
+const mockSetDefaultFonts = jest.fn(() => Promise.resolve())
 
 jest.mock('../src/app/AcApFontLoader', () => ({
   AcApFontLoader: MockAcApFontLoader
@@ -29,7 +30,8 @@ jest.mock('@mlightcad/three-renderer', () => ({
   AcTrMTextRenderer: {
     getInstance: jest.fn(() => ({
       initialize: mockInitialize,
-      setRenderMode: mockSetRenderMode
+      setRenderMode: mockSetRenderMode,
+      setDefaultFonts: mockSetDefaultFonts
     }))
   }
 }))
@@ -121,12 +123,11 @@ jest.mock('../src/command', () => {
     'AcApClearMeasurementsCmd',
     'AcApConvertToDxfCmd',
     'AcApConvertToPngCmd',
-    'AcApConvertToSvgCmd',
-    'AcApExportHtmlCmd',
     'AcApCopyCmd',
     'AcApDimLinearCmd',
     'AcApEllipseCmd',
     'AcApEraseCmd',
+    'AcApHideObjectsCmd',
     'AcApHatchCmd',
     'AcApLayerCloseCmd',
     'AcApLayerCmd',
@@ -170,6 +171,7 @@ jest.mock('../src/command', () => {
     'AcApSplineCmd',
     'AcApSwitchBgCmd',
     'AcApSysVarCmd',
+    'AcApUnisolateObjectsCmd',
     'AcApXLineCmd',
     'AcApZoomCmd'
   ]
@@ -223,6 +225,7 @@ describe('AcApDocManager font URL configuration', () => {
     mockFontLoaderInstances.length = 0
     mockInitialize.mockClear()
     mockSetRenderMode.mockClear()
+    mockSetDefaultFonts.mockClear()
   })
 
   it('configures the font loader to download fonts from the custom base URL', async () => {
@@ -237,5 +240,14 @@ describe('AcApDocManager font URL configuration', () => {
 
     expect(mockFontLoaderInstances[0].baseUrl).toBe(`${baseUrl}fonts/`)
     expect(mockFontLoaderInstances[0].load).toHaveBeenCalledWith(['simkai'])
+  })
+
+  it('syncs the default fonts preset to the mtext renderer after worker init', () => {
+    AcApDocManager.createInstance({
+      notLoadDefaultFonts: true
+    })
+
+    expect(mockInitialize).toHaveBeenCalled()
+    expect(mockSetDefaultFonts).toHaveBeenCalledWith('modern')
   })
 })

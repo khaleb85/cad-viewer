@@ -130,7 +130,10 @@ export class AcTrScene {
    * The bounding box of the visibile objects in this secene
    */
   get box() {
-    return this.activeLayout?.box
+    const layout = this.activeLayout
+    if (!layout) return undefined
+    const box = layout.box
+    return box.isEmpty() ? undefined : box
   }
 
   /**
@@ -440,5 +443,43 @@ export class AcTrScene {
       if (layout.updateEntity(entity)) return true
     }
     return false
+  }
+
+  /**
+   * Returns true when the entity is present in any layout.
+   */
+  hasEntity(objectId: AcDbObjectId) {
+    for (const [_, layout] of this._layouts) {
+      if (layout.hasEntity(objectId)) {
+        return true
+      }
+    }
+    return false
+  }
+
+  /**
+   * Updates entity visibility without rebuilding batched geometry.
+   */
+  setEntityVisible(objectId: AcDbObjectId, visible: boolean) {
+    let updated = false
+    for (const [_, layout] of this._layouts) {
+      if (layout.setEntityVisible(objectId, visible)) {
+        updated = true
+      }
+    }
+    return updated
+  }
+
+  /**
+   * Returns the current scene visibility for one entity.
+   */
+  getEntityVisible(objectId: AcDbObjectId) {
+    for (const [_, layout] of this._layouts) {
+      const visible = layout.getEntityVisible(objectId)
+      if (visible !== undefined) {
+        return visible
+      }
+    }
+    return undefined
   }
 }
