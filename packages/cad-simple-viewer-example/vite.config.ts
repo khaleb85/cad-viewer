@@ -3,7 +3,6 @@ import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { defineConfig } from 'vite'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
-import { exampleRollupOutput } from '../vite-config/pluginRollupOutput'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -32,7 +31,16 @@ export default defineConfig(() => {
         input: {
           main: resolve(__dirname, 'index.html')
         },
-        output: exampleRollupOutput
+        // Coordly deploys this example as a single self-contained
+        // `initCoordlyViewer.js`. Inline everything into one bundle instead of
+        // using the upstream `exampleRollupOutput` manual chunking, which would
+        // split `cad-simple-viewer` into a separate chunk the deploy can't load.
+        output: {
+          inlineDynamicImports: true,
+          entryFileNames: 'assets/[name]-[hash].js',
+          chunkFileNames: 'assets/[name]-[hash].js',
+          assetFileNames: 'assets/[name]-[hash][extname]'
+        }
       }
     },
     plugins: [
