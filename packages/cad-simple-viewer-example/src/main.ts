@@ -5,7 +5,12 @@ import {
   AcEdOpenMode,
   AcEdSelectionEventArgs
 } from '@mlightcad/cad-simple-viewer'
-import { acdbHostApplicationServices, AcDbObjectId } from '@mlightcad/data-model'
+import {
+  AcDbDatabase,
+  acdbHostApplicationServices,
+  AcDbObjectId,
+  AcDbUnitsValue
+} from '@mlightcad/data-model'
 
 interface CadLayerInfo {
   name: string;
@@ -26,10 +31,24 @@ interface CadLayoutInfo {
   isActive: boolean;
 }
 
+type CadPropertyType =
+  | 'array'
+  | 'string'
+  | 'int'
+  | 'float'
+  | 'enum'
+  | 'color'
+  | 'transparency'
+  | 'layer'
+  | 'linetype'
+  | 'lineweight'
+  | 'boolean'
+
 interface CadPropertyItem {
   label: string;
   value: string;
-  units?: string;
+  rawValue: number | string | boolean | null;
+  propertyType: CadPropertyType;
 }
 
 interface CadPropertyCategory {
@@ -43,6 +62,19 @@ interface CadSelectedEntity {
   layer: string;
   objectId: string;
   categories: CadPropertyCategory[];
+}
+
+interface CadDocumentUnits {
+  insunits: number;
+  insunitsName: string;
+  measurement: 'imperial' | 'metric';
+  unitSuffix: string;
+}
+
+interface CadSelectionData {
+  entities: CadSelectedEntity[];
+  count: number;
+  units: CadDocumentUnits;
 }
 
 class CadViewerApp {
@@ -166,8 +198,25 @@ class CadViewerApp {
             layer.isLocked = locked
             window.dispatchEvent(new CustomEvent('cad-layers-changed'))
           },
+          getSelectedEntitiesProperties: (): CadSelectionData | null => {
+            return this.buildSelectionData()
+          },
+          /**
+           * @deprecated Use getSelectedEntitiesProperties() instead.
+           */
           getSelectedEntityProperties: (): CadSelectedEntity | null => {
-            return this.buildEntityData()
+            const data = this.buildSelectionData()
+            return data?.entities[data.entities.length - 1] ?? null
+          },
+          formatLength: (value: number): string => {
+            const db = AcApDocManager.instance.curDocument?.database
+            if (!db) return String(value)
+            return this.formatLengthSafe(db, value)
+          },
+          getDocumentUnits: (): CadDocumentUnits | null => {
+            const db = AcApDocManager.instance.curDocument?.database
+            if (!db) return null
+            return this.getDocumentUnits(db)
           }
         }
 
@@ -178,19 +227,10 @@ class CadViewerApp {
     }
   }
 
-  private buildEntityData(targetId?: AcDbObjectId): CadSelectedEntity | null {
-    const db = AcApDocManager.instance.curDocument?.database
-    if (!db) return null
-
-    let id = targetId
-    if (!id) {
-      const view = AcApDocManager.instance.curView
-      if (!view) return null
-      const ids: AcDbObjectId[] = view.selectionSet.ids
-      if (!ids || ids.length === 0) return null
-      id = ids[ids.length - 1]
-    }
-
+  private buildSingleEntityData(
+    db: AcDbDatabase,
+    id: AcDbObjectId
+  ): CadSelectedEntity | null {
     const entity = db.tables.blockTable.modelSpace.getIdAt(id)
     if (!entity) return null
 
@@ -203,23 +243,7 @@ class CadViewerApp {
       for (const group of props.groups) {
         const properties: CadPropertyItem[] = []
         for (const prop of group.properties) {
-          let value = ''
-          try {
-            const raw = prop.accessor?.get()
-            if (raw !== undefined && raw !== null) {
-              if (typeof raw === 'object' && raw.cssColor) {
-                value = raw.cssColor
-              } else {
-                value = String(raw)
-              }
-            }
-          } catch {
-            value = ''
-          }
-          properties.push({
-            label: prop.name,
-            value
-          })
+          properties.push(this.buildPropertyItem(db, prop))
         }
         if (properties.length > 0) {
           categories.push({
@@ -235,11 +259,19 @@ class CadViewerApp {
       categories.push({
         categoryName: 'Geral',
         properties: [
-          { label: 'Tipo', value: entity.type },
-          { label: 'Layer', value: entity.layer },
-          { label: 'Cor', value: entity.color?.toString() || '' },
-          { label: 'Tipo de Linha', value: entity.lineType || '' },
-          { label: 'Espessura', value: String(entity.lineWeight ?? '') }
+          this.makeFallbackItem('Tipo', entity.type, 'string'),
+          this.makeFallbackItem('Layer', entity.layer, 'layer'),
+          this.makeFallbackItem(
+            'Cor',
+            entity.color?.toString() ?? '',
+            'color'
+          ),
+          this.makeFallbackItem('Tipo de Linha', entity.lineType ?? '', 'linetype'),
+          this.makeFallbackItem(
+            'Espessura',
+            entity.lineWeight ?? null,
+            'lineweight'
+          )
         ]
       })
     }
@@ -252,10 +284,161 @@ class CadViewerApp {
     }
   }
 
-  private emitSelectionChanged(entity: CadSelectedEntity | null) {
-    window.dispatchEvent(new CustomEvent('cad-selection-changed', {
-      detail: { entity }
-    }))
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private buildPropertyItem(db: AcDbDatabase, prop: any): CadPropertyItem {
+    const propertyType: CadPropertyType = (prop.type ?? 'string') as CadPropertyType
+    let rawValue: number | string | boolean | null = null
+    let value = ''
+
+    try {
+      const raw = prop.accessor?.get()
+      if (raw !== undefined && raw !== null) {
+        if (typeof raw === 'object') {
+          // Color and other object-shaped values fall back to a CSS / string repr
+          if ('cssColor' in raw && typeof raw.cssColor === 'string') {
+            value = raw.cssColor
+            rawValue = raw.cssColor
+          } else if (typeof raw.toString === 'function') {
+            value = String(raw)
+            rawValue = value
+          } else {
+            value = ''
+            rawValue = null
+          }
+        } else if (typeof raw === 'number') {
+          rawValue = raw
+          value =
+            propertyType === 'float' || propertyType === 'int'
+              ? this.formatLengthSafe(db, raw)
+              : String(raw)
+        } else if (typeof raw === 'boolean') {
+          rawValue = raw
+          value = raw ? 'True' : 'False'
+        } else {
+          rawValue = String(raw)
+          value = String(raw)
+        }
+      }
+    } catch {
+      value = ''
+      rawValue = null
+    }
+
+    return {
+      label: prop.name,
+      value,
+      rawValue,
+      propertyType
+    }
+  }
+
+  private makeFallbackItem(
+    label: string,
+    raw: number | string | boolean | null,
+    propertyType: CadPropertyType
+  ): CadPropertyItem {
+    return {
+      label,
+      value: raw === null || raw === undefined ? '' : String(raw),
+      rawValue: raw,
+      propertyType
+    }
+  }
+
+  private formatLengthSafe(db: AcDbDatabase, value: number): string {
+    try {
+      return db.formatter.formatLength(value, { showUnits: true })
+    } catch {
+      return String(value)
+    }
+  }
+
+  private getDocumentUnits(db: AcDbDatabase): CadDocumentUnits {
+    const insunits = db.insunits
+    const insunitsName = AcDbUnitsValue[insunits] ?? 'Undefined'
+    const measurement: 'imperial' | 'metric' =
+      db.measurement === 1 ? 'metric' : 'imperial'
+
+    let unitSuffix = ''
+    try {
+      const sample = db.formatter.formatLength(1, { showUnits: true })
+      // strip leading numeric / sign / fractional parts; keep the unit chars
+      unitSuffix = sample.replace(/^[\s\d.,'"+-/]+/, '').trim()
+    } catch {
+      unitSuffix = ''
+    }
+
+    return {
+      insunits,
+      insunitsName,
+      measurement,
+      unitSuffix
+    }
+  }
+
+  private buildSelectionData(ids?: AcDbObjectId[]): CadSelectionData | null {
+    const db = AcApDocManager.instance.curDocument?.database
+    if (!db) return null
+
+    let resolvedIds = ids
+    if (!resolvedIds) {
+      const view = AcApDocManager.instance.curView
+      if (!view) return null
+      resolvedIds = view.selectionSet.ids
+    }
+
+    const units = this.getDocumentUnits(db)
+
+    if (!resolvedIds || resolvedIds.length === 0) {
+      return {
+        entities: [],
+        count: 0,
+        units
+      }
+    }
+
+    const entities: CadSelectedEntity[] = []
+    for (const id of resolvedIds) {
+      const entity = this.buildSingleEntityData(db, id)
+      if (entity) entities.push(entity)
+    }
+
+    return {
+      entities,
+      count: entities.length,
+      units
+    }
+  }
+
+  private emitSelectionChanged(data: CadSelectionData | null) {
+    const payload = data ?? {
+      entities: [],
+      count: 0,
+      units: this.getEmptyUnits()
+    }
+    window.dispatchEvent(
+      new CustomEvent('cad-selection-changed', {
+        detail: {
+          entities: payload.entities,
+          count: payload.count,
+          units: payload.units,
+          // legacy field — first entity only (or null)
+          entity: payload.entities[0] ?? null
+        }
+      })
+    )
+  }
+
+  private getEmptyUnits(): CadDocumentUnits {
+    const db = AcApDocManager.instance.curDocument?.database
+    return db
+      ? this.getDocumentUnits(db)
+      : {
+          insunits: 0,
+          insunitsName: 'Undefined',
+          measurement: 'metric',
+          unitSuffix: ''
+        }
   }
 
   private setupSelectionEvents() {
@@ -264,21 +447,12 @@ class CadViewerApp {
 
     const events = view.selectionSet.events
 
-    events.selectionAdded.addEventListener((args: AcEdSelectionEventArgs) => {
-      const addedIds = args.ids
-      const targetId = addedIds && addedIds.length > 0
-        ? addedIds[addedIds.length - 1]
-        : undefined
-      this.emitSelectionChanged(this.buildEntityData(targetId))
+    events.selectionAdded.addEventListener((_args: AcEdSelectionEventArgs) => {
+      this.emitSelectionChanged(this.buildSelectionData())
     })
 
     events.selectionRemoved.addEventListener(() => {
-      const ids: AcDbObjectId[] = view.selectionSet.ids
-      if (!ids || ids.length === 0) {
-        this.emitSelectionChanged(null)
-      } else {
-        this.emitSelectionChanged(this.buildEntityData())
-      }
+      this.emitSelectionChanged(this.buildSelectionData())
     })
   }
 
