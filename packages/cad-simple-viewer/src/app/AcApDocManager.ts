@@ -177,8 +177,15 @@ export interface AcApWebworkerFiles {
   mtextRender?: string | URL
 }
 
-/** AutoCAD-era default font fallback chain used when glyphs are missing. */
-const DEFAULT_FONTS_PRESET = 'modern' as const
+/**
+ * AutoCAD-era default font fallback chain used when glyphs are missing.
+ *
+ * Coordly drawings are predominantly Latin (pt-BR), so we use the
+ * `international` preset (`txt`, `simplex`, `romans`, `simsun`) which leads with
+ * Latin SHX fonts — keeping `simplex` as the FONTALT fallback — instead of the
+ * upstream CJK-first `modern` preset.
+ */
+const DEFAULT_FONTS_PRESET = 'international' as const
 
 /**
  * Options for creating AcApDocManager instance
@@ -438,11 +445,6 @@ export class AcApDocManager {
 
     this._fontLoader = new AcApFontLoader()
     this._fontLoader.baseUrl = this._baseUrl + 'fonts/'
-    // Eagerly load the fallback font so it is ready as soon as a DWG with
-    // missing fonts is opened.
-    this._fontLoader.load(['simplex']).catch(() => {
-      /* ignored */
-    })
     acdbHostApplicationServices().workingDatabase = doc.database
 
     this._commandManager = new AcEdCommandStack()

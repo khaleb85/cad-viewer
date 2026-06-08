@@ -248,6 +248,7 @@ describe('AcApDocManager font URL configuration', () => {
     })
 
     expect(mockInitialize).toHaveBeenCalled()
-    expect(mockSetDefaultFonts).toHaveBeenCalledWith('modern')
+    // Coordly uses the Latin-first `international` preset (see DEFAULT_FONTS_PRESET).
+    expect(mockSetDefaultFonts).toHaveBeenCalledWith('international')
   })
 })
