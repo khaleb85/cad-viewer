@@ -40,6 +40,54 @@ A minimal, lightweight CAD viewer focusing on core functionality.
 - LibreDWG WebAssembly
 - Modern ES2020+ features
 
+### 3. Zero-build CDN Bootstrap (`/cdn-bootstrap/cad-viewer.html`)
+
+A single HTML file that loads `@mlightcad/cad-viewer` from jsDelivr — no Node, Vite, or local `node_modules`. The landing page is a plain file picker; Vue is only used to mount the viewer.
+
+**Features:**
+- Import map + in-browser rewrite of the published `cad-viewer.js` bundle
+- Minimal DWG/DXF upload (no open-options UI)
+- LibreDWG DWG parser via a blob module worker that imports the jsDelivr script; MTEXT uses main-thread rendering
+- Useful as a drop-in CDN host, not as a full product UI reference
+
+Serve over HTTP(S); `file://` will not work for ES module CDN imports.
+
+### 4. Self-Contained Offline HTML
+
+Two complementary demos of the HTML export pipeline.
+
+#### Convert your drawing (`/cad-simple-viewer/html-converter.html`)
+
+A browser-only converter: upload a local DWG/DXF (or open the sample canteen drawing), adjust export options in the UI, and download a self-contained HTML file. Parsing, rendering, and packaging stay in the tab — there is no conversion backend.
+
+**Options (same as the full viewer HTML export dialog):**
+- Export invisible (off/frozen) layers
+- Export paper-space layouts
+- Initial view: zoom to extents, or the viewport saved in the drawing
+- Viewer mode: view-only, or measure & review
+
+#### Canteen sample (`/self-contained-html/canteen.html`)
+
+A single-file HTML export of the sample **canteen.dwg** drawing, produced by `cad-simple-viewer-cli`.
+
+**Why it matters:**
+- One portable `.html` file — no CAD app, server, or cad-viewer install for recipients
+- Opens offline in any modern browser with pan, zoom, layers, and measurement
+- Very low memory usage compared with desktop CAD viewers when opening the same sample drawing [`canteen.dwg`](https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/data/canteen.dwg):
+
+| Viewer | Memory consumption |
+|--------|-------------|
+| AutoCAD 2020 | 320 MB |
+| GstarCAD Viewer (浩辰看图王) | 246 MB |
+| Self-contained HTML (measure mode) | 56 MB |
+| Self-contained HTML (view mode) | 33 MB |
+
+View mode uses about **83% less memory than AutoCAD 2020** and **77% less than GstarCAD Viewer**.
+
+**How it is built:**
+- CI on `main` downloads `canteen.dwg` from cad-data and runs `exportDemoHtml.js`
+- Locally: `pnpm export:demo-html` from this package after `pnpm build`
+
 ## Getting Started
 
 ### Prerequisites
@@ -71,6 +119,24 @@ The examples will be available at:
 - Main index: `http://localhost:3000`
 - CAD Viewer Demo: `http://localhost:3000/cad-viewer/`
 - CAD Simple Viewer Demo: `http://localhost:3000/cad-simple-viewer/`
+- CDN bootstrap (zero-build): `http://localhost:3000/cdn-bootstrap/cad-viewer.html`
+- HTML converter (upload DWG/DXF in the browser): `http://localhost:3000/cad-simple-viewer/html-converter.html`
+- Self-contained HTML demo: `http://localhost:3000/self-contained-html/canteen.html` (generate first with `pnpm export:demo-html`)
+
+### Self-Contained HTML Demo
+
+The landing page includes an **in-browser converter** at `/cad-simple-viewer/html-converter.html` (copied from `@mlightcad/cad-simple-viewer-example` by `pnpm pre-serve`). Upload a DWG/DXF, adjust options, and download HTML without a backend.
+
+The **canteen sample** offline HTML file is built from [`canteen.dwg`](https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/data/canteen.dwg) using [`@mlightcad/cad-simple-viewer-cli`](../cad-simple-viewer-cli). GitHub Actions on the `main` branch runs this step automatically before deploying to GitHub Pages.
+
+To generate the file locally (requires a built workspace and Playwright Chromium or system Chrome via `PLAYWRIGHT_BROWSER_CHANNEL=chrome`):
+
+```bash
+pnpm build
+cd packages/examples
+pnpm export:demo-html
+pnpm serve
+```
 
 ## Development Workflow
 
@@ -102,8 +168,11 @@ packages/examples/
 │   ├── sitemap.xml             # Search engine sitemap
 │   ├── llms.txt                # LLM-friendly project summary
 │   ├── cad-viewer/             # Full CAD viewer demo
-│   └── cad-simple-viewer/      # Simple CAD viewer demo
+│   ├── cad-simple-viewer/      # Simple CAD viewer demo + in-browser HTML converter
+│   ├── cdn-bootstrap/          # Zero-build CDN single-HTML bootstrap
+│   └── self-contained-html/    # Offline HTML export demo (CI / export:demo-html)
 ├── copyDist.js                 # Script to copy built examples
+├── exportDemoHtml.js           # Build offline HTML demo via cad-simple-viewer-cli
 ├── package.json                # Package configuration
 └── README.md                   # This file
 ```
@@ -111,6 +180,7 @@ packages/examples/
 ## Scripts
 
 - `pre-serve`: Copies built examples from individual packages to the public directory
+- `export:demo-html`: Exports the canteen.dwg sample to a self-contained HTML file
 - `serve`: Starts a local server to serve the examples
 
 ## Use Cases

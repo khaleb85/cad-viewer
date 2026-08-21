@@ -2,16 +2,16 @@ export default {
   arc: {
     startPointOrCenter: '指定圆弧的起点或',
     secondPointOrOptions: '指定圆弧上的第二点或',
-    secondPoint: '指定圆弧上的第二点：',
-    startPoint: '指定圆弧的起点：',
-    centerPoint: '指定圆弧的圆心：',
-    endPoint: '指定圆弧的端点：',
+    secondPoint: '指定圆弧上的第二点',
+    startPoint: '指定圆弧的起点',
+    centerPoint: '指定圆弧的圆心',
+    endPoint: '指定圆弧的端点',
     endPointOrOptions: '指定圆弧的端点或',
     centerPointOrOptions: '指定圆弧的圆心或',
-    includedAngle: '指定圆弧的夹角：',
-    chordLength: '指定圆弧的弦长：',
-    tangentDirection: '指定圆弧起点的切线方向：',
-    radius: '指定圆弧的半径：',
+    includedAngle: '指定圆弧的夹角',
+    chordLength: '指定圆弧的弦长',
+    tangentDirection: '指定圆弧起点的切线方向',
+    radius: '指定圆弧的半径',
     keywords: {
       center: {
         display: '圆心(C)',
@@ -54,16 +54,16 @@ export default {
     }
   },
   circle: {
-    center: '指定圆的圆心：',
+    center: '指定圆的圆心',
     centerOrOptions: '指定圆的圆心或',
-    radius: '指定圆的半径：',
+    radius: '指定圆的半径',
     radiusOrDiameter: '指定圆的半径或',
-    diameter: '指定圆的直径：',
-    twoPointFirst: '指定圆直径的第一个端点：',
-    twoPointSecond: '指定圆直径的第二个端点：',
-    threePointFirst: '指定圆上的第一个点：',
-    threePointSecond: '指定圆上的第二个点：',
-    threePointThird: '指定圆上的第三个点：',
+    diameter: '指定圆的直径',
+    twoPointFirst: '指定圆直径的第一个端点',
+    twoPointSecond: '指定圆直径的第二个端点',
+    threePointFirst: '指定圆上的第一个点',
+    threePointSecond: '指定圆上的第二个点',
+    threePointThird: '指定圆上的第三个点',
     keywords: {
       threeP: {
         display: '三点(3P)',
@@ -87,9 +87,9 @@ export default {
     displacementOrArray: '指定位移或',
     secondPointOrArray: '指定第二个点或',
     modePrompt: '输入复制模式选项',
-    arrayItemCount: '输入阵列中的项目数（包括原对象）：',
+    arrayItemCount: '输入阵列中的项目数（包括原对象）',
     arraySecondPointOrFit: '指定第二个点或',
-    arrayFitSecondPoint: '指定第二个点：',
+    arrayFitSecondPoint: '指定第二个点',
     keywords: {
       displacement: {
         display: '位移(D)',
@@ -124,20 +124,20 @@ export default {
     }
   },
   dimlinear: {
-    xLine1Point: '指定第一条尺寸界限原点：',
-    xLine2Point: '指定第二条尺寸界限原点：',
-    dimLinePoint: '指定尺寸线位置：'
+    xLine1Point: '指定第一条尺寸界限原点',
+    xLine2Point: '指定第二条尺寸界限原点',
+    dimLinePoint: '指定尺寸线位置'
   },
   ellipse: {
     axisEndpointOrOptions: '指定椭圆的轴端点或',
     arcAxisEndpointOrCenter: '指定椭圆弧的轴端点或',
-    center: '指定椭圆中心点：',
-    firstAxisEndpoint: '指定轴的端点：',
-    secondAxisEndpoint: '指定轴的另一个端点：',
+    center: '指定椭圆中心点',
+    firstAxisEndpoint: '指定轴的端点',
+    secondAxisEndpoint: '指定轴的另一个端点',
     otherAxisOrRotation: '指定到另一轴的距离或',
-    rotationAngle: '指定绕长轴的旋转角度：',
-    arcStartAngle: '指定椭圆弧起始角：',
-    arcEndAngle: '指定椭圆弧终止角：',
+    rotationAngle: '指定绕长轴的旋转角度',
+    arcStartAngle: '指定椭圆弧起始角',
+    arcEndAngle: '指定椭圆弧终止角',
     keywords: {
       arc: {
         display: '圆弧(A)',
@@ -163,11 +163,11 @@ export default {
   },
   hatch: {
     prompt: '选择边界对象或',
-    pickPoint: '指定内部点（或按 Enter 结束）：',
-    select: '选择要填充的对象：',
-    patternName: '输入填充图案名称：',
-    scale: '指定填充图案比例：',
-    angle: '指定填充图案角度：',
+    pickPoint: '指定内部点（或按 Enter 结束）',
+    select: '选择要填充的对象',
+    patternName: '输入填充图案名称',
+    scale: '指定填充图案比例',
+    angle: '指定填充图案角度',
     style: '输入填充样式',
     associative: '指定关联性',
     invalidBoundary: '所选对象无法构成闭合边界。',
@@ -244,24 +244,35 @@ export default {
     restored: '个对象已恢复显示',
     nothingToRestore: '没有可恢复显示的对象'
   },
+  entout: {
+    longSidePrompt: '输入预览图长边像素尺寸',
+    exported: '个对象预览已导出',
+    skipped: '个对象已跳过',
+    failed: {
+      'no-preview-root': '无法为所选对象构建预览几何',
+      'no-bounds': '无法计算所选对象的预览范围',
+      'capture-failed': '无法渲染实体预览图',
+      'download-failed': '预览已渲染，但 PNG 下载失败'
+    }
+  },
   layer: {
     main: '输入选项',
     listSummary: '图层列表已输出到浏览器控制台',
     emptyInput: '未输入图层名。',
-    newPrompt: '输入新建图层名称（可用逗号分隔多个）：',
-    makePrompt: '输入要创建并设为当前的图层名：',
-    setPrompt: '输入要设为当前的图层名：',
-    onPrompt: '输入要打开的图层名：',
-    offPrompt: '输入要关闭的图层名：',
-    freezePrompt: '输入要冻结的图层名：',
-    thawPrompt: '输入要解冻的图层名：',
-    lockPrompt: '输入要锁定的图层名：',
-    unlockPrompt: '输入要解锁的图层名：',
-    colorLayerPrompt: '输入要修改颜色的图层名：',
-    colorValuePrompt: '输入颜色（ACI 1-255、RGB 如 255,0,0 或颜色名）：',
+    newPrompt: '输入新建图层名称（可用逗号分隔多个）',
+    makePrompt: '输入要创建并设为当前的图层名',
+    setPrompt: '输入要设为当前的图层名',
+    onPrompt: '输入要打开的图层名',
+    offPrompt: '输入要关闭的图层名',
+    freezePrompt: '输入要冻结的图层名',
+    thawPrompt: '输入要解冻的图层名',
+    lockPrompt: '输入要锁定的图层名',
+    unlockPrompt: '输入要解锁的图层名',
+    colorLayerPrompt: '输入要修改颜色的图层名',
+    colorValuePrompt: '输入颜色（ACI 1-255、RGB 如 255,0,0 或颜色名）',
     invalidColor: '颜色输入无效。',
-    descriptionLayerPrompt: '输入要修改说明的图层名：',
-    descriptionValuePrompt: '输入新的图层说明：',
+    descriptionLayerPrompt: '输入要修改说明的图层名',
+    descriptionValuePrompt: '输入新的图层说明',
     created: '已创建图层数量',
     alreadyExists: '图层已存在',
     notFound: '未找到图层',
@@ -531,9 +542,9 @@ export default {
     noPreviousState: '没有可恢复的先前图层状态。'
   },
   line: {
-    firstPoint: '指定第一个点：',
+    firstPoint: '指定第一个点',
     firstPointOrContinue: '请指定第一个点或',
-    nextPoint: '指定下一个点：',
+    nextPoint: '指定下一个点',
     nextPointWithOptions: '请指定下一个点或',
     keywords: {
       continue: {
@@ -555,9 +566,9 @@ export default {
   },
   xline: {
     firstPointOrOptions: '指定点或',
-    secondPoint: '指定第二个点：',
-    throughPoint: '指定穿过点：',
-    angle: '输入构造线角度：',
+    secondPoint: '指定第二个点',
+    throughPoint: '指定穿过点',
+    angle: '输入构造线角度',
     invalidDirection: 'XLINE 的方向无效。',
     keywords: {
       hor: {
@@ -578,17 +589,17 @@ export default {
     }
   },
   ray: {
-    startPoint: '指定起点：',
-    throughPoint: '指定通过点：'
+    startPoint: '指定起点',
+    throughPoint: '指定通过点'
   },
   mline: {
     startPointWithOptions: '指定起点或',
     nextPointWithOptions: '指定下一点或',
     justificationPrompt: '输入对正方式',
-    scalePrompt: '指定多线比例：',
-    stylePrompt: '输入多线样式名或 [?] 列出样式：',
+    scalePrompt: '指定多线比例',
+    stylePrompt: '输入多线样式名或 [?] 列出样式',
     styleNotFound: '未找到多线样式',
-    styleListHeader: '已加载的多线样式：',
+    styleListHeader: '已加载的多线样式',
     styleListEmpty: '当前图纸没有已加载的多线样式。',
     keywords: {
       justification: {
@@ -634,27 +645,99 @@ export default {
     }
   },
   measureArc: {
-    startPoint: '指定弧的起点：',
-    throughPoint: '指定弧上的一个点：',
-    endPoint: '指定弧的终点：'
+    startPoint: '指定弧的起点',
+    throughPoint: '指定弧上的一个点',
+    endPoint: '指定弧的终点',
+    lockedEndPoint: '指定弧的终点（按 Ctrl 在大弧与小弧之间切换）',
+    invalidPoints: '三点共线，无法测量弧长。'
   },
   measureAngle: {
-    vertex: '指定顶点：',
-    arm1: '指定第一条边上的点：',
-    arm2: '指定第二条边上的点：'
+    vertex: '指定顶点',
+    arm1: '指定第一条边上的点',
+    arm2: '指定第二条边上的点'
   },
   measureArea: {
-    firstPoint: '指定第一个点：',
-    nextPoint: '指定下一个点（或按 Enter 完成）：'
+    firstPoint: '指定第一个点',
+    nextPoint: '指定下一个点（或按 Enter 完成）'
   },
   measureDistance: {
-    firstPoint: '指定第一个点：',
-    secondPoint: '指定第二个点：'
+    firstPoint: '指定第一个点',
+    secondPoint: '指定第二个点'
+  },
+  measurePoint: {
+    point: '指定点'
+  },
+  measurement: {
+    import: {
+      chooseFile: '选择测量 sidecar JSON 文件'
+    }
+  },
+  markup: {
+    author: '指定批注作者（将保存供以后使用）',
+    text: {
+      point: '指定文字批注点',
+      content: '输入批注文字'
+    },
+    line: {
+      firstPoint: '指定直线批注的第一点',
+      secondPoint: '指定直线批注的第二点'
+    },
+    arrow: {
+      firstPoint: '指定箭头起点',
+      secondPoint: '指定箭头尖端'
+    },
+    cloud: {
+      firstCorner: '指定云线的第一个角点',
+      secondCorner: '指定云线的对角点'
+    },
+    rect: {
+      firstCorner: '指定矩形的第一个角点',
+      secondCorner: '指定矩形的对角点'
+    },
+    circle: {
+      center: '指定圆心',
+      radius: '指定圆的半径'
+    },
+    shape: {
+      calloutOn: '[标注开启]',
+      calloutOff: '[标注关闭]',
+      calloutAnchor: '指定标注文字框位置',
+      keywords: {
+        callout: {
+          display: '标注(C)',
+          local: '标注',
+          global: 'Callout'
+        },
+        noCallout: {
+          display: '无标注(N)',
+          local: '无标注',
+          global: 'NoCallout'
+        }
+      }
+    },
+    highlight: {
+      firstCorner: '指定高亮的第一个角点',
+      secondCorner: '指定高亮的对角点'
+    },
+    callout: {
+      tip: '指定引线尖端（箭头端）',
+      anchor: '指定标注文字框位置',
+      content: '输入标注文字'
+    },
+    stamp: {
+      kind: '输入图章类型 [approved/rejected/revised/for-review/custom]',
+      imageUrl: '输入自定义图章图片 URL（可选）',
+      caption: '输入图章说明文字（可选）',
+      point: '指定图章插入点'
+    },
+    import: {
+      chooseFile: '选择批注 sidecar JSON 文件'
+    }
   },
   move: {
     basePointOrDisplacement: '指定基点或',
     secondPointOrDisplacement: '指定第二个点或',
-    displacement: '指定位移：',
+    displacement: '指定位移',
     keywords: {
       displacement: {
         display: '位移(D)',
@@ -664,30 +747,56 @@ export default {
     }
   },
   offset: {
-    distance: '指定偏移距离：',
-    selectObject: '选择要偏移的对象，或按 Enter 结束：',
-    sidePoint: '指定要偏移到的那一侧的点：',
+    distance: '指定偏移距离',
+    selectObject: '选择要偏移的对象，或按 Enter 结束',
+    sidePoint: '指定要偏移到的那一侧的点',
     invalidDistance: '偏移距离必须大于 0。',
     invalidSelection: '所选对象不能偏移。',
     offsetFailed: '无法在指定侧创建偏移曲线。'
   },
   mtext: {
-    point: '指定多行文本插入点：'
+    point: '指定多行文本插入点'
   },
   pngout: {
     boundsFirstCorner: '指定边界的第一个角点',
     boundsSecondCorner: '指定对角点',
     longSidePrompt: '输入长边像素大小'
   },
+  imageattach: {
+    insertionPoint: '指定插入点：',
+    scale: '指定比例因子：',
+    rotation: '指定旋转角度：',
+    invalidScale: '比例因子必须大于 0。',
+    decodeFailed: '无法读取所选图像文件。'
+  },
+  insert: {
+    blockName: '输入块名：',
+    insertionPoint: '指定插入点：',
+    scale: '指定比例因子：',
+    rotation: '指定旋转角度：',
+    invalidScale: '比例因子必须大于 0。',
+    invalidBlockName: '无效的块名。',
+    blockNotFound: '未找到块',
+    xrefNotAllowed: '不能使用 -INSERT 插入外部参照。'
+  },
+  xattach: {
+    insertionPoint: '指定插入点：',
+    scale: '指定比例因子：',
+    rotation: '指定旋转角度：',
+    invalidScale: '比例因子必须大于 0。',
+    unsupportedFile: '请选择 DWG 或 DXF 文件。',
+    loading: '正在加载外部参照...',
+    loadFailed: '无法读取所选图形文件。'
+  },
   point: {
     point: '指定点'
   },
   polygon: {
-    numberOfSides: '输入边数：',
+    numberOfSides: '输入边数',
     centerOrEdge: '指定多边形中心点或',
     radiusOrType: '输入选项',
-    edgeStart: '指定边的第一个端点：',
-    edgeEnd: '指定边的第二个端点：',
+    edgeStart: '指定边的第一个端点',
+    edgeEnd: '指定边的第二个端点',
     keywords: {
       edge: {
         display: '边(E)',
@@ -712,8 +821,8 @@ export default {
     }
   },
   polyline: {
-    firstPoint: '指定第一个点：',
-    nextPoint: '指定下一个点（或按 Enter 完成）：',
+    firstPoint: '指定第一个点',
+    nextPoint: '指定下一个点（或按 Enter 完成）',
     nextPointWithOptions: '请指定下一个点或',
     nextPointWithArcOptions: '请指定下一个点或',
     keywords: {
@@ -758,19 +867,19 @@ export default {
         global: 'Radius'
       }
     },
-    arcAngle: '指定弧角度：',
-    arcCenter: '指定圆心：',
-    arcSecondPoint: '指定弧上的第二点：',
-    arcEndPoint: '指定弧的终点：',
-    arcRadius: '指定弧半径：'
+    arcAngle: '指定弧角度',
+    arcCenter: '指定圆心',
+    arcSecondPoint: '指定弧上的第二点',
+    arcEndPoint: '指定弧的终点',
+    arcRadius: '指定弧半径'
   },
   rotate: {
-    basePoint: '指定基点：',
+    basePoint: '指定基点',
     rotationAngleOrOptions: '指定旋转角度或',
     referenceAngleOrPoints: '指定参考角或',
-    firstReferencePoint: '指定参考角的第一点：',
-    secondReferencePoint: '指定第二点：',
-    newAngle: '指定新角度：',
+    firstReferencePoint: '指定参考角的第一点',
+    secondReferencePoint: '指定第二点',
+    newAngle: '指定新角度',
     keywords: {
       copy: {
         display: '复制(C)',
@@ -793,22 +902,22 @@ export default {
     }
   },
   rect: {
-    firstPoint: '指定第一个角点：',
-    nextPoint: '指定另一个角点：',
+    firstPoint: '指定第一个角点',
+    nextPoint: '指定另一个角点',
     firstPointWithOptions: '指定第一个角点或者',
     otherCornerWithOptions: '指定另一个角点或者',
-    chamferFirst: '指定第一个倒角距离：',
-    chamferSecond: '指定第二个倒角距离：',
-    filletRadius: '指定圆角半径：',
-    segmentWidth: '指定矩形线宽：',
-    elevationValue: '指定标高：',
-    thicknessValue: '指定厚度：',
-    rotationAngle: '指定矩形旋转角度：',
-    dimensionLength: '指定矩形长度：',
-    dimensionWidth: '指定矩形宽度：',
-    areaValue: '指定矩形面积：',
+    chamferFirst: '指定第一个倒角距离',
+    chamferSecond: '指定第二个倒角距离',
+    filletRadius: '指定圆角半径',
+    segmentWidth: '指定矩形线宽',
+    elevationValue: '指定标高',
+    thicknessValue: '指定厚度',
+    rotationAngle: '指定矩形旋转角度',
+    dimensionLength: '指定矩形长度',
+    dimensionWidth: '指定矩形宽度',
+    areaValue: '指定矩形面积',
     areaLengthOrWidth: '指定矩形长度',
-    areaSpecifyWidth: '指定矩形宽度：',
+    areaSpecifyWidth: '指定矩形宽度',
     invalidPositive: '输入无效：请输入大于 0 的数值。',
     invalidRect: '无法创建矩形：请输入有效的角点或尺寸。',
     thicknessNotSupported:
@@ -866,19 +975,129 @@ export default {
       }
     }
   },
+  revcloud: {
+    firstCornerOrOptions: '指定第一个角点或',
+    firstCorner: '指定第一个角点',
+    oppositeCorner: '指定对角点',
+    startPoint: '指定起点',
+    nextPoint: '指定下一点',
+    nextPointOrUndo: '指定下一点或',
+    firstPoint: '指定第一个点',
+    guideCursor: '沿云线路径移动光标（按 Enter 结束）',
+    arcLength: '指定圆弧长度',
+    selectObject: '选择对象',
+    style: '输入修订云线圆弧样式',
+    reverseDirection: '反转方向',
+    invalidArcLength: '圆弧长度必须大于 0。',
+    invalidObject: '所选对象无法转换为修订云线。',
+    keywords: {
+      arcLength: {
+        display: '圆弧长度(A)',
+        local: '圆弧长度',
+        global: 'ArcLength'
+      },
+      object: {
+        display: '对象(O)',
+        local: '对象',
+        global: 'Object'
+      },
+      rectangular: {
+        display: '矩形(R)',
+        local: '矩形',
+        global: 'Rectangular'
+      },
+      polygonal: {
+        display: '多边形(P)',
+        local: '多边形',
+        global: 'Polygonal'
+      },
+      freehand: {
+        display: '手绘(F)',
+        local: '手绘',
+        global: 'Freehand'
+      },
+      style: {
+        display: '样式(S)',
+        local: '样式',
+        global: 'Style'
+      },
+      normal: {
+        display: '普通(N)',
+        local: '普通',
+        global: 'Normal'
+      },
+      calligraphy: {
+        display: '书法(C)',
+        local: '书法',
+        global: 'Calligraphy'
+      },
+      undo: {
+        display: '放弃(U)',
+        local: '放弃',
+        global: 'Undo'
+      },
+      yes: {
+        display: '是(Y)',
+        local: '是',
+        global: 'Yes'
+      },
+      no: {
+        display: '否(N)',
+        local: '否',
+        global: 'No'
+      }
+    }
+  },
   sketch: {
-    firstPoint: '指定第一个点：',
-    nextPoint: '指定结束点：'
+    specifySketch: '指定草图或',
+    sketching: '移动指针进行草图绘制（单击或按 Enter 停止）',
+    type: '输入草图类型',
+    increment: '指定草图增量',
+    tolerance: '指定样条曲线公差',
+    firstPoint: '指定第一个点',
+    nextPoint: '指定结束点',
+    keywords: {
+      type: {
+        display: '类型(T)',
+        local: '类型',
+        global: 'Type'
+      },
+      increment: {
+        display: '增量(I)',
+        local: '增量',
+        global: 'Increment'
+      },
+      tolerance: {
+        display: '公差(L)',
+        local: '公差',
+        global: 'Tolerance'
+      },
+      line: {
+        display: '直线(L)',
+        local: '直线',
+        global: 'Lines'
+      },
+      polyline: {
+        display: '多段线(P)',
+        local: '多段线',
+        global: 'Polyline'
+      },
+      spline: {
+        display: '样条曲线(S)',
+        local: '样条曲线',
+        global: 'Spline'
+      }
+    }
   },
   spline: {
-    firstPoint: '指定第一个点：',
-    nextPoint: '指定下一个点（或按 Enter 完成）：',
+    firstPoint: '指定第一个点',
+    nextPoint: '指定下一个点（或按 Enter 完成）',
     firstPointWithOptions: '指定第一个点或',
     nextPointWithFitOptions: '指定下一个点或',
     nextPointWithCvOptions: '指定下一个控制顶点或',
     methodPrompt: '输入样条创建方式',
     knotsPrompt: '输入节点参数化方式',
-    degreePrompt: '指定样条次数：',
+    degreePrompt: '指定样条次数',
     keywords: {
       method: {
         display: '方法(M)',
@@ -933,15 +1152,15 @@ export default {
     }
   },
   sysvar: {
-    prompt: '请输入新的值：'
+    prompt: '请输入新的值'
   },
   zoom: {
     mainPrompt: '指定窗口角点或',
-    firstCorner: '指定第一个角点：',
-    secondCorner: '指定对角点：',
-    centerPoint: '指定缩放中心点：',
-    heightOrScale: '输入高度或比例因子（nX 或 nXP）：',
-    scaleFactor: '输入比例因子（nX 或 nXP）：',
+    firstCorner: '指定第一个角点',
+    secondCorner: '指定对角点',
+    centerPoint: '指定缩放中心点',
+    heightOrScale: '输入高度或比例因子（nX 或 nXP）',
+    scaleFactor: '输入比例因子（nX 或 nXP）',
     keywords: {
       all: {
         display: '全部(A)',
@@ -972,6 +1191,44 @@ export default {
         display: '窗口(W)',
         local: '窗口',
         global: 'Window'
+      }
+    }
+  },
+  chtml: {
+    exportInvisibleLayers: '是否导出不可见图层',
+    exportLayouts: '是否导出布局',
+    initialView: '打开 HTML 时的初始视图',
+    viewerMode: '离线查看器模式',
+    keywords: {
+      yes: {
+        display: '是(Y)',
+        local: '是',
+        global: 'Yes'
+      },
+      no: {
+        display: '否(N)',
+        local: '否',
+        global: 'No'
+      },
+      extents: {
+        display: '范围(E)',
+        local: '范围',
+        global: 'Extents'
+      },
+      current: {
+        display: '当前(C)',
+        local: '当前',
+        global: 'Current'
+      },
+      view: {
+        display: '查看(V)',
+        local: '查看',
+        global: 'View'
+      },
+      measure: {
+        display: '测量与批注(M)',
+        local: '测量与批注',
+        global: 'Measure'
       }
     }
   }

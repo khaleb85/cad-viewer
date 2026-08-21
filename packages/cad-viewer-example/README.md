@@ -10,7 +10,7 @@ A Vue 3 demo that embeds [`@mlightcad/cad-viewer`](https://github.com/mlightcad/
 - **Internationalization** — Built-in English/Chinese UI via `vue-i18n`; host app can merge custom messages
 - **Custom commands** — Example `quit` / `exit` commands return to the upload screen
 - **CDN assets** — Fonts and templates loaded from [cad-data](https://github.com/mlightcad/cad-data)
-- **Export plugins** — HTML (`chtml`) and PDF (`cpdf`) via lazy-loaded workspace plugins
+- **Export plugins** — HTML (`chtml` dialog, `-chtml` command-line) and PDF (`cpdf`) via lazy-loaded workspace plugins
 - **E2E tests** — Playwright smoke and rendering checks against local fixtures
 
 ## Prerequisites
@@ -74,8 +74,8 @@ The build runs `vue-tsc`, then copies parser workers and `viewer-runtime.iife.js
 
 | Format | Notes |
 |--------|--------|
-| **DXF** | Parsed in a Web Worker (`dxf-parser-worker.js`) |
-| **DWG** | LibreDWG WebAssembly via `libredwg-parser-worker.js` |
+| **DXF** | Built-in parser in `@mlightcad/data-model` |
+| **DWG** | Optional `@mlightcad/libredwg-converter` (GPL) — registered by this example |
 
 ## What this example demonstrates
 
@@ -89,7 +89,7 @@ Integration patterns useful when embedding `@mlightcad/cad-viewer` in your own V
 | Custom i18n | `AcApI18n.mergeLocaleMessage('en' \| 'zh', messages)` in `@create` (`src/locale/`) |
 | Custom commands | `AcApDocManager.instance.commandManager.addCommand(…)` — see `quit` / `exit` in `src/commands/` |
 | Upload flow | Reactive store + conditional render: upload screen until `selectedFile` is set |
-| Workers & runtime | `vite-plugin-static-copy` copies DXF/DWG workers and `viewer-runtime.iife.js` |
+| Workers & runtime | `vite-plugin-static-copy` copies MTEXT worker, LibreDWG worker/wasm, and `viewer-runtime.iife.js` |
 | Export plugins | Declared in `package.json`; `@mlightcad/cad-viewer` registers them via `@mlightcad/cad-*-plugin/register` on bootstrap |
 
 Minimal host wiring in `App.vue`:
@@ -159,7 +159,7 @@ From the monorepo root: `pnpm dev`, `pnpm preview`, `pnpm test:e2e`.
 - [`@mlightcad/cad-viewer`](../cad-viewer) — Component API, props, and customization
 - [`cad-simple-viewer-example`](../cad-simple-viewer-example) — Minimal vanilla TypeScript host without the full Vue UI
 - [`@mlightcad/cad-html-plugin`](../cad-html-plugin) — HTML export and `viewer-runtime.iife.js`
-- [`@mlightcad/cad-html-exporter-cli`](../cad-html-exporter-cli) — Headless HTML export CLI
+- [`@mlightcad/cad-simple-viewer-cli`](../cad-simple-viewer-cli) — Headless HTML export CLI (`-chtml` via `.scr`)
 
 ## License
 

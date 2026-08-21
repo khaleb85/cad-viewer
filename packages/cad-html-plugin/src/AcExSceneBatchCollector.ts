@@ -1,21 +1,28 @@
 import {
   AcTrBatchedLine,
+  AcTrBatchedLine2,
   AcTrBatchedMesh,
   AcTrBatchedPoint,
   getMaterialMetadata,
   isBatchGeometryActive,
-  isBatchGeometryVisible
+  isBatchGeometryVisible,
+  isHighlightCloneDrawable,
+  isHighlightOverlayDescendant,
+  isObjectHierarchyVisible
 } from '@mlightcad/three-renderer'
 import * as THREE from 'three'
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js'
 
 import {
   compactIndexedSlice,
   copyFloat32Range,
-  copyUint32Range
+  copyUint32Range,
+  exportPlainDrawableSlice,
+  readBatchWorldOffset
 } from './AcExBatchBuffers'
 import {
   computeLineDistancesForSegments,
-  exportLineDistanceSlice,
   exportVertexAttributeSlice,
   extractGradientFill,
   extractHatchPattern,
@@ -42,6 +49,15 @@ export interface AcExCollectedBatches {
   lineBatches: AcExLineBatch[]
   /** Mesh and point batches extracted from the subtree. */
   meshBatches: AcExMeshBatch[]
+}
+
+/** Per-slot geometry range metadata from {@link AcTrBatchedExportSource}. */
+type AcTrPackedGeometryInfo = {
+  flags: number
+  vertexStart: number
+  vertexCount: number
+  indexStart?: number
+  indexCount?: number
 }
 
 /**
@@ -126,19 +142,14 @@ export function exportBufferGeometrySlice(
   return { positions }
 }
 
-/** Per-slot geometry range metadata from {@link AcTrBatchedExportSource}. */
-type AcTrPackedGeometryInfo = {
-  flags: number
-  vertexStart: number
-  vertexCount: number
-  indexStart?: number
-  indexCount?: number
-}
-
 /** Batched object that exposes packed geometry slot metadata for HTML export. */
 type AcTrBatchedExportSource = {
   mappingStats: { count: number }
   getGeometryRangeAt(geometryId: number): AcTrPackedGeometryInfo
+}
+
+function shouldExportBatchedSlot(info: AcTrPackedGeometryInfo): boolean {
+  return isBatchGeometryActive(info.flags) && isBatchGeometryVisible(info.flags)
 }
 
 /**
@@ -179,11 +190,7 @@ export function exportActiveBatchedSlice(
       }
       const indexStart = info.indexStart ?? 0
       const indexCount = info.indexCount ?? 0
-      if (
-        !isBatchGeometryActive(info.flags) ||
-        !isBatchGeometryVisible(info.flags) ||
-        indexCount <= 0
-      ) {
+      if (!shouldExportBatchedSlot(info) || indexCount <= 0) {
         continue
       }
       for (let i = 0; i < indexCount; i++) {
@@ -206,11 +213,7 @@ export function exportActiveBatchedSlice(
     } catch {
       continue
     }
-    if (
-      !isBatchGeometryActive(info.flags) ||
-      !isBatchGeometryVisible(info.flags) ||
-      info.vertexCount <= 0
-    ) {
+    if (!shouldExportBatchedSlot(info) || info.vertexCount <= 0) {
       continue
     }
     const start = info.vertexStart * itemSize
@@ -221,6 +224,135 @@ export function exportActiveBatchedSlice(
   }
 
   return { positions: new Float32Array(activeFloats) }
+}
+
+function appendSegmentFromAttribute(
+  target: number[],
+  attr: THREE.BufferAttribute | THREE.InterleavedBufferAttribute,
+  segmentIndex: number
+) {
+  target.push(
+    attr.getX(segmentIndex),
+    attr.getY(segmentIndex),
+    attr.getZ(segmentIndex)
+  )
+}
+
+/**
+ * Extracts active wide-line segment data from a batched `LineSegments2` buffer.
+ * Each segment is exported as `[startX, startY, startZ, endX, endY, endZ]`.
+ */
+export function exportActiveBatchedLine2Slice(
+  batch: AcTrBatchedExportSource,
+  geometry: THREE.BufferGeometry
+): AcExBufferGeometrySlice {
+  const startAttr = geometry.getAttribute('instanceStart') as
+    | THREE.BufferAttribute
+    | THREE.InterleavedBufferAttribute
+    | undefined
+  const endAttr = geometry.getAttribute('instanceEnd') as
+    | THREE.BufferAttribute
+    | THREE.InterleavedBufferAttribute
+    | undefined
+  if (!startAttr || !endAttr) {
+    return { positions: new Float32Array(0) }
+  }
+
+  const { count } = batch.mappingStats
+  const activeFloats: number[] = []
+
+  for (let geometryId = 0; geometryId < count; geometryId++) {
+    let info: AcTrPackedGeometryInfo
+    try {
+      info = batch.getGeometryRangeAt(geometryId)
+    } catch {
+      continue
+    }
+    if (!shouldExportBatchedSlot(info) || info.vertexCount <= 0) {
+      continue
+    }
+    const segmentStart = info.vertexStart
+    const segmentEnd = segmentStart + info.vertexCount
+    for (let segment = segmentStart; segment < segmentEnd; segment++) {
+      appendSegmentFromAttribute(activeFloats, startAttr, segment)
+      appendSegmentFromAttribute(activeFloats, endAttr, segment)
+    }
+  }
+
+  return { positions: new Float32Array(activeFloats) }
+}
+
+function resolveLineSegments2SegmentCount(
+  geometry: THREE.BufferGeometry,
+  segmentCapacity: number
+): number {
+  const instanced = geometry as THREE.InstancedBufferGeometry
+  const instanceCount = instanced.instanceCount
+  if (Number.isFinite(instanceCount) && instanceCount >= 0) {
+    return Math.min(Math.floor(instanceCount), segmentCapacity)
+  }
+
+  const drawRange = geometry.drawRange
+  const rangeStart = clampRangeStart(drawRange.start, segmentCapacity)
+  return resolveRangeCount(drawRange.count, segmentCapacity, rangeStart)
+}
+
+function exportLineSegments2Slice(
+  geometry: THREE.BufferGeometry
+): AcExBufferGeometrySlice {
+  const startAttr = geometry.getAttribute('instanceStart') as
+    | THREE.BufferAttribute
+    | THREE.InterleavedBufferAttribute
+    | undefined
+  const endAttr = geometry.getAttribute('instanceEnd') as
+    | THREE.BufferAttribute
+    | THREE.InterleavedBufferAttribute
+    | undefined
+  if (!startAttr || !endAttr || startAttr.count === 0) {
+    return { positions: new Float32Array(0) }
+  }
+
+  const segmentCount = resolveLineSegments2SegmentCount(
+    geometry,
+    startAttr.count
+  )
+  if (segmentCount <= 0) {
+    return { positions: new Float32Array(0) }
+  }
+
+  const activeFloats: number[] = []
+  for (let segment = 0; segment < segmentCount; segment++) {
+    appendSegmentFromAttribute(activeFloats, startAttr, segment)
+    appendSegmentFromAttribute(activeFloats, endAttr, segment)
+  }
+  return { positions: new Float32Array(activeFloats) }
+}
+
+function shouldExportPlainDrawable(object: THREE.Object3D): boolean {
+  return isObjectHierarchyVisible(object)
+}
+
+function readLineWidth(material: THREE.Material): number | undefined {
+  if (material instanceof LineMaterial) {
+    return material.linewidth
+  }
+  return undefined
+}
+
+function readExportMaterial(object: THREE.Object3D): THREE.Material {
+  if ('material' in object) {
+    const originalMaterial = (
+      object.userData as {
+        originalMaterial?: THREE.Material | THREE.Material[]
+      }
+    ).originalMaterial
+    const material = originalMaterial ?? object.material
+    if (Array.isArray(material)) {
+      return material[0]!
+    }
+    return material as THREE.Material
+  }
+  return (object as THREE.Mesh).material as THREE.Material
 }
 
 function readMaterialStyle(material: THREE.Material): {
@@ -268,6 +400,33 @@ function readMaterialStyle(material: THREE.Material): {
   }
 }
 
+/**
+ * Resolves the snapshot `renderOrder` for a drawable.
+ *
+ * Prefer material `drawOrder` (set even on unbatched hatch meshes) and fall
+ * back to `object.renderOrder` (set on batched meshes in `AcTrBatchedGroup`).
+ * `0` is omitted so the default linework tier stays compact.
+ */
+function resolveExportedRenderOrder(
+  object: THREE.Object3D,
+  material: THREE.Material
+): number | undefined {
+  const fromMaterial = getMaterialMetadata(material).drawOrder
+  const value = fromMaterial ?? object.renderOrder
+  return value === 0 ? undefined : value
+}
+
+function assignRenderOrder(
+  batch: { renderOrder?: number },
+  object: THREE.Object3D,
+  material: THREE.Material
+): void {
+  const renderOrder = resolveExportedRenderOrder(object, material)
+  if (renderOrder != null) {
+    batch.renderOrder = renderOrder
+  }
+}
+
 function resolveExportedHatchPattern(
   object: THREE.Object3D,
   hatchPattern: ReturnType<typeof extractHatchPattern> | undefined
@@ -284,32 +443,65 @@ function resolveExportedHatchPattern(
 }
 
 function readWorldOffset(object: THREE.Object3D): [number, number, number] {
-  // Batched geometry is rebased: vertices are local and object.position is the origin.
-  const p = object.position
-  return [p.x, p.y, p.z]
+  return readBatchWorldOffset(object)
+}
+
+function exportSceneDrawableSlice(
+  object: THREE.Object3D,
+  slice: AcExBufferGeometrySlice,
+  options: { preserveWorldSpaceForPatternFill?: boolean } = {}
+): AcExBufferGeometrySlice & { offset: [number, number, number] } {
+  const exported = exportPlainDrawableSlice(object, slice, options)
+  return {
+    ...exported.slice,
+    offset: exported.offset
+  }
 }
 
 function buildMeshBatch(
   geometry: THREE.BufferGeometry,
   material: THREE.Material,
   object: THREE.Object3D,
-  slice: AcExBufferGeometrySlice
+  slice: AcExBufferGeometrySlice,
+  offset: [number, number, number]
 ): AcExMeshBatch {
   const style = readMaterialStyle(material)
   const hatchPattern = resolveExportedHatchPattern(object, style.hatchPattern)
   const gradientPositions = style.gradientFill
     ? exportVertexAttributeSlice(geometry, 'gradientPosition')
     : undefined
-  return {
+  const batch: AcExMeshBatch = {
     layer: style.layer,
     color: style.color,
-    offset: readWorldOffset(object),
+    offset,
     hatchPattern,
     gradientFill: style.gradientFill,
     gradientPositions,
     side: style.side,
     ...slice
   }
+  assignRenderOrder(batch, object, material)
+  return batch
+}
+
+function exportBatchedLine2(
+  batch: AcTrBatchedLine2
+): AcExLineBatch | undefined {
+  const slice = exportActiveBatchedLine2Slice(batch, batch.geometry)
+  if (slice.positions.length === 0) {
+    return undefined
+  }
+  const { color, layer } = readMaterialStyle(batch.material as THREE.Material)
+  const lineWidth = readLineWidth(batch.material as THREE.Material)
+  const exported: AcExLineBatch = {
+    layer,
+    color,
+    offset: readWorldOffset(batch),
+    lineWidth,
+    ...slice
+  }
+  assignRenderOrder(exported, batch, batch.material as THREE.Material)
+  return exported
 }
 
 function exportBatchedLine(batch: AcTrBatchedLine): AcExLineBatch | undefined {
@@ -323,7 +515,7 @@ function exportBatchedLine(batch: AcTrBatchedLine): AcExLineBatch | undefined {
   const lineDistances = linePattern
     ? computeLineDistancesForSegments(slice.positions)
     : undefined
-  return {
+  const exported: AcExLineBatch = {
     layer,
     color,
     offset: readWorldOffset(batch),
@@ -331,6 +523,8 @@ function exportBatchedLine(batch: AcTrBatchedLine): AcExLineBatch | undefined {
     lineDistances,
     ...slice
   }
+  assignRenderOrder(exported, batch, batch.material as THREE.Material)
+  return exported
 }
 
 function exportBatchedMesh(batch: AcTrBatchedMesh): AcExMeshBatch | undefined {
@@ -342,7 +536,8 @@ function exportBatchedMesh(batch: AcTrBatchedMesh): AcExMeshBatch | undefined {
     batch.geometry,
     batch.material as THREE.Material,
     batch,
-    slice
+    slice,
+    readWorldOffset(batch)
   )
 }
 
@@ -359,15 +554,17 @@ function exportBatchedPoint(
       batch.geometry,
       batch.material as THREE.Material,
       batch,
-      slice
+      slice,
+      readWorldOffset(batch)
     )
   }
 }
 
 /**
  * Walks a THREE object subtree and collects line/mesh batches for HTML export.
- * Recognizes `AcTrBatchedLine`, `AcTrBatchedMesh`, `AcTrBatchedPoint`, and plain
- * `THREE.LineSegments` / `THREE.Mesh` nodes.
+ * Recognizes `AcTrBatchedLine`, `AcTrBatchedLine2`, `AcTrBatchedMesh`,
+ * `AcTrBatchedPoint`, and plain `THREE.LineSegments` / `LineSegments2` /
+ * `THREE.Mesh` nodes.
  *
  * @param root - Layout or scene root to traverse.
  * @returns Batches grouped by geometry kind, ready to attach to {@link AcExLayoutSnapshot}.
@@ -379,8 +576,19 @@ export function collectBatchesFromObject3D(
   const meshBatches: AcExMeshBatch[] = []
 
   root.traverse(child => {
+    if (
+      isHighlightOverlayDescendant(child) ||
+      isHighlightCloneDrawable(child)
+    ) {
+      return
+    }
     if (child instanceof AcTrBatchedLine) {
       const batch = exportBatchedLine(child)
+      if (batch) lineBatches.push(batch)
+      return
+    }
+    if (child instanceof AcTrBatchedLine2) {
+      const batch = exportBatchedLine2(child)
       if (batch) lineBatches.push(batch)
       return
     }
@@ -394,39 +602,59 @@ export function collectBatchesFromObject3D(
       if (batch) meshBatches.push(batch)
       return
     }
-    if (
+    if (child instanceof LineSegments2) {
+      if (!shouldExportPlainDrawable(child)) return
+      const rawSlice = exportLineSegments2Slice(child.geometry)
+      if (rawSlice.positions.length === 0) return
+      const material = readExportMaterial(child)
+      const { color, layer } = readMaterialStyle(material)
+      const { offset, ...slice } = exportSceneDrawableSlice(child, rawSlice)
+      const exported: AcExLineBatch = {
+        layer,
+        color,
+        offset,
+        lineWidth: readLineWidth(material),
+        ...slice
+      }
+      assignRenderOrder(exported, child, material)
+      lineBatches.push(exported)
+    } else if (
       child instanceof THREE.LineSegments &&
       !(child instanceof AcTrBatchedLine)
     ) {
-      const slice = exportBufferGeometrySlice(child.geometry)
-      if (slice.positions.length === 0) return
-      const material = child.material as THREE.Material
+      if (!shouldExportPlainDrawable(child)) return
+      const rawSlice = exportBufferGeometrySlice(child.geometry)
+      if (rawSlice.positions.length === 0) return
+      const material = readExportMaterial(child)
       const { color, layer, linePattern } = readMaterialStyle(material)
+      const { offset, ...slice } = exportSceneDrawableSlice(child, rawSlice)
       const lineDistances = linePattern
-        ? (exportLineDistanceSlice(child.geometry) ??
-          computeLineDistancesForSegments(slice.positions))
+        ? computeLineDistancesForSegments(slice.positions)
         : undefined
-      lineBatches.push({
+      const exported: AcExLineBatch = {
         layer,
         color,
-        offset: readWorldOffset(child),
+        offset,
         linePattern,
         lineDistances,
         ...slice
-      })
+      }
+      assignRenderOrder(exported, child, material)
+      lineBatches.push(exported)
     } else if (
       child instanceof THREE.Mesh &&
       !(child instanceof AcTrBatchedMesh)
     ) {
-      const slice = exportBufferGeometrySlice(child.geometry)
-      if (slice.positions.length === 0) return
+      if (!shouldExportPlainDrawable(child)) return
+      const rawSlice = exportBufferGeometrySlice(child.geometry)
+      if (rawSlice.positions.length === 0) return
+      const material = readExportMaterial(child)
+      const style = readMaterialStyle(material)
+      const { offset, ...slice } = exportSceneDrawableSlice(child, rawSlice, {
+        preserveWorldSpaceForPatternFill: !!style.hatchPattern
+      })
       meshBatches.push(
-        buildMeshBatch(
-          child.geometry,
-          child.material as THREE.Material,
-          child,
-          slice
-        )
+        buildMeshBatch(child.geometry, material, child, slice, offset)
       )
     }
   })

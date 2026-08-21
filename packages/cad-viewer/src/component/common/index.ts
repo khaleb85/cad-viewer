@@ -2,6 +2,7 @@ export { createMlColorIndexPickerToolbarFactory } from './createMlColorIndexPick
 export { default as MlBaseDialog } from './MlBaseDialog.vue'
 export { default as MlBaseDrawStyleToolbar } from './MlBaseDrawStyleToolbar.vue'
 export { default as MlBaseInputNumber } from './MlBaseInputNumber.vue'
+export { default as MlBlockInsertGallery } from './MlBlockInsertGallery.vue'
 export { default as MlColorDropdown } from './MlColorDropdown.vue'
 export { default as MlColorIndexPicker } from './MlColorIndexPicker.vue'
 export { default as MlColorPickerDropdown } from './MlColorPickerDropdown.vue'
@@ -11,7 +12,12 @@ export { default as MlFieldsetGroup } from './MlFieldsetGroup.vue'
 export { default as MlHatchPatternPanel } from './MlHatchPatternPanel.vue'
 export { default as MlLineWeightSelect } from './MlLineWeightSelect.vue'
 export { default as MlLayerSelect } from './MlLayerSelect.vue'
-export { default as MlFileReader } from './MlFileReader.vue'
+export type {
+  MlLayerTableChangeField,
+  MlLayerTableRow
+} from './MlLayerTable'
+export { default as MlLayerTable } from './MlLayerTable.vue'
+export { default as MlFontFileReader } from './MlFontFileReader.vue'
 export { default as MlLineTypeSelect } from './MlLineTypeSelect.vue'
 export { default as MlHatchPatternDropdown } from './MlHatchPatternDropdown.vue'
 export { default as MlSysVarToggleButton } from './MlSysVarToggleButton.vue'

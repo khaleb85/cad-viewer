@@ -1,7 +1,23 @@
 import { FLOAT_TOL } from '@mlightcad/data-model'
+import RBush from 'rbush'
 
 import { toWcsCoord } from './AcExBatchBuffers'
-import { collectPrimitiveSnapCandidates, distSq } from './AcExOsnapGeometry'
+import {
+  collectPrimitiveDiscreteSnapCandidates,
+  collectPrimitiveNearestSnapCandidate,
+  distSq,
+  inwardArcAlignment,
+  isBetterArcLock
+} from './AcExOsnapGeometry'
+import {
+  ACEX_MAX_INTERSECTION_SOURCES,
+  intersectionGeomToleranceForSnap,
+  intersectionToleranceForExtent,
+  intersectLineSegmentPoints,
+  intersectPrimitivePair,
+  isIntersectionCapablePrimitive
+} from './AcExOsnapIntersections'
+import { primitiveToAcGeCurve } from './AcExOsnapPrimitiveToAcGe'
 import type {
   AcExOsnapMode,
   AcExOsnapPoint,
@@ -33,6 +49,7 @@ function modePriority(mode: AcExOsnapMode): number {
     case 'endpoint':
     case 'midpoint':
     case 'center':
+    case 'intersection':
       return 0
     case 'quadrant':
     case 'node':
@@ -446,8 +463,40 @@ function* iterMeshEdges(batch: AcExMeshBatch): Generator<AcExOsnapSegment> {
   }
 }
 
-function cellKey(cx: number, cy: number): string {
-  return `${cx},${cy}`
+/** RBush entry referencing an index in {@link AcExOsnapIndex}'s arrays. @internal */
+interface AcExRbushEntry {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+  index: number
+}
+
+/** Squared distance from a point to an axis-aligned box exterior (0 when inside). @internal */
+function distSqToBounds(
+  px: number,
+  py: number,
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number
+): number {
+  const dx = px < minX ? minX - px : px > maxX ? px - maxX : 0
+  const dy = py < minY ? minY - py : py > maxY ? py - maxY : 0
+  return dx * dx + dy * dy
+}
+
+function searchBox(
+  px: number,
+  py: number,
+  threshold: number
+): { minX: number; minY: number; maxX: number; maxY: number } {
+  return {
+    minX: px - threshold,
+    minY: py - threshold,
+    maxX: px + threshold,
+    maxY: py + threshold
+  }
 }
 
 function primitiveBounds(prim: AcExOsnapPrimitive): {
@@ -502,28 +551,16 @@ function primitiveBounds(prim: AcExOsnapPrimitive): {
 /**
  * Spatial index for object snap in the offline HTML viewer.
  *
- * On {@link AcExOsnapIndex.rebuild}, analytic {@link AcExLayoutSnapshot.osnap}
- * primitives are indexed first. Tessellated {@link AcExLineBatch} segments are
- * used as a fallback for legacy snapshots or entity types missing from the catalog.
- * Line batches with {@link AcExLineBatch.linePattern} merge connected render
- * segments so endpoint snap follows entity geometry rather than dash gaps.
+ * {@link AcExOsnapIndex.rebuild} loads analytic primitives and tessellated
+ * segments into RBush trees only. Discrete snap points, nearest, and
+ * intersection candidates are computed on pointer query from nearby geometry.
  */
-type AcExOsnapIndexKind = 'primitive' | 'segment'
-
 export class AcExOsnapIndex {
   private segments: AcExOsnapSegment[] = []
   private segmentLayers: string[] = []
   private primitives: AcExOsnapPrimitive[] = []
-  private indexedItems: Array<
-    | { kind: 'primitive'; index: number; layer: string }
-    | {
-        kind: 'segment'
-        index: number
-        layer: string
-      }
-  > = []
-  private grid = new Map<string, number[]>()
-  private cellSize = 1
+  private primitiveTree = new RBush<AcExRbushEntry>()
+  private segmentTree = new RBush<AcExRbushEntry>()
   private modes: Set<AcExOsnapMode>
   private hiddenLayers = new Set<string>()
 
@@ -566,87 +603,112 @@ export class AcExOsnapIndex {
   }
 
   /**
-   * Builds the snap index from the active layout snapshot.
+   * Builds spatial indexes from the active layout snapshot.
    *
-   * Indexes all analytic and tessellated geometry once. Layer visibility is
-   * applied at query time via {@link setLayerHidden}, {@link showAllLayers}, and
-   * {@link hideAllLayers} so toggling many layers stays O(1).
+   * Loads analytic primitives and tessellated segments into RBush trees.
+   * Snap candidates are computed lazily during {@link findSnap}.
    *
    * @param layout - Active layout snapshot (batches + optional {@link AcExLayoutSnapshot.osnap}).
    */
   rebuild(layout: AcExLayoutSnapshot): void {
-    const catalog = layout.osnap
-    this.primitives = catalog?.primitives ?? []
-    if (this.primitives.length > 0) {
-      this.segments = []
-      this.segmentLayers = []
-    } else {
+    this.primitiveTree.clear()
+    this.segmentTree.clear()
+    this.hiddenLayers.clear()
+    this.segments = []
+    this.segmentLayers = []
+
+    this.primitives = layout.osnap?.primitives ?? []
+    if (this.primitives.length === 0) {
       const collected = collectBatchSegments(layout)
       this.segments = collected.segments
       this.segmentLayers = collected.segmentLayers
     }
 
-    this.indexedItems = []
-    for (let i = 0; i < this.primitives.length; i++) {
-      this.indexedItems.push({
-        kind: 'primitive',
-        index: i,
-        layer: this.primitives[i]!.layer
-      })
-    }
-    for (let i = 0; i < this.segments.length; i++) {
-      this.indexedItems.push({
-        kind: 'segment',
-        index: i,
-        layer: this.segmentLayers[i]!
-      })
+    if (this.primitives.length === 0 && this.segments.length === 0) {
+      return
     }
 
-    this.hiddenLayers.clear()
-    this.grid.clear()
-    if (this.indexedItems.length === 0) return
-
-    let minX = Infinity
-    let minY = Infinity
-    let maxX = -Infinity
-    let maxY = -Infinity
-
-    for (const item of this.indexedItems) {
-      const b =
-        item.kind === 'primitive'
-          ? primitiveBounds(this.primitives[item.index]!)
-          : segmentBounds(this.segments[item.index]!)
-      minX = Math.min(minX, b.minX)
-      minY = Math.min(minY, b.minY)
-      maxX = Math.max(maxX, b.maxX)
-      maxY = Math.max(maxY, b.maxY)
+    if (this.primitives.length > 0) {
+      const primitiveEntries: AcExRbushEntry[] = new Array(
+        this.primitives.length
+      )
+      for (let i = 0; i < this.primitives.length; i++) {
+        primitiveEntries[i] = {
+          ...primitiveBounds(this.primitives[i]!),
+          index: i
+        }
+      }
+      this.primitiveTree.load(primitiveEntries)
     }
 
-    const span = Math.max(maxX - minX, maxY - minY, 1)
-    this.cellSize = Math.max(span / 200, FLOAT_TOL)
+    if (this.segments.length > 0) {
+      const segmentEntries: AcExRbushEntry[] = new Array(this.segments.length)
+      for (let i = 0; i < this.segments.length; i++) {
+        segmentEntries[i] = {
+          ...segmentBounds(this.segments[i]!),
+          index: i
+        }
+      }
+      this.segmentTree.load(segmentEntries)
+    }
+  }
 
-    for (let i = 0; i < this.indexedItems.length; i++) {
-      const item = this.indexedItems[i]!
-      const b =
-        item.kind === 'primitive'
-          ? primitiveBounds(this.primitives[item.index]!)
-          : segmentBounds(this.segments[item.index]!)
-      const c0x = Math.floor(b.minX / this.cellSize)
-      const c1x = Math.floor(b.maxX / this.cellSize)
-      const c0y = Math.floor(b.minY / this.cellSize)
-      const c1y = Math.floor(b.maxY / this.cellSize)
-      for (let cx = c0x; cx <= c1x; cx++) {
-        for (let cy = c0y; cy <= c1y; cy++) {
-          const key = cellKey(cx, cy)
-          let list = this.grid.get(key)
-          if (!list) {
-            list = []
-            this.grid.set(key, list)
-          }
-          list.push(i)
+  /**
+   * Finds the closest circle or circular-arc primitive whose curve is within
+   * `threshold` of `(px, py)`.
+   *
+   * Used by arc-length measurement to lock subsequent picks onto that circle
+   * when the first click lands on a `CIRCLE` / `ARC` (including polyline bulges).
+   *
+   * @param px - Cursor X in drawing units (WCS).
+   * @param py - Cursor Y in drawing units (WCS).
+   * @param threshold - Maximum distance in drawing units.
+   * @returns Circle center, radius, and the nearest point on the drawn
+   *   stroke, or `undefined` when none is close enough. `x`/`y` lie on the
+   *   curve (including arc endpoints), not a radial projection onto the
+   *   complementary full circle.
+   */
+  findCircleOrArcNear(
+    px: number,
+    py: number,
+    threshold: number
+  ): { cx: number; cy: number; r: number; x: number; y: number } | undefined {
+    if (threshold <= 0 || this.primitives.length === 0) return undefined
+    const threshSq = threshold * threshold
+    const box = searchBox(px, py, threshold)
+    let bestDistSq = threshSq
+    let bestAlign = -Infinity
+    let best:
+      | { cx: number; cy: number; r: number; x: number; y: number }
+      | undefined
+
+    const mouse = { x: px, y: py }
+    for (const hit of this.primitiveTree.search(box)) {
+      const prim = this.primitives[hit.index]!
+      if (this.hiddenLayers.has(prim.layer)) continue
+      if (prim.kind !== 'circle' && prim.kind !== 'arc') continue
+      const geo = primitiveToAcGeCurve(prim)
+      if (geo.kind !== 'circArc') continue
+      const nearest = geo.curve.nearestPoint({ x: px, y: py })
+      const d2 = distSq(px, py, nearest.x, nearest.y)
+      if (d2 > threshSq) continue
+      const align = inwardArcAlignment(geo.curve, nearest, mouse)
+      if (
+        !best ||
+        isBetterArcLock(d2, align, bestDistSq, bestAlign)
+      ) {
+        bestDistSq = d2
+        bestAlign = align
+        best = {
+          cx: prim.cx,
+          cy: prim.cy,
+          r: prim.r,
+          x: nearest.x,
+          y: nearest.y
         }
       }
     }
+    return best
   }
 
   /**
@@ -670,114 +732,316 @@ export class AcExOsnapIndex {
     py: number,
     threshold: number
   ): AcExOsnapPoint | undefined {
-    if (this.indexedItems.length === 0 || threshold <= 0) return undefined
-
-    const fromPrimitives = this.findSnapInItems(
-      px,
-      py,
-      threshold,
-      item => item.kind === 'primitive'
-    )
-    if (fromPrimitives) {
-      return fromPrimitives
+    if (threshold <= 0) return undefined
+    if (this.primitives.length === 0 && this.segments.length === 0) {
+      return undefined
     }
 
-    return this.findSnapInItems(
-      px,
-      py,
-      threshold,
-      item => item.kind === 'segment'
-    )
+    const discrete = this.findDiscreteSnap(px, py, threshold)
+    const intersection = this.modes.has('intersection')
+      ? this.findIntersectionSnap(px, py, threshold)
+      : undefined
+    const bestDiscrete = this.pickBestSnapPoint(px, py, threshold, [
+      discrete,
+      intersection
+    ])
+    if (bestDiscrete) {
+      return bestDiscrete
+    }
+
+    if (!this.modes.has('nearest')) {
+      return undefined
+    }
+
+    return this.findNearestSnap(px, py, threshold)
   }
 
-  /**
-   * Spatial query over a subset of indexed snap items.
-   *
-   * Shared by {@link findSnap} for the primitive-first and segment-fallback passes.
-   * Scans grid cells within the aperture, evaluates snap candidates per item kind,
-   * and returns the highest-priority candidate within `threshold`.
-   *
-   * @param px - Cursor X in drawing units (WCS).
-   * @param py - Cursor Y in drawing units (WCS).
-   * @param threshold - Snap aperture radius in drawing units.
-   * @param include - Filter on {@link AcExOsnapIndex}'s indexed primitive/segment entries.
-   * @returns Best snap point among included items, or `undefined` when none qualify.
-   * @internal
-   */
-  private findSnapInItems(
+  private pickBestSnapPoint(
     px: number,
     py: number,
     threshold: number,
-    include: (item: { kind: AcExOsnapIndexKind; index: number }) => boolean
+    candidates: Array<AcExOsnapPoint | undefined>
   ): AcExOsnapPoint | undefined {
     const threshSq = threshold * threshold
-    const cx = Math.floor(px / this.cellSize)
-    const cy = Math.floor(py / this.cellSize)
-    const radiusCells = Math.max(1, Math.ceil(threshold / this.cellSize))
-
-    const seen = new Set<number>()
     let bestPriority = Number.MAX_VALUE
     let bestDistSq = Number.MAX_VALUE
     let best: AcExOsnapPoint | undefined
 
-    const consider = (x: number, y: number, mode: AcExOsnapMode) => {
-      if (!this.modes.has(mode)) return
-      const d2 = distSq(px, py, x, y)
-      if (d2 > threshSq) return
-      const priority = modePriority(mode)
+    for (const candidate of candidates) {
+      if (!candidate) continue
+      const d2 = distSq(px, py, candidate.x, candidate.y)
+      if (d2 > threshSq) continue
+      const priority = modePriority(candidate.mode)
       if (
         priority < bestPriority ||
         (priority === bestPriority && d2 < bestDistSq)
       ) {
         bestPriority = priority
         bestDistSq = d2
-        best = { x, y, mode }
+        best = candidate
       }
     }
 
-    for (let dx = -radiusCells; dx <= radiusCells; dx++) {
-      for (let dy = -radiusCells; dy <= radiusCells; dy++) {
-        const list = this.grid.get(cellKey(cx + dx, cy + dy))
-        if (!list) continue
-        for (const index of list) {
-          if (seen.has(index)) continue
-          seen.add(index)
-          const item = this.indexedItems[index]!
-          if (!include(item)) continue
-          if (this.hiddenLayers.has(item.layer)) continue
+    return best
+  }
 
-          if (item.kind === 'primitive') {
-            const prim = this.primitives[item.index]!
-            for (const candidate of collectPrimitiveSnapCandidates(
-              prim,
-              px,
-              py,
-              this.modes
-            )) {
-              consider(candidate.x, candidate.y, candidate.mode)
-            }
-            continue
-          }
+  /**
+   * Finds an intersection snap near the cursor by testing pairs of geometry
+   * sources whose bounds overlap the osnap aperture (RBush-filtered).
+   */
+  private findIntersectionSnap(
+    px: number,
+    py: number,
+    threshold: number
+  ): AcExOsnapPoint | undefined {
+    const box = searchBox(px, py, threshold)
+    const primHits = this.primitiveTree.search(box)
+    const segHits = this.segmentTree.search(box)
+    if (primHits.length === 0 && segHits.length === 0) return undefined
 
-          const seg = this.segments[item.index]!
-          if (this.modes.has('endpoint')) {
-            consider(seg.x0, seg.y0, 'endpoint')
-            consider(seg.x1, seg.y1, 'endpoint')
-          }
-          if (this.modes.has('midpoint')) {
-            consider(
-              (seg.x0 + seg.x1) * 0.5,
-              (seg.y0 + seg.y1) * 0.5,
-              'midpoint'
-            )
-          }
-          if (this.modes.has('nearest')) {
-            const near = closestPointOnSegment(px, py, seg)
-            if (near.distSq <= threshSq) {
-              consider(near.x, near.y, 'nearest')
-            }
+    const threshSq = threshold * threshold
+    const extent = Math.max(box.maxX - box.minX, box.maxY - box.minY, 1)
+    const paramTol = intersectionToleranceForExtent(extent)
+    const geomTol = intersectionGeomToleranceForSnap(extent, threshold)
+
+    const primIndices: number[] = []
+    const segIndices: number[] = []
+    const primSeen = new Set<number>()
+    const segSeen = new Set<number>()
+
+    for (const hit of primHits) {
+      const prim = this.primitives[hit.index]!
+      if (this.hiddenLayers.has(prim.layer)) continue
+      if (!isIntersectionCapablePrimitive(prim)) continue
+      if (primSeen.has(hit.index)) continue
+      if (primIndices.length >= ACEX_MAX_INTERSECTION_SOURCES) continue
+      primSeen.add(hit.index)
+      primIndices.push(hit.index)
+    }
+
+    for (const hit of segHits) {
+      const layer = this.segmentLayers[hit.index]!
+      if (this.hiddenLayers.has(layer)) continue
+      if (segSeen.has(hit.index)) continue
+      if (segIndices.length >= ACEX_MAX_INTERSECTION_SOURCES) continue
+      segSeen.add(hit.index)
+      segIndices.push(hit.index)
+    }
+
+    let bestDistSq = threshSq
+    let best: AcExOsnapPoint | undefined
+
+    for (let i = 0; i < primIndices.length; i++) {
+      const indexA = primIndices[i]!
+      const primA = this.primitives[indexA]!
+      for (let j = i + 1; j < primIndices.length; j++) {
+        const indexB = primIndices[j]!
+        const primB = this.primitives[indexB]!
+        if (
+          this.hiddenLayers.has(primA.layer) ||
+          this.hiddenLayers.has(primB.layer)
+        ) {
+          continue
+        }
+        for (const point of intersectPrimitivePair(
+          primA,
+          primB,
+          paramTol,
+          geomTol
+        )) {
+          const d2 = distSq(px, py, point.x, point.y)
+          if (d2 <= bestDistSq) {
+            bestDistSq = d2
+            best = { x: point.x, y: point.y, mode: 'intersection' }
           }
         }
+      }
+    }
+
+    for (let i = 0; i < segIndices.length; i++) {
+      const indexA = segIndices[i]!
+      const segA = this.segments[indexA]!
+      const layerA = this.segmentLayers[indexA]!
+      for (let j = i + 1; j < segIndices.length; j++) {
+        const indexB = segIndices[j]!
+        const segB = this.segments[indexB]!
+        const layerB = this.segmentLayers[indexB]!
+        if (this.hiddenLayers.has(layerA) || this.hiddenLayers.has(layerB)) {
+          continue
+        }
+        for (const point of intersectLineSegmentPoints(
+          segA,
+          segB,
+          paramTol,
+          geomTol
+        )) {
+          const d2 = distSq(px, py, point.x, point.y)
+          if (d2 <= bestDistSq) {
+            bestDistSq = d2
+            best = { x: point.x, y: point.y, mode: 'intersection' }
+          }
+        }
+      }
+    }
+
+    return best
+  }
+
+  private discreteModes(): Set<AcExOsnapMode> {
+    const discreteModes = new Set(this.modes)
+    discreteModes.delete('nearest')
+    discreteModes.delete('intersection')
+    return discreteModes
+  }
+
+  private considerDiscreteCandidate(
+    px: number,
+    py: number,
+    threshSq: number,
+    candidate: AcExOsnapPoint,
+    layer: string,
+    state: {
+      bestPriority: number
+      bestDistSq: number
+      best: AcExOsnapPoint | undefined
+    }
+  ): void {
+    if (!this.modes.has(candidate.mode)) return
+    if (this.hiddenLayers.has(layer)) return
+
+    const d2 = distSq(px, py, candidate.x, candidate.y)
+    if (d2 > threshSq) return
+    const priority = modePriority(candidate.mode)
+    if (
+      priority < state.bestPriority ||
+      (priority === state.bestPriority && d2 < state.bestDistSq)
+    ) {
+      state.bestPriority = priority
+      state.bestDistSq = d2
+      state.best = candidate
+    }
+  }
+
+  private findDiscreteSnap(
+    px: number,
+    py: number,
+    threshold: number
+  ): AcExOsnapPoint | undefined {
+    const discreteModes = this.discreteModes()
+    if (discreteModes.size === 0) return undefined
+
+    const threshSq = threshold * threshold
+    const box = searchBox(px, py, threshold)
+    const state = {
+      bestPriority: Number.MAX_VALUE,
+      bestDistSq: Number.MAX_VALUE,
+      best: undefined as AcExOsnapPoint | undefined
+    }
+
+    for (const hit of this.primitiveTree.search(box)) {
+      const prim = this.primitives[hit.index]!
+      for (const candidate of collectPrimitiveDiscreteSnapCandidates(
+        prim,
+        discreteModes
+      )) {
+        this.considerDiscreteCandidate(
+          px,
+          py,
+          threshSq,
+          candidate,
+          prim.layer,
+          state
+        )
+      }
+    }
+
+    for (const hit of this.segmentTree.search(box)) {
+      const seg = this.segments[hit.index]!
+      const layer = this.segmentLayers[hit.index]!
+      if (discreteModes.has('endpoint')) {
+        this.considerDiscreteCandidate(
+          px,
+          py,
+          threshSq,
+          { x: seg.x0, y: seg.y0, mode: 'endpoint' },
+          layer,
+          state
+        )
+        this.considerDiscreteCandidate(
+          px,
+          py,
+          threshSq,
+          { x: seg.x1, y: seg.y1, mode: 'endpoint' },
+          layer,
+          state
+        )
+      }
+      if (discreteModes.has('midpoint')) {
+        this.considerDiscreteCandidate(
+          px,
+          py,
+          threshSq,
+          {
+            x: (seg.x0 + seg.x1) * 0.5,
+            y: (seg.y0 + seg.y1) * 0.5,
+            mode: 'midpoint'
+          },
+          layer,
+          state
+        )
+      }
+    }
+
+    return state.best
+  }
+
+  private findNearestSnap(
+    px: number,
+    py: number,
+    threshold: number
+  ): AcExOsnapPoint | undefined {
+    const threshSq = threshold * threshold
+    const box = searchBox(px, py, threshold)
+    let bestDistSq = Number.MAX_VALUE
+    let best: AcExOsnapPoint | undefined
+
+    for (const hit of this.primitiveTree.search(box)) {
+      if (
+        distSqToBounds(px, py, hit.minX, hit.minY, hit.maxX, hit.maxY) >
+        threshSq
+      ) {
+        continue
+      }
+
+      const prim = this.primitives[hit.index]!
+      if (this.hiddenLayers.has(prim.layer)) continue
+      if (prim.kind === 'point') continue
+
+      const geo = primitiveToAcGeCurve(prim)
+      const nearest = collectPrimitiveNearestSnapCandidate(prim, px, py, geo)
+      if (!nearest) continue
+      const d2 = distSq(px, py, nearest.x, nearest.y)
+      if (d2 <= threshSq && d2 < bestDistSq) {
+        bestDistSq = d2
+        best = nearest
+      }
+    }
+
+    for (const hit of this.segmentTree.search(box)) {
+      if (
+        distSqToBounds(px, py, hit.minX, hit.minY, hit.maxX, hit.maxY) >
+        threshSq
+      ) {
+        continue
+      }
+
+      const layer = this.segmentLayers[hit.index]!
+      if (this.hiddenLayers.has(layer)) continue
+
+      const near = closestPointOnSegment(px, py, this.segments[hit.index]!)
+      if (near.distSq <= threshSq && near.distSq < bestDistSq) {
+        bestDistSq = near.distSq
+        best = { x: near.x, y: near.y, mode: 'nearest' }
       }
     }
 
@@ -789,7 +1053,8 @@ export class AcExOsnapIndex {
  * Axis-aligned bounds of one tessellated snap segment in WCS.
  *
  * @param seg - Segment whose endpoints define the bounding box.
- * @returns `{ minX, minY, maxX, maxY }` used by the spatial grid in {@link AcExOsnapIndex.rebuild}.
+ * @returns `{ minX, minY, maxX, maxY }` used by the segment RBush in
+ *   {@link AcExOsnapIndex.rebuild}.
  * @internal
  */
 function segmentBounds(seg: AcExOsnapSegment): {
@@ -814,7 +1079,7 @@ function segmentBounds(seg: AcExOsnapSegment): {
  */
 export function acExOsnapModeToMarkerType(
   mode: AcExOsnapMode
-): 'rect' | 'triangle' | 'x' | 'circle' | 'diamond' {
+): 'rect' | 'triangle' | 'x' | 'circle' | 'diamond' | 'intersection' {
   switch (mode) {
     case 'endpoint':
       return 'rect'
@@ -826,6 +1091,8 @@ export function acExOsnapModeToMarkerType(
       return 'diamond'
     case 'nearest':
       return 'x'
+    case 'intersection':
+      return 'intersection'
     case 'node':
     default:
       return 'rect'

@@ -10,9 +10,7 @@ import peerDepsExternal from 'rollup-plugin-peer-deps-external'
 import vue from '@vitejs/plugin-vue'
 import dts from 'vite-plugin-dts'
 import { libInjectCss } from 'vite-plugin-lib-inject-css'
-import {
-  createLibEntryFileName
-} from '../vite-config/pluginRollupOutput'
+import { createLibEntryFileName } from '../vite-config/pluginRollupOutput'
 
 const packageId = 'cad-viewer'
 
@@ -55,11 +53,14 @@ export default defineConfig(({ mode }: ConfigEnv) => {
       },
       minify: true,
       rollupOptions: {
-        // PDF/HTML plugins are peers; loaded at runtime via dynamic import in registerLazyPlugins
+        // PDF/HTML/SVG/Agent plugins are peers; loaded at runtime via dynamic import
         external: [
           '@mlightcad/cad-pdf-plugin',
           '@mlightcad/cad-html-plugin',
-          '@mlightcad/cad-svg-plugin'
+          '@mlightcad/cad-svg-plugin',
+          '@mlightcad/cad-agent-plugin',
+          '@mlightcad/cad-agent-plugin/register',
+          '@mlightcad/cad-agent-plugin/style.css'
         ],
         output: {
           chunkFileNames: `${packageId}-[name]-[hash].js`,

@@ -1,4 +1,7 @@
 export default {
+  document: {
+    untitled: '未命名'
+  },
   commandLine: {
     noLast: '(无上一次命令)',
     unknownCommand: '未知命令',
@@ -8,6 +11,7 @@ export default {
     showMessages: '显示消息历史',
     canceled: '*已取消*',
     noHistory: '(无历史记录)',
+    invalidInput: '输入无效。',
     close: '关闭命令行'
   },
   inputManager: {
@@ -15,7 +19,12 @@ export default {
     secondCorner: '指定第二个角点或'
   },
   message: {
-    fetchingDrawingFile: '正在加载图纸文件...'
+    fetchingDrawingFile: '正在加载图纸文件...',
+    exportingDxf: '正在导出 DXF ...',
+    exportingEntityPreview: '正在导出图片 ...',
+    collectingMemoryProfile: '正在分析内存 ...',
+    fontCached: '字体已成功缓存',
+    fontCacheFailed: '缓存字体失败'
   },
   progress: {
     start: '开始解析文件...',
@@ -31,6 +40,23 @@ export default {
     block: '正在解析块..',
     entity: '正在解析图元...',
     object: '正在解析NODs...',
+    rendering: '正在渲染图纸 ...',
     end: '完成！'
+  },
+  about: {
+    title: '关于',
+    close: '关闭',
+    product: 'CAD 查看器',
+    tagline: '面向 DWG/DXF 图纸的高性能 Web CAD 查看器。',
+    website: '官网',
+    docs: '文档',
+    repository: 'GitHub',
+    copyright: '© {year} mlightcad。保留所有权利。',
+    ok: '确定'
+  },
+  drawStyle: {
+    color: '颜色',
+    lineWeight: '线宽',
+    fontSize: '字号'
   }
 }

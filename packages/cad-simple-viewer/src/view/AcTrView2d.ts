@@ -1,4 +1,7 @@
 import {
+  AcCmUiYieldGate,
+  AcDbAttribute,
+  AcDbBlockReference,
   AcDbBlockTableRecord,
   AcDbDatabase,
   AcDbEntity,
@@ -15,22 +18,21 @@ import {
   AcDbXline,
   AcGeBox2d,
   AcGeBox3d,
+  AcGeMatrix3d,
   AcGePoint2d,
   AcGePoint2dLike,
-  AcGiSubEntityTraits,
   log
 } from '@mlightcad/data-model'
 import { AcDbSystemVariables } from '@mlightcad/data-model'
 import {
   AcTrEntity,
+  AcTrGlyphEntity,
   AcTrGroup,
   AcTrHtmlTransientManager,
   AcTrRenderer,
-  AcTrViewportView,
-  getMaterialMetadata,
-  hasByLayerBinding,
-  setMaterialMetadata
+  AcTrViewportView
 } from '@mlightcad/three-renderer'
+import { AcTrMatrixUtil } from '@mlightcad/three-renderer'
 import * as THREE from 'three'
 import Stats from 'three/examples/jsm/libs/stats.module'
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
@@ -40,11 +42,13 @@ import {
   AcApSettingManager,
   DEFAULT_FONT_MAPPING
 } from '../app'
+import { isMarkupHtmlTextEditing } from '../command/markup/AcApMarkupTextEdit'
 import {
   AcEdBaseView,
   AcEdCalculateSizeCallback,
   AcEdConditionWaiter,
   AcEdCorsorType,
+  AcEdGripManager,
   AcEdMTextEditor,
   AcEdOpenMode,
   AcEdSpatialQueryResultItem,
@@ -54,14 +58,36 @@ import {
   resolvePointerSelectionAction
 } from '../editor'
 import {
+  ACGI_MODEL_SPACE_BACKGROUND,
   isModelSpaceDatabase,
-  MODEL_SPACE_BACKGROUND,
   readLayoutBackgroundColor
 } from '../editor/global/AcEdUiColor'
+import { isEffectiveSpatialQueryHit } from '../editor/view/AcEdSpatialQueryResult'
+import type { AcTrSpatialSearchOptions } from '../spatialIndex/AcTrSpatialIndex'
 import { AcTrGeometryUtil } from '../util'
+import { acapRunDatabaseEdit } from '../util/AcApDatabaseEdit'
+import {
+  trySelectReviewOverlay,
+  trySelectReviewOverlaysByBox
+} from './AcEdReviewOverlayPick'
+import { AcEdViewKeyHandler } from './AcEdViewKeyHandler'
+import {
+  shouldExtendBboxForDirectEntity,
+  tryBuildDirectEntityMeta
+} from './AcTrDirectBatch'
+import { AcTrEntityDisplayController } from './AcTrEntityDisplayController'
+import {
+  assertAcTrGroupWcsBboxesConsistent,
+  unionGroupWcsChildBoxes
+} from './AcTrGroupWcsBboxAssert'
+import { AcTrInheritedLayerMaterialMapper } from './AcTrInheritedLayerMaterialMapper'
+import { AcTrLayer } from './AcTrLayer'
+import { AcTrLayerAppearanceController } from './AcTrLayerAppearanceController'
+import { AcTrLayout } from './AcTrLayout'
 import { AcTrLayoutView } from './AcTrLayoutView'
 import { AcTrLayoutViewManager } from './AcTrLayoutViewManager'
 import { sortPickResults } from './AcTrPickResultUtil'
+import { AcTrProgressiveOpenFitController } from './AcTrProgressiveOpenFitController'
 import { AcTrScene } from './AcTrScene'
 
 /**
@@ -86,7 +112,7 @@ export interface AcTrView2dOptions {
  * Default view option values
  */
 export const DEFAULT_VIEW_2D_OPTIONS: AcTrView2dOptions = {
-  background: MODEL_SPACE_BACKGROUND
+  background: ACGI_MODEL_SPACE_BACKGROUND
 }
 
 /**
@@ -128,8 +154,10 @@ export class AcTrView2d extends AcEdBaseView {
   private _layoutViewManager: AcTrLayoutViewManager
   /** The 3D scene containing all CAD entities organized by layouts and layers */
   private _scene: AcTrScene
-  /** Flag indicating if the view needs to be re-rendered */
+  /** Flag indicating if the WebGL scene needs to be re-rendered */
   private _isDirty: boolean
+  /** Flag indicating if CSS2D / HTML overlays need a CSS2DRenderer pass */
+  private _htmlDirty: boolean
   /** Performance monitoring statistics display */
   private _stats: Stats
   /** Map of missing raster images during rendering */
@@ -142,7 +170,7 @@ export class AcTrView2d extends AcEdBaseView {
    * Block table record ids of layouts whose entities are currently being
    * batch-converted into the scene. Used by
    * {@link AcTrView2d.loadLayoutEntitiesIfNeeded} to guard against
-   * re-entrant calls before the `setTimeout` callback flips
+   * re-entrant calls before the convert drain flips
    * `AcTrLayout.isLoaded` to `true`, which would otherwise duplicate
    * entities when the same layout tab is clicked twice in quick succession.
    */
@@ -177,6 +205,72 @@ export class AcTrView2d extends AcEdBaseView {
    * race during document open.
    */
   private _externallyFramedLayouts: Set<AcDbObjectId> = new Set()
+  /** Progressive camera framing while entities batch-convert at document open. */
+  private readonly _progressiveOpenFit: AcTrProgressiveOpenFitController
+  /** Entity display policy for layer-aware conversion skipping. */
+  private readonly _entityDisplay: AcTrEntityDisplayController
+  /** Layer appearance sync for style-table changes and text refresh. */
+  private readonly _layerAppearance: AcTrLayerAppearanceController
+  /** INSERT layer-0 inheritance material remapping. */
+  private readonly _inheritedLayerMaterialMapper: AcTrInheritedLayerMaterialMapper
+  /**
+   * Layer names with an in-flight {@link convertMissingEntitiesOnLayer} pass.
+   *
+   * {@link updateLayer} triggers that conversion fire-and-forget when a layer
+   * becomes visible again. Rapid or repeated layer-on events for the same name
+   * would otherwise start parallel {@link batchConvert} runs over the same
+   * pending entities. `hasEntity` prevents duplicate scene entries, but not the
+   * wasted conversion work — this set skips re-entry until the current pass ends.
+   */
+  private readonly _convertingLayers = new Set<string>()
+  /**
+   * When true, entity conversion during document open yields cooperatively so
+   * geometry paints incrementally while the open overlay is still visible.
+   */
+  private _progressiveRendering = false
+  /**
+   * Serial convert queue for progressive opens. Chunks from `entityAppended`
+   * enqueue here and a single drain loop runs {@link batchConvert}, so scene
+   * convert overlaps ENTITY flush instead of waiting for a post-open
+   * `setTimeout` storm after the loading overlay hides.
+   */
+  private _convertQueue: AcDbEntity[] = []
+  /** In-flight progressive convert drain; shared so awaiters wait for the queue. */
+  private _convertDrainPromise: Promise<void> | null = null
+  /**
+   * Bumped by {@link clear} so an in-flight {@link batchConvert} abandons
+   * scene writes and counter updates after the view has been reset for a new
+   * document open.
+   */
+  private _convertEpoch = 0
+  /** Last time progressive open marked the canvas dirty for paint. */
+  private _lastProgressivePaintAt = 0
+  /** Mid-open WebGL paints while progressive convert was still running. */
+  private _progressivePaintCount = 0
+  /** Cooperative yields taken inside progressive {@link batchConvert}. */
+  private _progressiveYieldCount = 0
+  /**
+   * In-flight glyph/group geometry jobs that await fonts via asyncDraw.
+   * Counted separately so linework convert can continue while text waits.
+   */
+  private _pendingGeometryJobs = 0
+  /** Grip point display and drag editing (Write mode only). */
+  private _gripManager: AcEdGripManager
+  /** Global keyboard shortcuts for the view (undo/redo, erase, etc.). */
+  private _keyHandler: AcEdViewKeyHandler
+
+  /**
+   * Wall-time between cooperative yields during progressive open (ms).
+   * Kept relatively large so convert throughput stays close to the
+   * non-progressive path; smaller budgets made open 2–3× slower.
+   */
+  private static readonly PROGRESSIVE_OPEN_YIELD_BUDGET_MS = 300
+  /**
+   * Minimum interval between progressive mid-open paints (ms).
+   * Full-scene WebGL paints dominate open wall time on large drawings;
+   * paint much less often than we yield.
+   */
+  private static readonly PROGRESSIVE_OPEN_PAINT_INTERVAL_MS = 1000
 
   /**
    * Creates a new 2D CAD viewer instance.
@@ -194,14 +288,20 @@ export class AcTrView2d extends AcEdBaseView {
 
     const container = mergedOptions.container ?? document.createElement('div')
     mergedOptions.container = container
+    container.style.overflow = 'hidden'
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: true
     })
     container.appendChild(renderer.domElement)
+    renderer.domElement.style.display = 'block'
+    renderer.domElement.style.maxWidth = '100%'
+    renderer.domElement.style.maxHeight = '100%'
 
     super(renderer.domElement, container)
+    this._gripManager = new AcEdGripManager(this)
+    this._keyHandler = new AcEdViewKeyHandler(this)
     if (options.calculateSizeCallback) {
       this.setCalculateSizeCallback(options.calculateSizeCallback)
     }
@@ -224,8 +324,17 @@ export class AcTrView2d extends AcEdBaseView {
     })
 
     this._scene = this.createScene()
+    this._layerAppearance = new AcTrLayerAppearanceController(
+      this._scene,
+      this._renderer
+    )
+    this._inheritedLayerMaterialMapper = new AcTrInheritedLayerMaterialMapper(
+      layerName => this._layerAppearance.getEffectiveLayerTraits(layerName),
+      this._renderer
+    )
     // Initialize background color through setter to keep renderer/cursor in sync.
-    this.backgroundColor = mergedOptions.background ?? MODEL_SPACE_BACKGROUND
+    this.backgroundColor =
+      mergedOptions.background ?? ACGI_MODEL_SPACE_BACKGROUND
     this._stats = this.createStats(AcApSettingManager.instance.isShowStats)
 
     // Layout background sysvars drive the canvas clear colour and ACI-7
@@ -265,7 +374,9 @@ export class AcTrView2d extends AcEdBaseView {
       return (
         this.mode === AcEdViewMode.SELECTION &&
         !this.editor.isActive &&
-        !AcEdMTextEditor.getActiveInputBox()
+        !AcEdMTextEditor.getActiveInputBox() &&
+        !isMarkupHtmlTextEditing() &&
+        !this._gripManager.isDragging
       )
     }
 
@@ -321,6 +432,12 @@ export class AcTrView2d extends AcEdBaseView {
     })
 
     this.canvas.addEventListener('mouseup', e => {
+      if (this._gripManager.isDragging) {
+        selectionStartWcs = null
+        selectionStartCanvas = null
+        clearSelectionPreview()
+        return
+      }
       if (!selectionStartWcs || !selectionStartCanvas) return
 
       const endCanvas = this.viewportToCanvas({
@@ -333,11 +450,20 @@ export class AcTrView2d extends AcEdBaseView {
       const action = this.getPointerSelectionAction(e)
 
       if (this.isSelectionClick(selectionStartCanvas, endCanvas)) {
-        const picked = this.pick(endWcs)
-        if (picked.length > 0) {
-          this.applySelection([picked[0].id], action)
-        } else if (action === 'replace') {
-          this.selectionSet.clear()
+        if (trySelectReviewOverlay(this, endCanvas.x, endCanvas.y, action)) {
+          if (action === 'replace') {
+            this.selectionSet.clear()
+          }
+        } else {
+          const picked = this.pick(endWcs)
+          if (picked.length > 0) {
+            if (action === 'replace') {
+              this.htmlTransientManager.deselectAll()
+            }
+            this.applySelection([picked[0].id], action)
+          } else if (action === 'replace') {
+            this.selectionSet.clear()
+          }
         }
       } else {
         const box = new AcGeBox2d()
@@ -345,6 +471,7 @@ export class AcTrView2d extends AcEdBaseView {
           .expandByPoint(endWcs)
         const mode = this.getSelectionMode(selectionStartCanvas, endCanvas)
         this.selectByBoxWithMode(box, mode, action)
+        trySelectReviewOverlaysByBox(this, box, mode, action)
       }
 
       selectionStartWcs = null
@@ -357,40 +484,13 @@ export class AcTrView2d extends AcEdBaseView {
       if (AcApDocManager.instance.curDocument.openMode !== AcEdOpenMode.Write) {
         return
       }
-      void this.openPickedMTextEditor(e)
+      void this.openPickedEntityEditor(e)
     })
     // When using OrbitControls in THREE.js, it attaches its own event listeners to the DOM elements,
     // such as the canvas or the entire document. This can interfere with other event listeners you
     // add, including the keydown event.
     document.addEventListener('keydown', (e: KeyboardEvent) => {
-      // Ignore global shortcuts while typing or during IME composition.
-      const target = e.target as HTMLElement | null
-      const isEditableTarget =
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target?.isContentEditable === true
-      // keyCode 229 is commonly reported by IME composing key events.
-      const isImeComposing = e.isComposing || e.keyCode === 229
-      if (isEditableTarget || isImeComposing) {
-        return
-      }
-
-      switch (e.code) {
-        case 'Escape':
-          this.selectionSet.clear()
-          break
-
-        case 'Delete':
-        case 'Backspace':
-          // Only dispatch erase when no command is currently active.
-          // Dispatching erase mid-command (e.g. while LINE awaits the next
-          // point) corrupts the active command's input pipeline because
-          // sendStringToExecute clears scripted inputs unconditionally.
-          if (!this.editor.isActive) {
-            AcApDocManager.instance.sendStringToExecute('erase')
-          }
-          break
-      }
+      this._keyHandler.handleKeyDown(e)
     })
     acdbHostApplicationServices().layoutManager.events.layoutSwitched.addEventListener(
       args => {
@@ -410,28 +510,13 @@ export class AcTrView2d extends AcEdBaseView {
         const isFirstVisit = !this._initializedLayouts.has(btrId)
         this._initializedLayouts.add(btrId)
 
-        // Clear measurement overlays before swapping layouts.
-        // Measurements are screen/coordinate-anchored — their dimension
-        // text, hatch indicators, and HTML overlays were laid out in
-        // the previous layout's WCS (paper coords, ~unit scale) and
-        // would render at nonsense positions in a different layout
-        // (model WCS is typically O(10^5) larger, paper layouts use
-        // their own sheet coords). Selection state is intentionally
-        // **not** cleared here: it is entity-id-based and the same
-        // entity stays selected wherever it is rendered (the model
-        // entity drilled through a paper viewport remains visually
-        // selected when the user returns to model space, matching
-        // AutoCAD desktop's behaviour).
-        //
-        // Dynamic import avoids a circular dependency: the cleanup
-        // module already imports `AcTrView2d` for its
-        // `htmlTransientManager` cast, so a static import here would
-        // create a cycle. The cost (one extra microtask) is
-        // negligible for a layout switch.
-        void import('../command/measure/AcApClearMeasurementsCmd').then(
-          ({ clearAllMeasurements }) => clearAllMeasurements(this)
-        )
-
+        // Measurement HTML overlays are layout-scoped via `layoutId`.
+        // Switching layouts only updates visibility (see
+        // {@link AcTrHtmlTransientManager.setActiveLayoutId} from the
+        // `activeLayoutBtrId` setter below) — overlays are not deleted, so
+        // returning to a layout restores its measurements. Entity selection
+        // is intentionally **not** cleared here: it is entity-id-based and
+        // the same entity stays selected wherever it is rendered.
         this.activeLayoutBtrId = btrId
         this.createLayoutViewIfNeeded(btrId)
         this.loadLayoutEntitiesIfNeeded(btrId)
@@ -451,15 +536,28 @@ export class AcTrView2d extends AcEdBaseView {
     this._css2dRenderer.domElement.style.left = '0px'
     this._css2dRenderer.domElement.style.pointerEvents = 'none'
     this._css2dRenderer.domElement.style.zIndex = '99998'
+    this._css2dRenderer.domElement.style.maxWidth = '100%'
+    this._css2dRenderer.domElement.style.maxHeight = '100%'
     container.appendChild(this._css2dRenderer.domElement)
 
     this._missedImages = new Map()
     this._layoutViewManager = new AcTrLayoutViewManager()
+    this._progressiveOpenFit = new AcTrProgressiveOpenFitController(
+      (box, margin) => {
+        this.activeLayoutView.zoomTo(box, margin ?? 1.1)
+        this._isDirty = true
+      }
+    )
+    this._entityDisplay = new AcTrEntityDisplayController(layerName =>
+      this.resolveLayerInfo(layerName)
+    )
     this.initialize()
     this.onWindowResize()
     this._isDirty = true
+    this._htmlDirty = false
     this.startAnimationLoop()
     this._numOfEntitiesToProcess = 0
+    this._pendingGeometryJobs = 0
   }
 
   private getPointerSelectionAction(e: MouseEvent) {
@@ -509,33 +607,180 @@ export class AcTrView2d extends AcEdBaseView {
     return this._renderer
   }
 
+  /** Grip point manager for the view (Write mode only). */
+  get gripManager() {
+    return this._gripManager
+  }
+
   /**
-   * Gets whether the view needs to be re-rendered.
+   * Gets whether the WebGL scene needs to be re-rendered.
    *
-   * @returns True if the view is dirty and needs re-rendering
+   * Camera, CAD entities, and WebGL transients set this flag. CSS2D / HTML
+   * overlay mutations should use {@link isHtmlDirty} instead so a badge or
+   * markup DOM change does not clear and redraw the drawing.
+   *
+   * @returns True if the WebGL view is dirty and needs re-rendering
    */
   get isDirty() {
     return this._isDirty
   }
 
   /**
-   * Sets whether the view needs to be re-rendered.
+   * True while batch conversion or deferred glyph/group geometry is still
+   * running.
    *
-   * @param value - True to mark the view as needing re-rendering
+   * Parsing can report 100% before this reaches zero; callers opening files
+   * should wait on this (as {@link zoomToFitDrawing} does) before hiding
+   * progress UI or assuming the canvas is ready.
+   */
+  get isProcessingEntities() {
+    return this._numOfEntitiesToProcess > 0 || this._pendingGeometryJobs > 0
+  }
+
+  /**
+   * Waits until batch conversion and deferred glyph/font geometry finish.
+   *
+   * Document open can resolve before text is drawable (`FontManager.lazyFontLoading`
+   * + deferred geometry jobs). Call this before raster/HTML export or scripted
+   * commands that assume a complete scene.
+   *
+   * @param timeoutMs - Maximum wait; returns `false` on timeout (default 60s).
+   * @returns `true` when idle, `false` if still busy after the timeout.
+   */
+  async waitUntilIdle(timeoutMs = 60_000): Promise<boolean> {
+    const deadline = Date.now() + Math.max(0, timeoutMs)
+    // Require two consecutive idle samples so a brief gap between convert
+    // batches / deferred jobs does not look like a finished scene.
+    let idleStreak = 0
+    for (;;) {
+      if (!this.isProcessingEntities) {
+        idleStreak++
+        if (idleStreak >= 2) {
+          return true
+        }
+      } else {
+        idleStreak = 0
+      }
+      if (Date.now() > deadline) {
+        return !this.isProcessingEntities
+      }
+      await new Promise<void>(resolve => setTimeout(resolve, 16))
+    }
+  }
+
+  /**
+   * Whether entity conversion during document open is deferred for progressive display.
+   */
+  get progressiveRendering() {
+    return this._progressiveRendering
+  }
+  set progressiveRendering(value: boolean) {
+    this._progressiveRendering = value
+    this.resetProgressiveOpenStats()
+  }
+
+  /**
+   * Progressive-open counters for OPENPROF / palette (paints while converting,
+   * cooperative yields). Reset when progressive mode is enabled for an open.
+   */
+  get progressiveOpenStats() {
+    return {
+      paintCount: this._progressivePaintCount,
+      yieldCount: this._progressiveYieldCount
+    }
+  }
+
+  private resetProgressiveOpenStats() {
+    this._progressivePaintCount = 0
+    this._progressiveYieldCount = 0
+    this._lastProgressivePaintAt = 0
+  }
+
+  /**
+   * Enables progressive camera framing while entities are batch-converted at
+   * document open. Pair with {@link zoomToFitDrawing} for the final accurate fit.
+   */
+  beginProgressiveOpenFit() {
+    this._progressiveOpenFit.begin(this._numOfEntitiesToProcess)
+  }
+
+  /**
+   * Disables progressive open framing after the final zoom-to-fit runs.
+   */
+  endProgressiveOpenFit() {
+    this._progressiveOpenFit.end()
+  }
+
+  /**
+   * Sets whether the WebGL scene needs to be re-rendered.
+   *
+   * When true, the animation loop also runs CSS2DRenderer so HTML
+   * overlays reproject after pan / zoom. HTML-only changes should set
+   * {@link isHtmlDirty} instead.
+   *
+   * @param value - True to mark the WebGL view as needing re-rendering
    */
   set isDirty(value: boolean) {
     this._isDirty = value
   }
 
   /**
-   * Gets information about missing data during rendering (fonts and images).
+   * Gets whether CSS2D / HTML overlays need a CSS2DRenderer pass.
    *
-   * @returns Object containing maps of missing fonts and images
+   * @returns True if HTML overlays changed without a WebGL scene change
+   */
+  get isHtmlDirty() {
+    return this._htmlDirty
+  }
+
+  /**
+   * Sets whether CSS2D / HTML overlays need a CSS2DRenderer pass.
+   *
+   * Does not force a WebGL redraw. Camera changes still go through
+   * {@link isDirty}, which also refreshes overlay projection.
+   *
+   * @param value - True to mark HTML overlays as needing a CSS2D pass
+   */
+  set isHtmlDirty(value: boolean) {
+    this._htmlDirty = value
+  }
+
+  /**
+   * Gets information about missing data during rendering (fonts, images, xrefs).
+   *
+   * @returns Object containing maps of missing fonts/images and unresolved xrefs
    */
   get missedData() {
     return {
       fonts: this._renderer.missedFonts,
-      images: this._missedImages
+      images: this._missedImages,
+      xrefs: this.collectUnresolvedXrefs()
+    }
+  }
+
+  private collectUnresolvedXrefs() {
+    try {
+      const db = AcApDocManager.instance?.curDocument?.database
+      if (!db) return []
+      // Available once @mlightcad/data-model exports getUnresolvedXrefs on the
+      // block table (realdwg-web). Soft-detect so older package versions still run.
+      const blockTable = db.tables.blockTable as {
+        getUnresolvedXrefs?: () => Array<{
+          name: string
+          pathName: string
+          isOverlayReference: boolean
+        }>
+      }
+      if (typeof blockTable.getUnresolvedXrefs !== 'function') {
+        return []
+      }
+      return blockTable.getUnresolvedXrefs().map(btr => ({
+        name: btr.name,
+        pathName: btr.pathName,
+        isOverlay: btr.isOverlayReference
+      }))
+    } catch {
+      return []
     }
   }
 
@@ -572,10 +817,40 @@ export class AcTrView2d extends AcEdBaseView {
    */
   private applyCanvasBackground(value: number) {
     this._renderer.setClearColor(value)
+    // Updates style-manager background, repaints ACI-7 / bg-follow materials.
     this._renderer.currentBackgroundColor = value
-    this._renderer.changeBackground(value)
+    this._layerAppearance.refreshTextMaterialsInObjectTree(
+      this._scene.internalScene
+    )
+    this.resyncForegroundLayersForBackground()
     this.editor.syncCursorBackground(value)
     this._isDirty = true
+  }
+
+  /**
+   * Rebuilds byLayer materials on ACI-7 (foreground) layers after a canvas
+   * background change.
+   *
+   * The scene traversal above only reaches entity wrappers that still expose
+   * `refreshTextMaterials` — but `AcTrBatchedGroup.addEntity` flattens glyph
+   * entities into cloned drawable subtrees at add time, so for already-batched
+   * layouts it matches nothing and ACI-7 byLayer text kept its build-time
+   * colour (white text on a white canvas, #464). Entity-level ACI-7 materials
+   * are foreground-tracked and repainted by the style manager, but byLayer
+   * materials on an ACI-7 layer were created before the manager knew the
+   * layer colour and are not. Re-running the live layer sync — the same path
+   * a layer-table colour edit uses, which the #464 workaround exploited —
+   * rebuilds them against the background set just above, with foreground
+   * tracking attached for subsequent switches.
+   */
+  private resyncForegroundLayersForBackground() {
+    const database = this._renderer.context.database
+    if (!database) return
+    for (const layer of database.tables.layerTable.newIterator()) {
+      if (layer.color?.isForeground) {
+        this._layerAppearance.syncFromLiveRecord(layer)
+      }
+    }
   }
 
   private isModelSpaceLayout(database?: AcDbDatabase): boolean {
@@ -586,13 +861,106 @@ export class AcTrView2d extends AcEdBaseView {
   }
 
   /**
+   * Binds the active drawing database on the renderer draw context.
+   *
+   * Called before document read so layer-table traits are available while layers
+   * are appended during open, and again after open to refresh display sysvars.
+   */
+  bindDrawDatabase(database: AcDbDatabase | undefined): void {
+    this._renderer.context.database = database
+  }
+
+  /**
    * Re-reads layout background sysvars from the active database. Called after
    * a document is opened so DWG-stored values take effect.
    */
   syncDisplaySysVars(database: AcDbDatabase) {
+    this.bindDrawDatabase(database)
     this.applyCanvasBackground(
       readLayoutBackgroundColor(database, this.isModelSpaceLayout(database))
     )
+  }
+
+  /**
+   * Converts and renders model-space entities from a standalone, independently
+   * parsed database (an overlay/reference drawing) into a dedicated
+   * {@link AcTrLayout} added directly to the THREE scene.
+   *
+   * The returned layout is intentionally **not** registered in
+   * {@link AcTrScene}'s owner-id-keyed layout map, so it never participates in
+   * layout-tab switching, the primary document's layer table/panel, undo
+   * stack, or selection set. Toggle visibility via the returned layout's
+   * `visible` property, and tear it down by removing `internalObject` from
+   * `cadScene.internalScene` and calling `clear()`.
+   *
+   * Scope: draws top-level geometry, text, hatch, and block-reference
+   * (INSERT) entities, including entities that expand to multi-layer groups
+   * (dimensions, tables). A multi-layer group stays bucketed under its
+   * INSERT's layer — overlay layers are display-only, so per-fragment layer
+   * re-parenting (see `handleGroup`) is intentionally not replicated here.
+   * Viewports are not supported for overlays and are skipped.
+   *
+   * @param overlayDb - Input a database parsed independently of the active
+   * document (e.g. via `new AcDbDatabase().read(...)`).
+   * @returns The layout containing the converted overlay entities.
+   */
+  async addOverlayEntities(overlayDb: AcDbDatabase): Promise<AcTrLayout> {
+    const layout = new AcTrLayout()
+    layout.isReference = true
+    layout.internalObject.userData.isReference = true
+    this._scene.internalScene.add(layout.internalObject)
+
+    for (const layer of overlayDb.tables.layerTable.newIterator()) {
+      layout.addLayer({
+        name: layer.name,
+        isOff: layer.isOff,
+        isFrozen: layer.isFrozen,
+        color: layer.color
+      })
+    }
+
+    const previousDatabase = this._renderer.context.database
+    this._renderer.context.database = overlayDb
+    try {
+      const modelSpace = overlayDb.tables.blockTable.modelSpace
+      for (const entity of modelSpace.newIterator()) {
+        if (entity instanceof AcDbViewport) continue
+        try {
+          const threeEntity = this.drawEntity(entity, false)
+          if (!threeEntity) continue
+
+          threeEntity.objectId = entity.objectId
+          threeEntity.ownerId = entity.ownerId
+          threeEntity.layerName = entity.layer
+          threeEntity.visible = entity.visibility !== false
+          if (
+            threeEntity instanceof AcTrGroup &&
+            (threeEntity as AcTrGroup).isOnTheSameLayer
+          ) {
+            // Children authored on layer "0" inherit the INSERT layer for
+            // ByLayer traits (color, etc.), same as the primary-document path.
+            this._inheritedLayerMaterialMapper.remap(
+              (threeEntity as AcTrGroup).children,
+              '0',
+              threeEntity.layerName
+            )
+          }
+          await this.finishEntityGeometry(threeEntity, false)
+          layout.addEntity(threeEntity)
+          threeEntity.dispose()
+        } catch (error) {
+          // One unconvertible entity must not abort the whole overlay.
+          log.error(
+            `[AcTrView2d] Failed to convert overlay entity ${entity.objectId} (${entity.type}):`,
+            error
+          )
+        }
+      }
+    } finally {
+      this._renderer.context.database = previousDatabase
+    }
+
+    return layout
   }
 
   /**
@@ -631,6 +999,7 @@ export class AcTrView2d extends AcEdBaseView {
   set activeLayoutBtrId(value: string) {
     this._layoutViewManager.activeLayoutBtrId = value
     this._scene.activeLayoutBtrId = value
+    this.htmlTransientManager.setActiveLayoutId(value)
     this._isDirty = true
   }
 
@@ -653,6 +1022,73 @@ export class AcTrView2d extends AcEdBaseView {
    */
   get cadScene() {
     return this._scene
+  }
+
+  /**
+   * Converts drawable entities into the scene before offline export.
+   *
+   * Interactive viewing skips off/frozen layers for performance; HTML snapshots
+   * store layer visibility separately and need full geometry so the exported
+   * layer panel can toggle layers on later.
+   *
+   * When `includeLayouts` is `true` (the default), paper-space tabs the user
+   * never visited are registered and converted. When `false`, only model space
+   * is converted.
+   *
+   * Converted geometry remains in the live scene after this call completes.
+   */
+  async ensureEntitiesConvertedForExport(options?: {
+    includeInvisibleLayers?: boolean
+    includeLayouts?: boolean
+  }) {
+    const includeInvisibleLayers = options?.includeInvisibleLayers !== false
+    const includeLayouts = options?.includeLayouts !== false
+    const db = AcApDocManager.instance.curDocument.database
+    const pending: AcDbEntity[] = []
+
+    // Paper-space tabs the user never visited exist in the layout table but
+    // may be missing from the scene until first switch. HTML export needs
+    // every layout's geometry, so register those BTRs before collecting.
+    const layoutTable = db.objects?.layout
+    if (includeLayouts && layoutTable?.newIterator) {
+      for (const layout of layoutTable.newIterator()) {
+        const btrId = layout.blockTableRecordId
+        if (btrId) {
+          this._scene.addEmptyLayout(btrId)
+        }
+      }
+    }
+
+    for (const [layoutBtrId] of this._scene.layouts) {
+      if (!includeLayouts && layoutBtrId !== this._scene.modelSpaceBtrId) {
+        continue
+      }
+      const blockTableRecord = db.tables.blockTable.getIdAt(layoutBtrId)
+      if (!blockTableRecord) {
+        continue
+      }
+      pending.push(
+        ...this._entityDisplay.collectMissingEntitiesForExport(
+          blockTableRecord,
+          objectId => this.hasEntity(objectId),
+          includeInvisibleLayers
+        )
+      )
+    }
+
+    if (pending.length > 0) {
+      this._numOfEntitiesToProcess += pending.length
+      await this.batchConvert(pending, { forExport: true })
+    }
+
+    // Open-time deferred glyph jobs may still be draining even when every
+    // entity id is already present (or when nothing was missing for export).
+    const idle = await this.waitUntilIdle()
+    if (!idle) {
+      log.warn(
+        '[AcTrView2d] Timed out waiting for deferred geometry before export'
+      )
+    }
   }
 
   /**
@@ -735,19 +1171,15 @@ export class AcTrView2d extends AcEdBaseView {
    */
   zoomToFitDrawing(timeout: number = 0, layoutBtrId?: AcDbObjectId) {
     const waiter = new AcEdConditionWaiter(
-      () => this._numOfEntitiesToProcess <= 0,
+      // Include deferred glyph/group jobs so text extents land before final fit.
+      () => !this.isProcessingEntities,
       () => {
-        if (
-          layoutBtrId &&
-          this._externallyFramedLayouts.delete(layoutBtrId)
-        ) {
+        if (layoutBtrId && this._externallyFramedLayouts.delete(layoutBtrId)) {
+          this.endProgressiveOpenFit()
           return
         }
-        const box = this.resolveLayoutFitBox()
-        if (box) {
-          this.zoomTo(box)
-          this._isDirty = true
-        }
+        this._progressiveOpenFit.applyFinalFit(() => this.resolveLayoutFitBox())
+        this.endProgressiveOpenFit()
       },
       300, // check every 300 ms
       timeout
@@ -780,7 +1212,7 @@ export class AcTrView2d extends AcEdBaseView {
     this._isDirty = true
   }
 
-  private async openPickedMTextEditor(e: MouseEvent) {
+  private async openPickedEntityEditor(e: MouseEvent) {
     const point = this.viewportToCanvas({
       x: e.clientX,
       y: e.clientY
@@ -793,16 +1225,59 @@ export class AcTrView2d extends AcEdBaseView {
       AcApDocManager.instance.curDocument.database.tables.blockTable.getEntityById(
         picked[0].id
       )
+    if (!entity) return
+
+    const attributedBlock = this.resolveAttributedBlockReference(entity)
+    if (attributedBlock) {
+      e.preventDefault()
+      this.selectionSet.clear()
+      this.selectionSet.add(attributedBlock.objectId)
+      AcApDocManager.instance.sendStringToExecute('attedit')
+      return
+    }
+
     if (!(entity instanceof AcDbMText)) return
 
     e.preventDefault()
     await this.editMTextEntity(entity)
   }
 
+  /**
+   * Resolves an attributed INSERT from a picked block reference or attribute.
+   */
+  private resolveAttributedBlockReference(
+    entity: AcDbEntity
+  ): AcDbBlockReference | undefined {
+    if (entity instanceof AcDbBlockReference) {
+      if (entity.attributeIterator().count > 0) return entity
+      return undefined
+    }
+
+    if (entity instanceof AcDbAttribute) {
+      const owner =
+        AcApDocManager.instance.curDocument.database.tables.blockTable.getEntityById(
+          entity.ownerId
+        )
+      if (
+        owner instanceof AcDbBlockReference &&
+        owner.attributeIterator().count > 0
+      ) {
+        return owner
+      }
+    }
+
+    return undefined
+  }
+
   private async editMTextEntity(mtext: AcDbMText) {
+    const db = mtext.database
+
     if (mtext.lineSpacingFactor !== AcEdMTextEditor.defaultLineSpacingFactor) {
-      mtext.lineSpacingFactor = AcEdMTextEditor.defaultLineSpacingFactor
-      mtext.triggerModifiedEvent()
+      acapRunDatabaseEdit(db, 'Edit MText', () => {
+        const opened = db.openEntityForWrite(mtext)
+        if (!(opened instanceof AcDbMText)) return
+        opened.lineSpacingFactor = AcEdMTextEditor.defaultLineSpacingFactor
+      })
     }
 
     // Hide the in-scene MTEXT while the inline editor renders its own copy; otherwise
@@ -824,13 +1299,16 @@ export class AcTrView2d extends AcEdBaseView {
       })
       if (!result) return
 
-      mtext.location = result.location
-      mtext.contents = result.contents
-      mtext.width = result.width
-      mtext.height = result.height
-      mtext.lineSpacingFactor = result.lineSpacingFactor
-      mtext.attachmentPoint = result.attachmentPoint
-      mtext.triggerModifiedEvent()
+      acapRunDatabaseEdit(db, 'Edit MText', () => {
+        const opened = db.openEntityForWrite(mtext)
+        if (!(opened instanceof AcDbMText)) return
+        opened.location = result.location
+        opened.contents = result.contents
+        opened.width = result.width
+        opened.height = result.height
+        opened.lineSpacingFactor = result.lineSpacingFactor
+        opened.attachmentPoint = result.attachmentPoint
+      })
       applied = true
     } finally {
       if (!applied) {
@@ -936,6 +1414,7 @@ export class AcTrView2d extends AcEdBaseView {
     const raycaster = activeLayoutView.resetRaycaster(point, threshold)
     firstQueryResults.forEach(item => {
       if (drillThroughViewportIds.has(item.id)) return
+      if (!isEffectiveSpatialQueryHit(item)) return
       if (activeLayout.isIntersectWith(item.id, raycaster)) {
         results.push(item)
       }
@@ -996,6 +1475,7 @@ export class AcTrView2d extends AcEdBaseView {
       const vpRaycaster = vpView.resetRaycaster(modelPt, modelRadius)
       const modelHits = modelLayout.search(modelBox)
       modelHits.forEach(item => {
+        if (!isEffectiveSpatialQueryHit(item)) return
         if (modelLayout.isIntersectWith(item.id, vpRaycaster)) {
           results.push(item)
         }
@@ -1006,8 +1486,8 @@ export class AcTrView2d extends AcEdBaseView {
   /**
    * @inheritdoc
    */
-  search(box: AcGeBox2d | AcGeBox3d) {
-    return this._scene.search(box)
+  search(box: AcGeBox2d | AcGeBox3d, options?: AcTrSpatialSearchOptions) {
+    return this._scene.search(box, options)
   }
 
   /**
@@ -1031,28 +1511,8 @@ export class AcTrView2d extends AcEdBaseView {
    * @inheritdoc
    */
   addLayer(layer: AcDbLayerTableRecord) {
-    const updatedLayers = this._scene.addLayer({
-      name: layer.name,
-      isFrozen: layer.isFrozen,
-      isOff: layer.isOff,
-      color: layer.color
-    })
-
-    const traits: Partial<AcGiSubEntityTraits> = {
-      layer: layer.name,
-      color: layer.color.clone(),
-      rgbColor: layer.color.RGB,
-      lineType: layer.lineStyle,
-      lineWeight: layer.lineWeight,
-      transparency: layer.transparency
-    }
-    const materials = this._renderer.updateLayerMaterial(layer.name, traits)
-    updatedLayers.forEach(updatedLayer => {
-      for (const id in materials) {
-        const material = materials[id]
-        updatedLayer.updateMaterial(Number(id), material)
-      }
-    })
+    this._scene.addLayer(this.toLayerInfo(layer))
+    this._layerAppearance.syncFromLiveRecord(layer)
     this._isDirty = true
   }
 
@@ -1063,35 +1523,30 @@ export class AcTrView2d extends AcEdBaseView {
     layer: AcDbLayerTableRecord,
     changes: Partial<AcDbLayerTableRecordAttrs>
   ) {
-    const updatedLayers = this._scene.updateLayer({
-      name: layer.name,
-      isFrozen: layer.isFrozen,
-      isOff: layer.isOff,
-      color: layer.color
-    })
-    const traits: Record<string, unknown> = {}
-    if (changes.color) {
-      traits.color = changes.color.clone()
-      traits.rgbColor = changes.color.RGB
-    }
-    if (changes.lineStyle) {
-      traits.lineType = layer.lineStyle
-    }
-    if (changes.lineWeight !== undefined) {
-      traits.lineWeight = changes.lineWeight
-    }
-    if (changes.transparency !== undefined) {
-      traits.transparency = changes.transparency
-    }
-    traits.layer = layer.name // always present
+    const { touchedObjectIds } = this._scene.updateLayer(
+      this.toLayerInfo(layer)
+    )
 
-    const materials = this._renderer.updateLayerMaterial(layer.name, traits)
-    updatedLayers.forEach(layer => {
-      for (const id in materials) {
-        const material = materials[id]
-        layer.updateMaterial(Number(id), material)
+    if (this._layerAppearance.layerStyleMayHaveChanged(changes)) {
+      this._layerAppearance.syncFromLiveRecord(layer)
+    }
+
+    if (this._entityDisplay.layerVisibilityMayHaveChanged(changes)) {
+      const layerInfo = this.toLayerInfo(layer)
+      // Normal entities convert when the layer is on and thawed. INSERTs also
+      // convert when thawed while still off (Off must not skip multi-layer
+      // block contents).
+      if (AcTrLayer.isLayerVisible(layerInfo) || !layerInfo.isFrozen) {
+        void this.convertMissingEntitiesOnLayer(layer.name)
       }
-    })
+    }
+
+    // Thawing an INSERT layer may restore cross-layer fragments that were
+    // session-hidden; reapply that state.
+    for (const objectId of touchedObjectIds) {
+      this.applySessionHiddenObjectState(objectId)
+    }
+
     this._isDirty = true
   }
 
@@ -1101,14 +1556,36 @@ export class AcTrView2d extends AcEdBaseView {
    */
   addTransientEntity(entity: AcDbEntity | AcDbEntity[]) {
     const entities = Array.isArray(entity) ? entity : [entity]
-    for (let i = 0; i < entities.length; ++i) {
-      const entity = entities[i]
-      const threeEntity: AcTrEntity | null = this.drawEntity(entity, true)
-      if (threeEntity) {
-        threeEntity.objectId = entity.objectId
-        this._scene.addTransientEntity(threeEntity)
-        this._isDirty = true
+    const epoch = this._convertEpoch
+    // Overlay transients (markup / measurement / jigs) must honor entity
+    // lineweight even when LWDISPLAY is off; otherwise ribbon style is a no-op.
+    const previousForce = this._renderer.forceShowLineWeight
+    this._renderer.forceShowLineWeight = true
+    try {
+      for (let i = 0; i < entities.length; ++i) {
+        const entity = entities[i]
+        const threeEntity: AcTrEntity | null = this.drawEntity(entity, true)
+        if (threeEntity) {
+          threeEntity.objectId = entity.objectId
+          void threeEntity
+            .asyncDraw()
+            .then(() => {
+              // Drop stale transients started before clear()/regen invalidated the view.
+              if (epoch !== this._convertEpoch) {
+                threeEntity.dispose()
+                return
+              }
+              this._scene.addTransientEntity(threeEntity)
+              this._isDirty = true
+            })
+            .catch(error => {
+              log.error('[AcTrView2d] Transient entity geometry failed:', error)
+              threeEntity.dispose()
+            })
+        }
       }
+    } finally {
+      this._renderer.forceShowLineWeight = previousForce
     }
   }
 
@@ -1122,15 +1599,84 @@ export class AcTrView2d extends AcEdBaseView {
   }
 
   /**
+   * Show or hide a published CAD transient entity (e.g. when its measurement
+   * group is hidden by a layout switch).
+   */
+  setTransientEntityVisible(objectId: AcDbObjectId, visible: boolean): void {
+    if (this._scene.setTransientEntityVisible(objectId, visible)) {
+      this._isDirty = true
+    }
+  }
+
+  /**
+   * @inheritdoc
+   */
+  canCreateEntityPreview(entityIds: AcDbObjectId[]): boolean {
+    return this._scene.canCreatePreview(entityIds)
+  }
+
+  /**
+   * @inheritdoc
+   */
+  createEntityPreview(entityIds: AcDbObjectId[]): string | null {
+    const handleId = this._scene.createPreview(entityIds)
+    if (handleId) {
+      this._isDirty = true
+    }
+    return handleId
+  }
+
+  /**
+   * @inheritdoc
+   */
+  updateEntityPreview(handleId: string, matrix: AcGeMatrix3d): void {
+    if (
+      this._scene.updatePreview(handleId, AcTrMatrixUtil.createMatrix4(matrix))
+    ) {
+      this._isDirty = true
+    }
+  }
+
+  /**
+   * @inheritdoc
+   */
+  removeEntityPreview(handleId: string): void {
+    if (this._scene.removePreview(handleId)) {
+      this._isDirty = true
+    }
+  }
+
+  /**
+   * @inheritdoc
+   */
+  updateTransientPreviewTransforms(
+    transforms: ReadonlyArray<{
+      objectId: AcDbObjectId
+      matrix: AcGeMatrix3d
+    }>
+  ): void {
+    const updated = this._scene.updateTransientPreviewTransforms(
+      transforms.map(entry => ({
+        objectId: entry.objectId,
+        matrix: AcTrMatrixUtil.createMatrix4(entry.matrix)
+      }))
+    )
+    if (updated.webgl) this._isDirty = true
+    if (updated.html) this._htmlDirty = true
+  }
+
+  /**
    * @inheritdoc
    */
   addEntity(entity: AcDbEntity | AcDbEntity[]) {
     const entities = Array.isArray(entity) ? entity : [entity]
     this._numOfEntitiesToProcess += entities.length
-    setTimeout(async () => {
-      await this.batchConvert(entities)
-    })
-    this._isDirty = true
+    if (this._progressiveRendering) {
+      this._convertQueue.push(...entities)
+      void this.drainConvertQueue()
+    } else {
+      void this.batchConvert(entities)
+    }
   }
 
   /**
@@ -1189,33 +1735,74 @@ export class AcTrView2d extends AcEdBaseView {
   }
 
   /**
-   * @inheritdoc
+   * Rebuilds scene geometry for entities whose shape or styling changed.
+   *
+   * Pure translations should use {@link translateEntity} instead.
+   *
+   * Attribute entities are drawn as part of their owning INSERT, so attribute
+   * edits are remapped to the parent {@link AcDbBlockReference} before the
+   * scene is updated.
    */
   updateEntity(entity: AcDbEntity | AcDbEntity[]) {
-    let entities: AcDbEntity[] = []
-    if (Array.isArray(entity)) {
-      entities = entity
-    } else {
-      entities.push(entity)
-    }
+    const entities = this.resolveSceneUpdateEntities(
+      Array.isArray(entity) ? entity : [entity]
+    )
+    if (entities.length === 0) return
+
+    const selectedIds = entities
+      .map(item => item.objectId)
+      .filter(objectId => this.selectionSet.has(objectId))
 
     for (let i = 0; i < entities.length; ++i) {
-      const entity = entities[i]
-      const threeEntity = entity.worldDraw(this._renderer) as AcTrEntity
-      if (threeEntity) {
-        threeEntity.objectId = entity.objectId
-        threeEntity.ownerId = entity.ownerId
-        threeEntity.layerName = entity.layer
-        threeEntity.visible = entity.visibility
-        this._scene.updateEntity(threeEntity)
+      const item = entities[i]
+      if (this._scene.hasEntity(item.objectId)) {
+        this._scene.removeEntity(item.objectId)
       }
     }
+
+    // Reconvert through the same path as initial load so block references are
+    // split by layer correctly and deferred MTEXT/SHAPE geometry is drawn.
+    void (async () => {
+      await this.batchConvert(entities)
+      await this.waitUntilDeferredGeometryIdle()
+      if (selectedIds.length > 0) {
+        this.highlight(selectedIds)
+      }
+      this._gripManager.refresh()
+    })()
     this._isDirty = true
     // Not sure why texture for image entity isn't updated even if 'isDirty' flag is already set to true.
     // So add one timeout event to set 'isDirty' flag to true again to make it work
     setTimeout(() => {
       this._isDirty = true
     }, 100)
+  }
+
+  /**
+   * Maps entities that are not independently drawn in the scene to the
+   * drawable entity that must be rebuilt (for example ATTRIB → INSERT).
+   */
+  private resolveSceneUpdateEntities(entities: AcDbEntity[]): AcDbEntity[] {
+    const db = AcApDocManager.instance.curDocument?.database
+    const resolved: AcDbEntity[] = []
+    const seen = new Set<AcDbObjectId>()
+
+    for (const entity of entities) {
+      let target: AcDbEntity = entity
+      if (entity instanceof AcDbAttribute) {
+        const owner = db?.tables.blockTable.getEntityById(entity.ownerId)
+        if (!(owner instanceof AcDbBlockReference)) {
+          continue
+        }
+        target = owner
+      }
+
+      if (seen.has(target.objectId)) continue
+      seen.add(target.objectId)
+      resolved.push(target)
+    }
+
+    return resolved
   }
 
   /**
@@ -1286,16 +1873,17 @@ export class AcTrView2d extends AcEdBaseView {
    * **Critically, this runs through `AcEdConditionWaiter`**: at the
    * moment `layoutSwitched` fires, the layout's entities (including its
    * `AcDbViewport`s) have not yet been batch-converted into the scene
-   * — `loadLayoutEntitiesIfNeeded` chunked-converts via `setTimeout`.
+   * — `loadLayoutEntitiesIfNeeded` chunked-converts via the progressive
+   * convert queue (or direct `batchConvert`).
    * Without the waiter, `viewportsBoundingBox` returns undefined and
    * the strategy degrades into (1) zooming to garbage `limits`, or
    * (4) zooming to an empty scene box. The waiter polls
-   * `_numOfEntitiesToProcess` and only fires the heuristic once the
-   * conversion is done.
+   * {@link isProcessingEntities} (convert queue + deferred glyph jobs)
+   * and only fires the heuristic once conversion and text geometry finish.
    */
   private applyInitialZoom(btrId: AcDbObjectId, layout: AcDbLayout) {
     const waiter = new AcEdConditionWaiter(
-      () => this._numOfEntitiesToProcess <= 0,
+      () => !this.isProcessingEntities,
       () => {
         if (this._externallyFramedLayouts.delete(btrId)) {
           return
@@ -1346,10 +1934,60 @@ export class AcTrView2d extends AcEdBaseView {
    * @inheritdoc
    */
   clear() {
+    // Invalidate any in-flight progressive convert so it neither paints into
+    // the cleared scene nor double-decrements the processing counter.
+    this._convertEpoch++
+    this._convertQueue.length = 0
+    this._numOfEntitiesToProcess = 0
+    this._pendingGeometryJobs = 0
     this._scene.clear()
     this._isDirty = true
     this._missedImages.clear()
     this._renderer.dispose()
+  }
+
+  /**
+   * Drains the progressive convert queue on a single serial worker so ENTITY
+   * flush chunks can enqueue while conversion overlaps the loading overlay.
+   *
+   * Concurrent callers share the same promise; if more entities are queued
+   * after a drain finishes, a follow-up drain is started.
+   */
+  private async drainConvertQueue(): Promise<void> {
+    if (this._convertDrainPromise) {
+      await this._convertDrainPromise
+      if (this._convertQueue.length > 0) {
+        await this.drainConvertQueue()
+      }
+      return
+    }
+
+    this._convertDrainPromise = (async () => {
+      while (this._convertQueue.length > 0) {
+        const batch = this._convertQueue.splice(0, this._convertQueue.length)
+        await this.batchConvert(batch)
+      }
+    })().finally(() => {
+      this._convertDrainPromise = null
+    })
+
+    await this._convertDrainPromise
+  }
+
+  /**
+   * Marks the canvas dirty for progressive open, throttled to avoid painting
+   * on every entity (which dominated total open time).
+   */
+  private markProgressiveDirty(force = false) {
+    const now = performance.now()
+    if (
+      force ||
+      now - this._lastProgressivePaintAt >=
+        AcTrView2d.PROGRESSIVE_OPEN_PAINT_INTERVAL_MS
+    ) {
+      this._isDirty = true
+      this._lastProgressivePaintAt = now
+    }
   }
 
   /**
@@ -1422,14 +2060,30 @@ export class AcTrView2d extends AcEdBaseView {
     })
 
     const stillLoading = this._numOfEntitiesToProcess > 0
-    if (!this._isDirty && !stillLoading) return
+    const deferRenderWhileLoading = stillLoading && !this._progressiveRendering
+    if (!this._isDirty && !this._htmlDirty && !stillLoading) return
+    if (deferRenderWhileLoading) return
+    if (!this._isDirty && !this._htmlDirty) return
 
-    const needsRedraw = this._layoutViewManager.render(this._scene)
-    if (this.internalCamera) {
+    let needsRedraw = false
+    if (this._isDirty) {
+      if (this._progressiveRendering && stillLoading) {
+        this._progressivePaintCount++
+      }
+      needsRedraw = this._layoutViewManager.render(this._scene)
+    }
+    // Camera / WebGL dirty also reprojects CSS2D overlays. HTML-only dirty
+    // skips the WebGL pass so measurement badges and markup DOM can update
+    // without clearing and redrawing the drawing.
+    if (this.internalCamera && (this._isDirty || this._htmlDirty)) {
       this._css2dRenderer.render(this._scene.internalScene, this.internalCamera)
     }
     this._stats?.update()
-    this._isDirty = stillLoading || needsRedraw
+    // Do not re-dirty every frame during progressive open — paint is throttled
+    // from geometry batches to keep total open time down. Counter hitting 0
+    // still forces a final dirty in decreaseNumOfEntitiesToProcess().
+    this._isDirty = needsRedraw
+    this._htmlDirty = false
   }
 
   private startAnimationLoop() {
@@ -1452,6 +2106,7 @@ export class AcTrView2d extends AcEdBaseView {
         this.height
       )
       layoutView.events.viewChanged.addEventListener(() => {
+        this._progressiveOpenFit.onLayoutViewChanged()
         this._isDirty = true
         this.events.viewChanged.dispatch()
         this.clearHover()
@@ -1473,7 +2128,7 @@ export class AcTrView2d extends AcEdBaseView {
    *    on it would silently miss layouts that are pre-loaded ahead of
    *    becoming active (e.g. background prefetch).
    * 2. The `_loadingLayouts` guard prevents re-entrance while the
-   *    `setTimeout` chunked-convert callback is still in flight. Without it,
+   *    convert drain is still in flight. Without it,
    *    clicking the same layout tab twice in quick succession (or
    *    `layoutSwitched` firing twice during the async window) would iterate
    *    the block table record again and duplicate every entity in the
@@ -1567,12 +2222,17 @@ export class AcTrView2d extends AcEdBaseView {
         return
       }
 
-      // Load entities asynchronously
+      // Load entities asynchronously when progressive rendering is enabled.
       this._loadingLayouts.add(layoutBtrId)
       this._numOfEntitiesToProcess += entities.length
-      setTimeout(async () => {
+      const convert = async () => {
         try {
-          await this.batchConvert(entities)
+          if (this._progressiveRendering) {
+            this._convertQueue.push(...entities)
+            await this.drainConvertQueue()
+          } else {
+            await this.batchConvert(entities)
+          }
           const layout = this._scene.layouts.get(layoutBtrId)
           if (layout) {
             layout.isLoaded = true
@@ -1580,7 +2240,8 @@ export class AcTrView2d extends AcEdBaseView {
         } finally {
           this._loadingLayouts.delete(layoutBtrId)
         }
-      })
+      }
+      void convert()
     } catch (error) {
       log.error('[AcTrView2d] Error loading layout entities:', error)
     }
@@ -1599,8 +2260,149 @@ export class AcTrView2d extends AcEdBaseView {
     }
   }
 
+  private toLayerInfo(layer: AcDbLayerTableRecord) {
+    return {
+      name: layer.name,
+      isFrozen: layer.isFrozen,
+      isOff: layer.isOff,
+      color: layer.color
+    }
+  }
+
+  private resolveLayerInfo(layerName: string) {
+    const layer =
+      AcApDocManager.instance.curDocument.database.tables.layerTable.getAt(
+        layerName
+      )
+    return layer ? this.toLayerInfo(layer) : undefined
+  }
+
+  /**
+   * Converts entities on the given layer that were skipped while the layer was
+   * off/frozen and therefore are not yet present in the scene.
+   */
+  private async convertMissingEntitiesOnLayer(layerName: string) {
+    if (this._convertingLayers.has(layerName)) {
+      return
+    }
+    this._convertingLayers.add(layerName)
+    try {
+      const db = AcApDocManager.instance.curDocument.database
+      const blockTableRecord = db.tables.blockTable.getIdAt(
+        this.activeLayoutBtrId
+      )
+      if (!blockTableRecord) {
+        return
+      }
+
+      const pending = this._entityDisplay.collectMissingEntitiesOnLayer(
+        layerName,
+        blockTableRecord,
+        objectId => this.hasEntity(objectId)
+      )
+      if (pending.length === 0) {
+        return
+      }
+
+      this._numOfEntitiesToProcess += pending.length
+      await this.batchConvert(pending)
+    } finally {
+      this._convertingLayers.delete(layerName)
+    }
+  }
+
   private drawEntity(entity: AcDbEntity, delay?: boolean) {
     return entity.worldDraw(this._renderer, delay) as AcTrEntity | null
+  }
+
+  /**
+   * Finishes geometry for a converted entity.
+   *
+   * Glyph entities and block groups use {@link AcTrEntity.asyncDraw} so
+   * {@link FontManager.awaitFontsBeforeDraw} can wait for fonts without
+   * relying on a full-scene regen. Other entities keep the sync finalize path.
+   */
+  private async finishEntityGeometry(
+    threeEntity: AcTrEntity,
+    _progressive: boolean
+  ) {
+    if (threeEntity instanceof AcTrGroup) {
+      // Compacted INSERT templates may skip syncDraw when fonts are awaited
+      // later; still walk for empty glyph shells. Skip only when there is
+      // nothing left to finalize (incl. post-cache ATTRIBs).
+      if (
+        threeEntity.getSourceEntities().length === 0 &&
+        !this.groupHasPendingGlyphGeometry(threeEntity)
+      ) {
+        return
+      }
+      await threeEntity.asyncDraw()
+      return
+    }
+    if (threeEntity.hasDrawableGeometry()) {
+      return
+    }
+    await threeEntity.asyncDraw()
+  }
+
+  private needsDeferredFontGeometry(threeEntity: AcTrEntity): boolean {
+    return (
+      threeEntity instanceof AcTrGlyphEntity || threeEntity instanceof AcTrGroup
+    )
+  }
+
+  private groupHasPendingGlyphGeometry(group: AcTrGroup): boolean {
+    let pending = false
+    group.traverse(child => {
+      if (child instanceof AcTrGlyphEntity && !child.hasDrawableGeometry()) {
+        pending = true
+      }
+    })
+    return pending
+  }
+
+  /**
+   * Runs glyph/group geometry finalize off the main convert loop so other
+   * entities keep converting while fonts download.
+   */
+  private enqueueDeferredGeometry(
+    run: () => Promise<void>,
+    epoch: number
+  ): void {
+    if (epoch !== this._convertEpoch) {
+      return
+    }
+    this._pendingGeometryJobs++
+    void run()
+      .then(() => {
+        // Convert counter often hits 0 before fonts finish; without this,
+        // text added later never paints until the user pans/zooms.
+        if (epoch === this._convertEpoch) {
+          this._isDirty = true
+        }
+      })
+      .catch(error => {
+        log.error('[AcTrView2d] Deferred entity geometry failed:', error)
+      })
+      .finally(() => {
+        if (epoch === this._convertEpoch) {
+          this._pendingGeometryJobs = Math.max(0, this._pendingGeometryJobs - 1)
+          if (this._pendingGeometryJobs === 0) {
+            this._isDirty = true
+          }
+        }
+      })
+  }
+
+  /**
+   * Waits until side-pool glyph/group jobs for the current convert epoch finish.
+   * Used by entity updates that must highlight after text is in the scene.
+   */
+  private async waitUntilDeferredGeometryIdle(): Promise<void> {
+    const epoch = this._convertEpoch
+    while (epoch === this._convertEpoch && this._pendingGeometryJobs > 0) {
+      await new Promise<void>(resolve => setTimeout(resolve, 0))
+    }
   }
 
   /**
@@ -1643,10 +2445,28 @@ export class AcTrView2d extends AcEdBaseView {
    * @param entities - The database entities
    * @returns The converted three entities
    */
-  private async batchConvert(entities: AcDbEntity[]) {
+  private async batchConvert(
+    entities: AcDbEntity[],
+    options: { forExport?: boolean } = {}
+  ) {
+    const epoch = this._convertEpoch
+    const progressive = this._progressiveRendering && !options.forExport
+    // Time-budgeted yields keep the canvas painting during large open chunks
+    // (count-based yields alone stall on expensive INSERT / hatch batches).
+    // Prefer setTimeout(0) over rAF: waiting a full frame per yield inflated
+    // total open wall time without improving first-paint much.
+    const yieldGate = progressive
+      ? new AcCmUiYieldGate(AcTrView2d.PROGRESSIVE_OPEN_YIELD_BUDGET_MS)
+      : undefined
+    const yieldToEventLoop = () =>
+      new Promise<void>(resolve => setTimeout(resolve, 0))
     for (let i = 0; i < entities.length; ++i) {
       const entity = entities[i]
       try {
+        // Document was cleared / replaced while this batch was draining.
+        if (epoch !== this._convertEpoch) {
+          continue
+        }
         // Skip the default paper-space viewport (`*Paper_Space`) entirely:
         // it is an AutoCAD-internal viewport that exists in every paper
         // layout and must not be drawn (would render a giant rectangle in
@@ -1665,45 +2485,127 @@ export class AcTrView2d extends AcEdBaseView {
           continue
         }
 
-        if (!entity.visibility) {
+        const shouldConvert = options.forExport
+          ? this._entityDisplay.shouldConvertForExport(entity)
+          : this._entityDisplay.shouldConvert(entity)
+        if (!shouldConvert) {
           continue
         }
 
-        const threeEntity: AcTrEntity | null = this.drawEntity(entity, true)
-        if (!threeEntity) continue
-
-        threeEntity.objectId = entity.objectId
-        threeEntity.ownerId = entity.ownerId
-        threeEntity.layerName = entity.layer
-        threeEntity.visible = entity.visibility
-        if (
-          threeEntity instanceof AcTrGroup &&
-          (threeEntity as AcTrGroup).isOnTheSameLayer
-        ) {
-          // Even when a block expands to a single layer bucket, children authored on
-          // layer "0" still inherit the INSERT layer for ByLayer traits (color, etc.).
-          this.remapInheritedLayerObjects(
-            (threeEntity as AcTrGroup).children,
-            '0',
-            threeEntity.layerName
-          )
+        // Fast path: entities that declare a single batchable primitive append
+        // directly into batches, skipping temporary drawable allocate → clone → dispose.
+        const directMeta = tryBuildDirectEntityMeta(entity, this._renderer)
+        if (directMeta) {
+          let added = false
+          try {
+            added = this._scene.addDirectEntity(
+              directMeta,
+              shouldExtendBboxForDirectEntity(entity)
+            )
+            if (added) {
+              this.applySessionHiddenObjectState(entity.objectId)
+              if (progressive) {
+                this.markProgressiveDirty()
+                this._progressiveOpenFit.afterGeometryBatch(
+                  () => this.resolveLayoutFitBox(),
+                  i
+                )
+              }
+            }
+          } finally {
+            directMeta.geometry.dispose()
+          }
+          if (added) {
+            continue
+          }
+          // Append refused (e.g. invisible) — fall through to the legacy path.
         }
-        if (
-          threeEntity instanceof AcTrGroup &&
-          !(threeEntity as AcTrGroup).isOnTheSameLayer
-        ) {
-          this.handleGroup(threeEntity as AcTrGroup)
-        } else {
-          const isExtendBbox = !(
-            entity instanceof AcDbRay || entity instanceof AcDbXline
-          )
 
-          await threeEntity.draw()
-          this._scene.addEntity(threeEntity, isExtendBbox)
-          this.applySessionHiddenObjectState(entity.objectId)
-          // Release memory occupied by this entity
-          threeEntity.dispose()
-          this._isDirty = true
+        // Sync-construct the entity shell. Glyph geometry is finished via
+        // asyncDraw (awaits fonts when awaitFontsBeforeDraw is on). Text/group
+        // finalize runs in a side pool so linework convert is not blocked.
+        const threeEntity: AcTrEntity | null = this.drawEntity(entity, false)
+        // Viewports may produce no border geometry (e.g. on a no-plot layer) while
+        // still needing an AcTrViewportView for model content below.
+        if (!threeEntity && !(entity instanceof AcDbViewport)) continue
+
+        if (threeEntity) {
+          threeEntity.objectId = entity.objectId
+          threeEntity.ownerId = entity.ownerId
+          threeEntity.layerName = entity.layer
+          threeEntity.visible = entity.visibility !== false
+          if (
+            threeEntity instanceof AcTrGroup &&
+            (threeEntity as AcTrGroup).isOnTheSameLayer
+          ) {
+            // Even when a block expands to a single layer bucket, children authored on
+            // layer "0" still inherit the INSERT layer for ByLayer traits (color, etc.).
+            this._inheritedLayerMaterialMapper.remap(
+              (threeEntity as AcTrGroup).children,
+              '0',
+              threeEntity.layerName
+            )
+            threeEntity.userData.insertLayerName = threeEntity.layerName
+          }
+          const isMultiLayerGroup =
+            threeEntity instanceof AcTrGroup &&
+            !(threeEntity as AcTrGroup).isOnTheSameLayer
+          const deferGeometry =
+            !options.forExport && this.needsDeferredFontGeometry(threeEntity)
+
+          if (isMultiLayerGroup) {
+            if (deferGeometry) {
+              this.enqueueDeferredGeometry(
+                () =>
+                  this.handleGroup(
+                    threeEntity as AcTrGroup,
+                    progressive,
+                    epoch
+                  ),
+                epoch
+              )
+            } else {
+              await this.handleGroup(
+                threeEntity as AcTrGroup,
+                progressive,
+                epoch
+              )
+            }
+          } else {
+            const isExtendBbox = !(
+              entity instanceof AcDbRay || entity instanceof AcDbXline
+            )
+            const commitEntity = async () => {
+              await this.finishEntityGeometry(threeEntity, progressive)
+              if (epoch !== this._convertEpoch) {
+                threeEntity.dispose()
+                return
+              }
+              if (threeEntity instanceof AcTrGroup) {
+                this.syncGroupSpatialBoundsForIndexing(threeEntity)
+              }
+              this._scene.addEntity(threeEntity, isExtendBbox)
+              this.applySessionHiddenObjectState(entity.objectId)
+              // Release memory occupied by this entity
+              threeEntity.dispose()
+              if (progressive) {
+                this.markProgressiveDirty()
+                this._progressiveOpenFit.afterGeometryBatch(
+                  () => this.resolveLayoutFitBox(),
+                  i
+                )
+              }
+            }
+            if (deferGeometry) {
+              this.enqueueDeferredGeometry(commitEntity, epoch)
+            } else {
+              await commitEntity()
+            }
+          }
+        }
+
+        if (epoch !== this._convertEpoch) {
+          continue
         }
 
         if (entity instanceof AcDbViewport) {
@@ -1724,8 +2626,11 @@ export class AcTrView2d extends AcEdBaseView {
             }
           }
         } else if (entity instanceof AcDbRasterImage) {
+          // Only track images whose pixel data is still unresolved.
           const fileName = entity.imageFileName
-          if (fileName) this._missedImages.set(entity.objectId, fileName)
+          if (fileName && !entity.image) {
+            this._missedImages.set(entity.objectId, fileName)
+          }
         }
       } catch (error) {
         log.error(
@@ -1733,16 +2638,71 @@ export class AcTrView2d extends AcEdBaseView {
           error
         )
       } finally {
-        this.decreaseNumOfEntitiesToProcess()
+        // Counter was reset in clear() when the epoch advanced; do not
+        // decrease again or isProcessingEntities can go negative/warn.
+        if (epoch === this._convertEpoch) {
+          this.decreaseNumOfEntitiesToProcess()
+        }
+      }
+
+      if (epoch !== this._convertEpoch) {
+        continue
+      }
+
+      if (yieldGate) {
+        // Yield for input/overlay, but do not force a full-scene paint here —
+        // paints are throttled separately via markProgressiveDirty().
+        const didYield = await yieldGate.maybeYield(yieldToEventLoop)
+        if (didYield) {
+          this._progressiveYieldCount++
+        }
       }
     }
   }
 
-  private handleGroup(group: AcTrGroup) {
+  /**
+   * Rebuilds block-reference child boxes and aligns aggregate {@link AcTrGroup.wcsBbox}
+   * with their union before spatial-index registration.
+   */
+  private syncGroupSpatialBoundsForIndexing(group: AcTrGroup) {
+    group.refreshWcsChildBoxesFromChildren()
+    if (group.wcsChildBoxes.length === 0) {
+      return
+    }
+
+    const childBoxes: AcEdSpatialQueryResultItem[] = group.wcsChildBoxes.map(
+      box => ({
+        minX: box.minX,
+        minY: box.minY,
+        maxX: box.maxX,
+        maxY: box.maxY,
+        id: box.id
+      })
+    )
+    group.wcsBbox = unionGroupWcsChildBoxes(group)
+
+    const userData = group.userData as {
+      spatialIndexChildBoxes?: AcEdSpatialQueryResultItem[]
+    }
+    userData.spatialIndexChildBoxes = childBoxes
+  }
+
+  private async handleGroup(
+    group: AcTrGroup,
+    progressive: boolean,
+    epoch: number = this._convertEpoch
+  ) {
+    await this.finishEntityGeometry(group, progressive)
+    if (epoch !== this._convertEpoch) {
+      group.dispose()
+      return
+    }
+    this.syncGroupSpatialBoundsForIndexing(group)
+
     const children = group.children
     const objectsGroupByLayer: Map<string, THREE.Object3D[]> = new Map()
     children.forEach(child => {
-      if (!child.visible) {
+      if (child.visible === false) {
         return
       }
       const layerName = child.userData.layerName
@@ -1765,63 +2725,71 @@ export class AcTrView2d extends AcEdBaseView {
       child.parent = null
     }
 
-    const styleManager = group.styleManager
+    const renderContext = group.renderContext
     const groupObjectId = group.objectId
     const groupLayerName = group.layerName
-    const worldGroupBox = group.box.clone()
-    worldGroupBox.applyMatrix4(group.matrix)
-    const groupChildBoxes: AcEdSpatialQueryResultItem[] = group.boxes.map(
-      box => {
-        const points = [
-          new THREE.Vector3(box.minX, box.minY, 0),
-          new THREE.Vector3(box.maxX, box.minY, 0),
-          new THREE.Vector3(box.maxX, box.maxY, 0),
-          new THREE.Vector3(box.minX, box.maxY, 0)
-        ]
-        for (const point of points) {
-          point.applyMatrix4(group.matrix)
-        }
-        let minX = Infinity
-        let minY = Infinity
-        let maxX = -Infinity
-        let maxY = -Infinity
-        for (const point of points) {
-          minX = Math.min(minX, point.x)
-          minY = Math.min(minY, point.y)
-          maxX = Math.max(maxX, point.x)
-          maxY = Math.max(maxY, point.y)
-        }
-        return {
-          minX,
-          minY,
-          maxX,
-          maxY,
-          id: box.id
-        }
-      }
-    )
+
+    // AcDbRenderingCache.draw (and similar paths such as AcDbTable) already call
+    // applyMatrix on the group, which updates wcsBbbox and wcsChildBoxes to WCS.
+    // Do not multiply group.matrix here — that would double-transform spatial bounds.
+    if (process.env.NODE_ENV !== 'production') {
+      assertAcTrGroupWcsBboxesConsistent(group)
+    }
+
+    const groupChildBoxes: AcEdSpatialQueryResultItem[] =
+      group.wcsChildBoxes.map(box => ({
+        minX: box.minX,
+        minY: box.minY,
+        maxX: box.maxX,
+        maxY: box.maxY,
+        id: box.id
+      }))
+    const aggregateSpatialBbox =
+      groupChildBoxes.length > 0
+        ? unionGroupWcsChildBoxes(group)
+        : group.wcsBbox.clone()
+    if (groupChildBoxes.length > 0) {
+      group.wcsBbox = aggregateSpatialBbox.clone()
+    }
     objectsGroupByLayer.forEach((objects, layerName) => {
-      // AutoCAD block rule: entities authored on layer "0" inherit the INSERT's layer.
-      // Non-zero layers keep their original layer name.
+      // Nested layer-0 may already be resolved to an inner INSERT layer during
+      // flatten. Remaining "0" buckets inherit this (outermost) INSERT layer.
       const effectiveLayerName = layerName === '0' ? groupLayerName : layerName
+
+      // Material remap must still treat authored layer-0 drawables as layer-0
+      // ByLayer even when nest resolution already rewrote layerName.
+      const sourceLayerForMaterials = objects.some(object => {
+        const data = object.userData as {
+          authoredLayerName?: string
+          layerName?: string
+        }
+        return (data.authoredLayerName ?? layerName) === '0'
+      })
+        ? '0'
+        : layerName
 
       // Keep runtime layer metadata/material cache aligned with the inherited layer so
       // later layer style edits (color, linetype, lineweight, transparency) target this
       // object set correctly.
-      this.remapInheritedLayerObjects(objects, layerName, effectiveLayerName)
+      this._inheritedLayerMaterialMapper.remap(
+        objects,
+        sourceLayerForMaterials,
+        effectiveLayerName
+      )
 
       // One INSERT can expand to children from multiple layers. Here we create one
       // render entity per layer bucket but preserve the INSERT object id for all
       // buckets, so selection/highlight still maps back to the same database object.
       // Within each layer bucket, the object id remains unique in scene indexing.
-      const entity = new AcTrEntity(styleManager)
+      const entity = new AcTrEntity(renderContext)
       entity.applyMatrix4(group.matrix)
       entity.objectId = groupObjectId
       entity.ownerId = group.ownerId
       // If block-definition entities are on layer "0", this bucket now uses the layer
       // of the block reference itself (effectiveLayerName).
       entity.layerName = effectiveLayerName
-      entity.box = worldGroupBox
+      entity.userData.insertLayerName = groupLayerName
+      entity.wcsBbox = aggregateSpatialBbox.clone()
       const entityUserData = entity.userData as {
         spatialIndexChildBoxes?: AcEdSpatialQueryResultItem[]
       }
@@ -1833,110 +2801,18 @@ export class AcTrView2d extends AcEdBaseView {
       for (let i = 0; i < objects.length; i++) {
         entity.add(objects[i])
       }
+      this._layerAppearance.refreshTextMaterialsInObjectTree(entity)
       this._scene.addEntity(entity, true)
       this.applySessionHiddenObjectState(groupObjectId)
       entity.dispose()
     })
     group.dispose()
 
-    this._isDirty = true
-  }
-
-  /**
-   * Remaps layer metadata/material bindings from a source layer to the effective render layer.
-   *
-   * During block decomposition, one INSERT may be split into multiple layer buckets. For
-   * children authored on layer "0", AutoCAD requires inheriting the INSERT's own layer.
-   * This method applies that inheritance by mutating each child's `userData.layerName` and
-   * re-binding materials via renderer cache, so subsequent layer-level style changes still
-   * hit the correct material instances.
-   *
-   * @param objects - Root objects in the current layer bucket to traverse and remap.
-   * @param sourceLayerName - Layer name found in block definition before inheritance.
-   * @param effectiveLayerName - Final layer name used by rendering and style updates.
-   */
-  private remapInheritedLayerObjects(
-    objects: THREE.Object3D[],
-    sourceLayerName: string,
-    effectiveLayerName: string
-  ) {
-    if (sourceLayerName === effectiveLayerName) return
-
-    const renderer = this._renderer
-    const layerTraits = this.getEffectiveLayerTraits(effectiveLayerName)
-    for (const object of objects) {
-      object.traverse(child => {
-        if (child.userData.layerName === sourceLayerName) {
-          child.userData.layerName = effectiveLayerName
-        }
-
-        if (!('material' in child)) return
-
-        const material = child.material
-        if (Array.isArray(material)) {
-          const materials = material as THREE.Material[]
-          child.material = materials.map(entry =>
-            renderer.getLayerBoundMaterial(
-              this.promoteLayerZeroByLayerColor(entry, sourceLayerName),
-              effectiveLayerName,
-              layerTraits
-            )
-          )
-          return
-        }
-
-        const remappedMaterial = renderer.getLayerBoundMaterial(
-          this.promoteLayerZeroByLayerColor(
-            material as THREE.Material,
-            sourceLayerName
-          ),
-          effectiveLayerName,
-          layerTraits
-        )
-        child.material = remappedMaterial
-        child.userData.styleMaterialId = remappedMaterial.id
-      })
-    }
-  }
-
-  /**
-   * Some DXF conversion paths lose `isByLayerColor` on layer-0 block contents while still
-   * retaining other ByLayer markers (lineType/lineWeight/transparency). For AutoCAD-compatible
-   * INSERT inheritance, treat such colors as inheritable when remapping from layer "0".
-   */
-  private promoteLayerZeroByLayerColor(
-    material: THREE.Material,
-    sourceLayerName: string
-  ): THREE.Material {
-    const metadata = getMaterialMetadata(material)
-    const hasAnyOtherByLayerBinding =
-      hasByLayerBinding(metadata) && metadata.isByLayerColor !== true
-
-    if (sourceLayerName === '0' && hasAnyOtherByLayerBinding) {
-      setMaterialMetadata(material, { isByLayerColor: true })
-    }
-    return material
-  }
-
-  /**
-   * Builds the resolved layer traits used when layer-0 block content inherits an INSERT layer.
-   */
-  private getEffectiveLayerTraits(
-    layerName: string
-  ): Partial<AcGiSubEntityTraits> | undefined {
-    const layer =
-      AcApDocManager.instance.curDocument.database.tables.layerTable.getAt(
-        layerName
+    if (progressive) {
+      this.markProgressiveDirty()
+      this._progressiveOpenFit.afterGeometryBatch(() =>
+        this.resolveLayoutFitBox()
       )
-    if (!layer) return undefined
-
-    return {
-      layer: layer.name,
-      color: layer.color.clone(),
-      rgbColor: layer.color.RGB,
-      lineType: layer.lineStyle,
-      lineWeight: layer.lineWeight,
-      transparency: layer.transparency
     }
   }
 
@@ -1947,6 +2823,12 @@ export class AcTrView2d extends AcEdBaseView {
       log.warn(
         'Something wrong! The number of entities to process should not be less than 0.'
       )
+    } else if (this._numOfEntitiesToProcess === 0) {
+      // Always mark dirty when the queue drains. Progressive open throttles
+      // mid-open paints, so the last batch would otherwise never redraw until
+      // the user pans/zooms (animate bails when !_isDirty && !_htmlDirty &&
+      // !stillLoading).
+      this._isDirty = true
     }
   }
 }

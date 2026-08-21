@@ -24,6 +24,7 @@
  * - `quadrant` — 0° / 90° / 180° / 270° on circles; arc-limited on arcs; axis crossings on closed ellipses.
  * - `nearest` — Closest point on the curve or segment to the pick point (not tessellated).
  * - `node` — Spline knot locations; also used for `AcDbPoint` entities.
+ * - `intersection` — Intersection of two nearby curves (computed on pointer query).
  *
  * Tangent snap is not implemented in the offline viewer.
  */
@@ -34,6 +35,7 @@ export type AcExOsnapMode =
   | 'quadrant'
   | 'nearest'
   | 'node'
+  | 'intersection'
 
 /**
  * A single object snap candidate returned to the measurement UI.
@@ -61,6 +63,7 @@ export const ACEX_DEFAULT_OSNAP_MODES: readonly AcExOsnapMode[] = [
   'midpoint',
   'center',
   'quadrant',
+  'intersection',
   'nearest'
 ] as const
 
@@ -123,9 +126,11 @@ export interface AcExOsnapCirclePrimitive extends AcExOsnapPrimitiveBase {
 /**
  * A circular arc (`AcDbArc`, or a bulge segment from `AcDbPolyline`).
  *
- * Angles are in radians. When {@link AcExOsnapArcPrimitive.normalSign} is `+1`,
- * increasing angle is counter-clockwise in WCS; when `-1`, the Y component is
- * mirrored so snap math matches AutoCAD clockwise arcs.
+ * Angles are AutoCAD OCS parameters in radians. When
+ * {@link AcExOsnapArcPrimitive.normalSign} is `+1`, they match WCS `atan2`;
+ * when `-1`, X is mirrored (−Z extrusion) so HTML snap can rebuild the WCS
+ * stroke. Do not copy clockwise `AcGeCircArc2d` public angles here — those
+ * are Y-mirrored, not OCS.
  */
 export interface AcExOsnapArcPrimitive extends AcExOsnapPrimitiveBase {
   /** Discriminator for {@link AcExOsnapPrimitive}. */
@@ -249,15 +254,11 @@ export type AcExOsnapPrimitive =
  * Per-layout catalog of analytic geometry used for object snap.
  *
  * Embedded on {@link AcExLayoutSnapshot.osnap} when exporting HTML. When
- * {@link AcExOsnapCatalog.primitives} is non-empty, {@link AcExOsnapIndex} ignores
- * tessellated `lineBatches` / `meshBatches` for snapping.
+ * {@link AcExOsnapCatalog.primitives} is non-empty, {@link AcExOsnapIndex}
+ * ignores tessellated `lineBatches` / `meshBatches` for snapping and derives
+ * discrete snap points from primitives at query time.
  */
 export interface AcExOsnapCatalog {
-  /**
-   * All snap-capable primitives for this layout in WCS.
-   *
-   * Includes entities nested inside block references (INSERT), each with an
-   * effective {@link AcExOsnapPrimitiveBase.layer}.
-   */
+  /** Analytic OSNAP geometry serialized into the HTML snapshot. */
   primitives: AcExOsnapPrimitive[]
 }

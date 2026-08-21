@@ -12,6 +12,8 @@ import {
   AcDbUnitsValue
 } from '@mlightcad/data-model'
 
+import { registerLibreDwgConverter } from './registerLibreDwg'
+
 interface CadLayerInfo {
   name: string;
   color: string;
@@ -93,18 +95,20 @@ class CadViewerApp {
         AcApSettingManager.instance.isShowCommandLine = false
         AcApSettingManager.instance.isShowCoordinate = true
 
+        // cad-simple-viewer no longer registers a DWG converter by default
+        // (LibreDWG is GPL), so the host has to opt in explicitly.
+        const dwgParserUrl = '/workers/libredwg-parser-worker.js'
+        registerLibreDwgConverter(dwgParserUrl)
+
         AcApDocManager.createInstance({
           container: this.container,
           autoResize: true,
           baseUrl: '<!BASE_URL!>',
           webworkerFileUrls: {
             mtextRender: '/workers/mtext-renderer-worker.js',
-            dxfParser: '/workers/dxf-parser-worker.js',
-            dwgParser: '/workers/libredwg-parser-worker.js'
+            dwgParser: dwgParserUrl
           }
         })
-
-        AcApDocManager.instance.progress.show()
 
         AcApDocManager.instance.events.documentActivated.addEventListener(
           args => {

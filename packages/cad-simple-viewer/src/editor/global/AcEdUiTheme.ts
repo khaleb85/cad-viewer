@@ -37,7 +37,7 @@ const THEME_TOKENS: Record<AcEdUiTheme, Record<string, string>> = {
   }
 }
 
-export function applyUiTheme(
+export function acedApplyUiTheme(
   theme: AcEdUiTheme,
   target: HTMLElement = document.documentElement
 ) {
@@ -46,4 +46,30 @@ export function applyUiTheme(
     target.style.setProperty(key, tokens[key])
   })
   target.setAttribute('data-ml-ui-theme', theme)
+}
+
+/**
+ * Resolves the active UI theme from a host element or the document.
+ *
+ * Lookup order:
+ * 1. Nearest ancestor with `data-ml-ui-theme`
+ * 2. `document.documentElement` attribute
+ * 3. `html.dark` class (Element Plus / cad-viewer)
+ * 4. Defaults to `'light'`
+ *
+ * @param from - Optional element to start ancestor walk from
+ */
+export function resolveUiTheme(from?: HTMLElement | null): AcEdUiTheme {
+  let el: HTMLElement | null | undefined = from
+  while (el) {
+    const attr = el.getAttribute('data-ml-ui-theme')
+    if (attr === 'light' || attr === 'dark') return attr
+    el = el.parentElement
+  }
+
+  const rootAttr = document.documentElement.getAttribute('data-ml-ui-theme')
+  if (rootAttr === 'light' || rootAttr === 'dark') return rootAttr
+
+  if (document.documentElement.classList.contains('dark')) return 'dark'
+  return 'light'
 }

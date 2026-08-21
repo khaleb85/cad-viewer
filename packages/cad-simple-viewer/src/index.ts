@@ -1,10 +1,12 @@
 export * from './app'
 export * from './util'
+export * from './service'
 export * from './command'
 export * from './editor'
 export * from './i18n'
 export * from './plugin'
 export * from './view'
+export * from './ui'
 export {
   MTextColor,
   MTextParagraphAlignment,

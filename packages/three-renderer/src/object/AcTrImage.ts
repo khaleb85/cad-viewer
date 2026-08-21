@@ -1,17 +1,14 @@
 import { AcGiImageStyle } from '@mlightcad/data-model'
 import * as THREE from 'three'
 
-import { AcTrStyleManager } from '../style/AcTrStyleManager'
-import { getSceneDrawableUserData } from '../util/AcTrObjectUserData'
+import type { AcTrDrawMode } from '../draw/AcTrDrawMode'
+import { AcTrRenderContext } from '../renderer/AcTrRenderContext'
+import { AcTrBufferGeometryUtil } from '../util/AcTrBufferGeometryUtil'
 import { AcTrEntity } from './AcTrEntity'
 
 export class AcTrImage extends AcTrEntity {
-  constructor(
-    blob: Blob,
-    style: AcGiImageStyle,
-    styleManager: AcTrStyleManager
-  ) {
-    super(styleManager)
+  constructor(blob: Blob, style: AcGiImageStyle, context: AcTrRenderContext) {
+    super(context)
     const blobUrl = URL.createObjectURL(blob)
     const textureLoader = new THREE.TextureLoader()
     const texture = textureLoader.load(
@@ -30,9 +27,21 @@ export class AcTrImage extends AcTrEntity {
     const geometry = new THREE.ShapeGeometry(shape)
     this.generateUVs(geometry)
 
+    // Spatial pick / box selection index entities via wcsBbox. Without this,
+    // filled RasterImage / Ole2Frame meshes never enter the pick candidates
+    // even though their interior is raycastable.
+    const boundingBox = AcTrBufferGeometryUtil.safeComputeBoundingBox(geometry)
+    if (boundingBox) {
+      this.wcsBbox = boundingBox
+    }
+
     const mesh = new THREE.Mesh(geometry, material)
-    getSceneDrawableUserData(mesh).noBatch = true
     this.add(mesh)
+    this.finalizeLeafDrawables()
+  }
+
+  override resolveDrawMode(): AcTrDrawMode {
+    return 'unbatch'
   }
 
   /**

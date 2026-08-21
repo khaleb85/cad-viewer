@@ -20,7 +20,7 @@
   - Customizable base URL for fonts, templates, and example files
   
   COMPONENTS INCLUDED:
-  - Main menu and language selector
+  - Ribbon with CAD commands and language selector
   - Toolbars with CAD commands
   - Layer manager for controlling entity visibility
   - Command line for text-based commands
@@ -85,6 +85,7 @@ import {
   AcApDocManager,
   AcApFontUtil,
   AcApOpenDatabaseOptions,
+  AcApOpenViewMode,
   AcEdMTextEditor,
   AcEdOpenMode,
   eventBus
@@ -101,22 +102,19 @@ import {
   provideViewerRect,
   setColorTheme,
   toggleDark,
-  useDocOpenMode,
-  useDocumentOpening,
-  useEntityDrawStyle,
+  useDocument,
+  useDrawStyleToolbarVisible,
   useLocale,
   useNotificationCenter,
   useSettings
 } from '../composable'
 import { LocaleProp } from '../locale'
-import { MlDialogManager, MlFileReader } from './common'
 import {
-  MlEntityDrawStyleToolbar,
-  MlEntityInfo,
-  MlLanguageSelector,
-  MlMainMenu,
-  MlToolBars
-} from './layout'
+  resolveOpenFileErrorMessage,
+  resolveOpenFileErrorTitle
+} from '../util/openFileErrorMessage'
+import { MlDialogManager, MlFontFileReader } from './common'
+import { MlEntityInfo, MlToolBars } from './layout'
 import { MlNotificationCenter } from './notification'
 import { MlPaletteManager } from './palette'
 import { MlRibbonCommands } from './ribbon'
@@ -148,8 +146,9 @@ interface Props {
   baseUrl?: string
   /**
    * URL of the offline HTML viewer runtime (`viewer-runtime.iife.js`).
-   * Required for File menu “Export to HTML”; copy the file from
-   * `@mlightcad/cad-html-plugin` build output into your app assets.
+   * Used only for File menu “Export to HTML”. Copy the file from
+   * `@mlightcad/cad-html-plugin` into your app assets when you need HTML export.
+   * Not required to open or view DXF/DWG.
    */
   htmlViewerRuntimeUrl?: string | URL
   /**
@@ -167,6 +166,22 @@ interface Props {
    * - Write (8): Full read/write access, compatible with Review and Read
    */
   mode?: AcEdOpenMode
+  /**
+   * Whether entities on non-plottable ("no-plot") layers are drawn.
+   * When omitted, {@link AcApDocManager} defaults to `false` (web viewer semantics).
+   */
+  drawNoPlotLayers?: boolean
+  /**
+   * Whether to render entities incrementally while a drawing is opening.
+   * When omitted, {@link AcApDocManager} defaults to `false`.
+   */
+  progressiveRendering?: boolean
+  /**
+   * How to frame the view when the document finishes opening.
+   * When omitted, Read and Review use {@link AcApOpenViewMode.Extents};
+   * Write uses {@link AcApOpenViewMode.Saved}.
+   */
+  openViewMode?: AcApOpenViewMode
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -178,7 +193,17 @@ const props = withDefaults(defineProps<Props>(), {
   htmlViewerRuntimeUrl: './assets/viewer-runtime.iife.js',
   useMainThreadDraw: true,
   theme: 'dark',
-  mode: AcEdOpenMode.Write
+  mode: AcEdOpenMode.Write,
+  progressiveRendering: false,
+  openViewMode: undefined
+})
+
+const buildOpenOptions = (): AcApOpenDatabaseOptions => ({
+  minimumChunkSize: 1000,
+  mode: props.mode,
+  drawNoPlotLayers: props.drawNoPlotLayers,
+  progressiveRendering: props.progressiveRendering,
+  ...(props.openViewMode != null ? { openViewMode: props.openViewMode } : {})
 })
 
 const { t } = useI18n()
@@ -233,8 +258,14 @@ const viewerThemeClass = computed(() =>
 )
 
 const features = useSettings()
-const { beginDocumentOpening, endDocumentOpening } = useDocumentOpening()
-const docOpenMode = useDocOpenMode()
+const drawStyleToolbarVisible = useDrawStyleToolbarVisible()
+const {
+  beginDocumentOpening,
+  endDocumentOpening,
+  isDocumentOpening,
+  openMode: docOpenMode,
+  displayName
+} = useDocument()
 const pendingOpenMode = ref<AcEdOpenMode>()
 const effectiveOpenMode = computed(
   () => pendingOpenMode.value ?? docOpenMode.value
@@ -252,7 +283,6 @@ watch(
   { immediate: true }
 )
 
-const { isShowToolbar } = useEntityDrawStyle(editor)
 provideViewerRect(containerRef)
 
 let headerResizeObserver: ResizeObserver | undefined
@@ -284,40 +314,11 @@ const endPendingOpen = () => {
   pendingOpenMode.value = undefined
 }
 
-/**
- * Handles file read events from the file reader component
- * Opens the file content using the document manager
- *
- * This function is called when a user selects a local file through:
- * - The main menu "Open" option (triggers file dialog)
- * - Drag and drop functionality (if implemented)
- * - Any other local file selection method
- *
- * @param fileName - Name of the uploaded file
- * @param fileContent - File content as string (DXF) or ArrayBuffer (DWG)
- */
-const handleFileRead = async (fileName: string, fileContent: ArrayBuffer) => {
-  const options: AcApOpenDatabaseOptions = {
-    minimumChunkSize: 1000,
-    mode: props.mode
-  }
-  beginDocumentOpening()
-  beginPendingOpen(options.mode ?? AcEdOpenMode.Read)
-  try {
-    const success = await AcApDocManager.instance.openDocument(
-      fileName,
-      fileContent,
-      options
-    )
-    if (!success) {
-      throw new Error('Failed to open file')
-    }
-    store.fileName = AcApDocManager.instance.curDocument.docTitle
-  } finally {
-    endDocumentOpening()
+watch(isDocumentOpening, (opening, wasOpening) => {
+  if (wasOpening && !opening) {
     endPendingOpen()
   }
-}
+})
 
 /**
  * Fetches and opens a CAD file from a remote URL
@@ -326,19 +327,15 @@ const handleFileRead = async (fileName: string, fileContent: ArrayBuffer) => {
  * @param url - Remote URL to the CAD file
  */
 const openFileFromUrl = async (url: string) => {
-  const options: AcApOpenDatabaseOptions = {
-    minimumChunkSize: 1000,
-    mode: props.mode
-  }
+  const options = buildOpenOptions()
   beginDocumentOpening()
   beginPendingOpen(options.mode ?? AcEdOpenMode.Read)
   try {
     await AcApDocManager.instance.openUrl(url, options)
-    store.fileName = AcApDocManager.instance.curDocument.docTitle
   } catch (error) {
     log.error('Failed to open file from URL:', error)
     ElMessage({
-      message: t('main.message.failedToOpenFile', { fileName: url }),
+      message: resolveOpenFileErrorMessage(t, { fileName: url }),
       grouping: true,
       type: 'error',
       showClose: true
@@ -356,18 +353,16 @@ const openFileFromUrl = async (url: string) => {
  * @param file - Local File object containing the CAD file
  */
 const openLocalFile = async (file: File) => {
-  const options: AcApOpenDatabaseOptions = {
-    minimumChunkSize: 1000,
-    mode: props.mode
-  }
+  const options = buildOpenOptions()
   beginDocumentOpening()
   beginPendingOpen(options.mode ?? AcEdOpenMode.Read)
+  let fileContent: ArrayBuffer | null = null
   try {
     const reader = new FileReader()
     reader.readAsArrayBuffer(file)
 
     // Wait for file reading to complete
-    const fileContent = await new Promise<ArrayBuffer>((resolve, reject) => {
+    fileContent = await new Promise<ArrayBuffer>((resolve, reject) => {
       reader.onload = event => {
         const result = event.target?.result
         if (result) {
@@ -386,17 +381,17 @@ const openLocalFile = async (file: File) => {
       options
     )
     if (!success) {
-      throw new Error('Failed to open local file')
+      return
     }
-    store.fileName = AcApDocManager.instance.curDocument.docTitle
   } catch {
     ElMessage({
-      message: t('main.message.failedToOpenFile', { fileName: file.name }),
+      message: resolveOpenFileErrorMessage(t, { fileName: file.name }),
       grouping: true,
       type: 'error',
       showClose: true
     })
   } finally {
+    fileContent = null
     endDocumentOpening()
     endPendingOpen()
   }
@@ -434,6 +429,20 @@ watch(
   }
 )
 
+watch(
+  () => [
+    props.mode,
+    props.drawNoPlotLayers,
+    props.progressiveRendering,
+    props.openViewMode
+  ],
+  () => {
+    if (editorRef.value) {
+      AcApDocManager.instance.setOpenDocumentDefaults(buildOpenOptions)
+    }
+  }
+)
+
 // Watch for theme changes and apply to the view
 watch(
   () => props.theme,
@@ -444,9 +453,10 @@ watch(
 
 // Component lifecycle: Initialize and load initial file if URL or localFile is provided
 onMounted(async () => {
+  beginPendingOpen(props.mode)
+
   if (props.url || props.localFile) {
     beginDocumentOpening()
-    beginPendingOpen(props.mode)
   }
 
   // Initialize the CAD viewer with the internal canvas
@@ -457,7 +467,8 @@ onMounted(async () => {
       baseUrl: props.baseUrl,
       htmlViewerRuntimeUrl: props.htmlViewerRuntimeUrl,
       autoResize: true,
-      useMainThreadDraw: props.useMainThreadDraw
+      useMainThreadDraw: props.useMainThreadDraw,
+      openDocumentDefaults: buildOpenOptions
     })
     // AcApDocManager.instance is guaranteed only after viewer initialization.
     editorRef.value = AcApDocManager.instance
@@ -501,7 +512,7 @@ onUnmounted(() => {
 })
 
 watch(
-  [editorRef, isWriteMode, () => features.isShowToolbar],
+  [editorRef, isWriteMode, () => features.isShowRibbon, () => features.isShowToolbar],
   async () => {
     await nextTick()
     bindHeaderObserver()
@@ -597,18 +608,22 @@ eventBus.on('failed-to-get-avaiable-fonts', params => {
   })
 })
 
+// Restore pending open mode for files opened through the built-in OPEN dialog
+eventBus.on('open-local-file-started', ({ mode }) => {
+  beginPendingOpen(mode)
+})
+
 // Handle file opening failures with user-friendly error messages
 eventBus.on('failed-to-open-file', params => {
-  const message = t('main.message.failedToOpenFile', {
-    fileName: params.fileName
-  })
+  endPendingOpen()
+  const message = resolveOpenFileErrorMessage(t, params)
   ElMessage({
     message,
     grouping: true,
     type: 'error',
     showClose: true
   })
-  error('File Opening Failed', message)
+  error(resolveOpenFileErrorTitle(t, params.errorCode), message)
 })
 
 // Mirror AutoCAD's LAYERCLOSE behavior: only close when the layer tab is open.
@@ -639,15 +654,10 @@ const closeNotificationCenter = () => {
     <!-- Element Plus configuration provider for internationalization -->
     <el-config-provider :locale="elementPlusLocale">
       <div ref="layoutRef" class="ml-cad-layout">
-        <!-- Header section with main menu and language selector -->
+        <!-- Header section with command ribbon -->
         <header v-if="editorRef" ref="headerRef" class="ml-cad-header">
           <ml-ribbon-commands
-            v-if="isWriteMode"
-            :current-locale="effectiveLocale"
-          />
-          <ml-main-menu v-if="!isWriteMode" />
-          <ml-language-selector
-            v-if="!isWriteMode"
+            v-if="features.isShowRibbon"
             :current-locale="effectiveLocale"
           />
         </header>
@@ -665,21 +675,14 @@ const closeNotificationCenter = () => {
           <div
             v-if="
               editorRef &&
-              !isWriteMode &&
+              !features.isShowRibbon &&
               features.isShowFileName &&
-              !isShowToolbar
+              !drawStyleToolbarVisible
             "
             class="ml-file-name"
           >
-            {{ store.fileName }}
+            {{ displayName }}
           </div>
-
-          <!-- Toolbar for entity draw style -->
-          <ml-entity-draw-style-toolbar
-            v-if="editorRef"
-            :editor="editor"
-            class="ml-rev-tool-bar"
-          />
 
           <!-- Toolbar with common CAD operations (zoom, pan, select, etc.) -->
           <ml-tool-bars v-if="editorRef" />
@@ -703,8 +706,7 @@ const closeNotificationCenter = () => {
       </div>
 
       <!-- Hidden components for file handling and entity information -->
-      <!-- File reader for local file uploads -->
-      <ml-file-reader v-if="editorRef" @file-read="handleFileRead" />
+      <ml-font-file-reader v-if="editorRef" />
 
       <!-- Entity info panel for displaying object properties -->
       <ml-entity-info v-if="editorRef" />
@@ -785,15 +787,5 @@ const closeNotificationCenter = () => {
   text-align: center;
   pointer-events: none; /* Allow mouse events to pass through to container */
   z-index: 3; /* Ensure it's above canvas but doesn't block events */
-}
-
-/* Position the filename display at the top center of the viewer */
-.ml-rev-tool-bar {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-top: 20px;
-  z-index: 2; /* Ensure it's above canvas but doesn't block events */
 }
 </style>

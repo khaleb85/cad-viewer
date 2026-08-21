@@ -1,14 +1,18 @@
 # CAD-Viewer
 
-[简体中文](./README.zh-CN.md)
+[English](./README.md) | [简体中文](./README.zh-CN.md) | [日本語](./README.ja.md) | [한국어](./README.ko.md) | [Español](./README.es.md) | [Português](./README.pt.md) | [Русский](./README.ru.md) | [Čeština](./README.cs.md)
+
+[![npm downloads](https://img.shields.io/npm/dy/@mlightcad/cad-simple-viewer.svg?label=cad-simple-viewer)](https://www.npmjs.com/package/@mlightcad/cad-simple-viewer)
+[![npm downloads](https://img.shields.io/npm/dy/@mlightcad/cad-viewer.svg?label=cad-viewer)](https://www.npmjs.com/package/@mlightcad/cad-viewer)
 
 cad-viewer is `the first web-based DXF/DWG viewer and editor in the world that operates entirely in browser, without relying on any backend services`.
 By performing DWG/DXF parsing, geometry processing, and rendering directly in the browser, cad-viewer enables true serverless CAD viewing and editing, ideal for cloud apps, offline usage, and privacy-sensitive workflows.
 
-It also offers something you will rarely find in other CAD viewers—**one-click export to a single, self-contained HTML file**. The downloaded `.html` embeds the drawing snapshot and a lightweight viewer runtime, so recipients can open, pan, zoom, toggle layers, and measure distances in any modern browser with **no CAD app, no server, and no install**. Most desktop and web CAD viewers only let you view inside their own product; cad-viewer turns a live drawing into a portable, offline artifact you can email, archive, or drop on a static file host—ideal for sharing with clients, compliance archives, and air-gapped workflows.
+It also offers something you will rarely find in other CAD viewers—**one-click export to a single, self-contained HTML file**. The downloaded `.html` embeds the drawing snapshot and a lightweight viewer runtime, so recipients can open, pan, zoom, toggle layers, and measure distances in any modern browser with **no CAD app, no server, and no install**. Most desktop and web CAD viewers only let you view inside their own product; cad-viewer turns a live drawing into a portable, offline artifact you can email, archive, or drop on a static file host—ideal for sharing with clients, compliance archives, and air-gapped workflows. The offline viewer also uses far less memory than traditional desktop tools when opening the same drawing (see [memory comparison](#self-contained-html-memory-usage) below).
 
-- [**🌐 Live Demo**](https://mlightcad.github.io/cad-viewer/)
-- [**🌐 API Docs**](https://mlightcad.github.io/cad-viewer/docs/)
+- [**🌐 Home Page**](https://mlightcad.com/)
+- **🌐 Live Demo**: [Netlify](https://mlightcad.netlify.app/) · [GitHub Pages](https://mlightcad.github.io/cad-viewer/)
+- **🌐 API Docs**: [Read the Docs](https://cad-viewer.readthedocs.io/en/latest/) (versioned) · [GitHub Pages](https://mlightcad.github.io/cad-viewer/docs/) (latest/dev) · [MCP Server](https://gitmcp.io/mlightcad/cad-viewer)
 - [**🌐 Wiki**](https://github.com/mlightcad/cad-viewer/wiki)
 - X (Twitter): [@mlightcad](https://x.com/mlightcad)
 - YouTube: [@mlightcad](https://www.youtube.com/@mlightcad)
@@ -26,6 +30,17 @@ The [Thingraph](https://cad.thingraph.site/) team builds production DWG/DXF view
   - [Confluence](https://marketplace.atlassian.com/apps/2890472615/dwg-viewer-for-confluence) — embed DWG/DXF previews on pages
   - [Windows Explorer](https://cad.thingraph.site/install/windows) — thumbnail and preview in File Explorer
 
+Community apps & integrations:
+
+- [flyfish-dev/cad-viewer](https://github.com/flyfish-dev/cad-viewer) — Production-oriented browser CAD viewer for DWG, DXF, DWF, DWFx and XPS ([live demo](https://cad-viewer-iys.pages.dev))
+- [Nextcloud CAD Viewer](https://github.com/ashcoft/nextcloud-cad-viewer) — Native Nextcloud app for viewing DWG/DXF in the browser ([App Store](https://apps.nextcloud.com/apps/cad_viewer))
+
+Community Linux desktop packages:
+
+- [CAD Viewer AppImage](https://github.com/pass-wind/cad-viewer-appimage) — Electron-based AppImage for Linux (~114 MB), tested on Fedora
+- [cad-viewer (AUR)](https://aur.archlinux.org/packages/cad-viewer) — Arch Linux source package using system Electron (~5.4 MB)
+- [cad-viewer-bin (AUR)](https://aur.archlinux.org/packages/cad-viewer-bin) — Arch Linux binary package with bundled fonts/templates for fully offline drawing open
+
 ![CAD-Viewer Quick Demo](./assets/cad-viewer.gif)
 
 ## Features
@@ -39,6 +54,20 @@ The [Thingraph](https://cad.thingraph.site/) team builds production DWG/DXF view
 - Offline and online editing workflows
 - THREE.js 3D rendering engines with advanced optimization techniques
 - Designed for extensibility and integration with platforms like CMS, Notion, and WeChat
+
+## Embed DWG/DXF with One Line of Code
+
+Add DWG/DXF viewing to any website with a single `<iframe>`—no CAD backend, no uploading drawings to a third-party cloud. The file is fetched from **your** URL and parsed entirely in the visitor’s browser, with review tools (pan, zoom, measure, annotate) ready out of the box.
+
+```html
+<iframe
+  src="https://mlightcad.com/embed.html?url=https://example.com/plans/floor.dwg&mode=review&toolbar=1"
+  style="width:100%;height:600px;border:0"
+  allowfullscreen>
+</iframe>
+```
+
+Walkthrough and live playground: [Embed DWG/DXF on Your Website Without Uploading a Single Byte](https://medium.com/@mlightcad/embed-dwg-dxf-on-your-website-without-uploading-a-single-byte-cf5f6ad484c4).
 
 ## Getting Started
 
@@ -94,6 +123,77 @@ pnpm preview:simple
 - **Zoom**: Pinch with two fingers
 - **Pan**: Single-finger drag
 
+## Plugin System
+
+CAD-Viewer is built around a modular **plugin system** in [`@mlightcad/cad-simple-viewer`](packages/cad-simple-viewer). Plugins implement the `AcApPlugin` interface and hook into viewer lifecycle via `onLoad` / `onUnload`—typically to register commands, add UI, or wire export/import pipelines.
+
+Load plugins through `AcApDocManager.instance.pluginManager` (`loadPlugin`, `registerLazyPlugin`, or `plugins.fromConfig` when creating the document manager). Export-oriented plugins support **lazy loading**: register a small stub up front and download the heavy bundle only when the user runs the related command (for example `-chtml`, or when confirming export from the `chtml` dialog in `cad-viewer`).
+
+The monorepo ships several first-party plugins. Each focuses on one concern; combine them as needed. **Installation, registration, and API details live in each package’s README**—see the links below.
+
+### Official plugins
+
+| Package | Role | Commands / capabilities |
+|---------|------|-------------------------|
+| [`@mlightcad/cad-simple-ui-plugin`](packages/cad-simple-ui-plugin) | **Toolbar, layer manager & review palette UI** for `cad-simple-viewer` (plain DOM, no Vue/React) | `layer`, `markuppanel`, default toolbar (view, measure, export, review, theme, locale) |
+| [`@mlightcad/cad-agent-plugin`](packages/cad-agent-plugin) | **Natural-language CAD agent** (AI chat panel + drawing tool calls) | `agent` |
+| [`@mlightcad/cad-html-plugin`](packages/cad-html-plugin) | Export drawings to **self-contained offline HTML** | `chtml` (dialog in `cad-viewer`), `-chtml` (command-line) |
+| [`@mlightcad/cad-pdf-plugin`](packages/cad-pdf-plugin) | **PDF export and import** (vector pipeline) | `cpdf`, `ipdf` |
+| [`@mlightcad/cad-svg-plugin`](packages/cad-svg-plugin) | **SVG export** and shared vector renderer (also used by PDF export) | `csvg` |
+
+### `@mlightcad/cad-simple-ui-plugin` — UI chrome for the simple viewer
+
+[`cad-simple-viewer`](packages/cad-simple-viewer) deliberately ships **no application UI**—only the canvas and CAD core. If you embed the simple viewer in your own web app and want ready-made chrome without adopting the full Vue-based [`cad-viewer`](packages/cad-viewer) shell, **`cad-simple-ui-plugin` is the intended UI layer**.
+
+It provides:
+
+- A **configurable toolbar** (placement on any edge, default CAD commands, nested menus, custom items)
+- A **dock panel** with a **layer manager** tab (layer on/off, ACI color picker, zoom-to-layer on double-click) and a **review palette** tab (markup list, status, comments)
+- **Theme sync** with the `COLORTHEME` sysvar and `--ml-ui-*` CSS tokens on your host element
+- **Locale sync** with `AcApI18n` (English / Chinese / Czech / Turkish)
+
+All widgets are framework-agnostic (plain DOM). The full Vue [`cad-viewer`](packages/cad-viewer) app has its own Element Plus UI and does not require this plugin; use `cad-simple-ui-plugin` when you build on `cad-simple-viewer` directly.
+
+→ **Quick start, toolbar customization, and options:** [packages/cad-simple-ui-plugin/README.md](packages/cad-simple-ui-plugin/README.md)
+
+### `@mlightcad/cad-agent-plugin` — AI drawing assistant
+
+[`cad-agent-plugin`](packages/cad-agent-plugin) adds a **natural-language CAD agent** to `cad-simple-viewer`-based apps. Users describe what they want in plain language; the agent calls CAD tools to inspect the drawing and create or modify geometry.
+
+It provides:
+
+- A **lazy-loaded** `AcApPlugin` (trigger command: `agent`) so the AI bundle is not on the critical path
+- A **Vue chat panel** (`AgentChatPanel`) built on the Vercel AI SDK (`Experimental_Agent` + `@ai-sdk/vue`)
+- **Browser-side LLM configuration** — API keys for OpenAI, Anthropic, or OpenAI-compatible endpoints stay in the client (encrypted in `localStorage`)
+- **Phase 1 CAD tools** — `get_drawing_context`; `draw_line`, `draw_circle`, `draw_arc`, `draw_rectangle`, `draw_polyline`, `draw_text`; `set_current_layer`, `create_layer`, `zoom_extents`
+- **English / Chinese / Turkish / Czech** UI strings via the plugin i18n layer
+
+The full Vue [`cad-viewer`](packages/cad-viewer) app registers the agent automatically when the package is installed (palette tab). [`cad-simple-viewer-example`](packages/cad-simple-viewer-example) wires it into a dock tab via `cad-simple-ui-plugin`. Host apps call `registerLazyAgentPlugin` and `setAgentPaletteOpener` to mount the panel where they want.
+
+→ **Installation, registration, and tool list:** [packages/cad-agent-plugin/README.md](packages/cad-agent-plugin/README.md)
+
+### Export plugins (HTML / PDF / SVG)
+
+These plugins add export (and PDF import) commands to the same plugin manager. They are **lazy-loaded** so initial page weight stays small. The [`cad-simple-viewer-example`](packages/cad-simple-viewer-example) demo registers all three export plugins, `cad-simple-ui-plugin`, and `cad-agent-plugin`; the full [`cad-viewer`](packages/cad-viewer) app registers the export plugins and the agent plugin (when installed) in its bootstrap.
+
+- **HTML** — one-file offline viewer for sharing and archiving: [packages/cad-html-plugin/README.md](packages/cad-html-plugin/README.md)  
+  (Headless CLI using the same pipeline: [packages/cad-simple-viewer-cli/README.md](packages/cad-simple-viewer-cli/README.md))
+- **PDF** — vector PDF export and PDF-to-CAD import: [packages/cad-pdf-plugin/README.md](packages/cad-pdf-plugin/README.md)
+- **SVG** — vector SVG export: [packages/cad-svg-plugin/README.md](packages/cad-svg-plugin/README.md)
+
+#### Self-contained HTML memory usage
+
+When opening the sample drawing [`canteen.dwg`](https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/data/canteen.dwg), memory consumption is roughly:
+
+| Viewer | Memory consumption |
+|--------|-------------|
+| AutoCAD 2020 | 320 MB |
+| GstarCAD Viewer (浩辰看图王) | 246 MB |
+| Self-contained HTML (measure mode) | 56 MB |
+| Self-contained HTML (view mode) | 33 MB |
+
+The offline HTML viewer uses about **83% less memory than AutoCAD 2020** and about **77% less than GstarCAD Viewer** in view mode, while still supporting pan/zoom, layer toggle, and distance measurement (measure mode).
+
 ## Performance
 
 CAD-Viewer is engineered for **exceptional performance** and can handle very large DXF/DWG files while maintaining high frame rates. It employs multiple advanced rendering technologies to optimize performance:
@@ -109,16 +209,18 @@ These optimizations enable CAD-Viewer to smoothly render complex CAD drawings wi
 
 ## Known Issues
 
-CAD-Viewer has some known limitations that users should be aware of:
+The default open-source DWG path is based on [LibreDWG](https://github.com/LibreDWG/libredwg) via the optional `@mlightcad/libredwg-converter` package. It works well for many drawings, but its entity coverage is still limited, the WASM bundle is much larger, startup is slower, memory usage is high, and very large DWG files may hit out-of-memory errors. It also introduces GPL licensing considerations for commercial closed-source products. `@mlightcad/cad-simple-viewer` does **not** depend on or register that converter by default — host apps (see the example packages) opt in explicitly.
 
-- **Unsupported Entities**: 
-  - **Tables** (DWG files only): Table entities are not currently supported in DWG files because [LibreDWG](https://github.com/LibreDWG/libredwg) is used to read DWG files and it doesn't support table entity yet. If one table is created by line and polyline entities, definitely it is supported.
-  - **XRefs**: External references (XRefs) are not supported and will not be displayed.
-- **DWG File Compatibility**: 
-  - Some DWG drawings may fail to open due to bugs in the underlying [LibreDWG](https://github.com/LibreDWG/libredwg) library. This is a known limitation of the current DWG parsing implementation. If you find those issues, please log one issue on [CAD-Viewer issues page](https://github.com/mlightcad/cad-viewer/issues) or [LibreDWG issues page](https://github.com/LibreDWG/libredwg/issues).
-  - In the Chinese architecture and construction industry, CAD drawings are widely created using Tianzheng software. However, many entities in Tianzheng drawings are proprietary custom objects, and no public APIs are provided to access or parse their internal data. As a result, before opening such drawings with CAD-Viewer, they must first be converted to T3 format using Tianzheng. After conversion, the drawings can be correctly opened and viewed in CAD-Viewer.
+If you need better compatibility, lower memory usage, large-file support, or a cleaner commercial licensing story, see our [**proprietary DWG parser**](./PROPRIETARY-PARSER.md).
 
-These issues are being tracked and will be addressed in future releases.
+| Item | LibreDWG-based parser | Proprietary DWG parser |
+|------|------------------------|------------------------|
+| Supported entities | Limited coverage | Broader coverage |
+| Bundle size | ~13 MB | ~437 KB |
+| Load speed | Slower startup | Much faster startup |
+| Memory usage | Higher | Lower |
+| Large DWG files | May OOM on large files | No such issue |
+| License | GPL propagation risk | No GPL propagation issue |
 
 ## Roadmap
 
@@ -179,7 +281,7 @@ Legend:
 #### Display Controls
 
 * [x] Layer visibility on/off
-* [ ] Layer freeze / lock
+* [x] Layer freeze / lock
 * [x] Lineweight display
 * [ ] Linetype scaling
 * [x] Background / theme switching
@@ -197,12 +299,12 @@ Legend:
 
 #### Snapping (OSNAP)
 
-* [ ] ⏳ Endpoint: Now working for INSERT entity yet.
+* [x] Endpoint
 * [x] Midpoint
-* [ ] ⏳ Center
-* [ ] Intersection
+* [x] Center
+* [x] Intersection
 * [ ] Perpendicular / tangent
-* [ ] ⏳ Nearest
+* [x] Nearest
 * [ ] Snap tracking
 
 
@@ -211,20 +313,20 @@ Legend:
 #### Basic Editing
 
 * [x] Entity editing framework
-* [ ] Move
-* [ ] Copy
-* [ ] Rotate
+* [x] Move
+* [x] Copy
+* [x] Rotate
 * [ ] Scale
 * [x] Delete
-* [ ] Undo / redo
+* [x] Undo / redo
 
 #### Geometry Editing
 
-* [ ] Grip points
+* [x] Grip points
 * [ ] Stretch
 * [ ] Trim
 * [ ] Extend
-* [ ] Offset
+* [x] Offset
 * [ ] Explode
 * [ ] Join / fillet / chamfer (2D)
 
@@ -258,7 +360,7 @@ Legend:
 
 ### Dimension
 
-* [ ] Linear dimension
+* [x] Linear dimension
 * [ ] Angle dimension
 * [ ] Coordinate
 
@@ -275,12 +377,12 @@ Legend:
 * [x] Layer manager
 * [ ] Block manager
 * [x] Command history / console
-* [ ] ⏳ Status bar (snap, ortho, grid)
+* [x] Status bar (snap, ortho, grid)
 
 #### Command System
 
 * [x] Command registry
-* [ ] Command aliases
+* [x] Command aliases
 * [x] Command prompts (AutoCAD-style)
 
 ### Integration & Extensibility
@@ -303,8 +405,8 @@ Legend:
 
 #### Offline Editor
 
-* [ ] ⏳ Local editing in browser
-* [ ] ⏳ Save to DXF
+* [x] Local editing in browser
+* [x] Save to DXF
 * [ ] Save change set / diff
 * [ ] IndexedDB persistence
 
@@ -338,4 +440,8 @@ Contributions are welcome! Please open issues or pull requests for bug fixes, ne
 
 ## License
 
-[MIT](LICENSE)
+The cad-viewer monorepo is primarily [MIT](LICENSE) licensed.
+
+DXF loading uses the built-in MIT parser in `@mlightcad/data-model`. DWG loading is **opt-in**: `@mlightcad/cad-simple-viewer` does not depend on GPL LibreDWG packages. Hosts that want open-source DWG support add `@mlightcad/libredwg-converter` (GPL-3.0) themselves, deploy its worker + wasm, and register the converter. If you ship a closed-source product and cannot distribute GPL code to your customers, use the [**proprietary DWG parser**](./PROPRIETARY-PARSER.md) instead.
+
+→ **Commercial parser:** [PROPRIETARY-PARSER.md](./PROPRIETARY-PARSER.md) (scope, licensing, pricing, integration, GPL compliance, support)

@@ -1,14 +1,26 @@
 import { AcGiSubEntityTraits } from '@mlightcad/data-model'
+import {
+  ACGI_MODEL_SPACE_BACKGROUND,
+  acgiForegroundColorForBackground
+} from '@mlightcad/data-model'
 import * as THREE from 'three'
 
-import {
-  foregroundColorForBackground,
-  MODEL_SPACE_BACKGROUND
-} from './AcTrDisplayColors'
 import { AcTrFillMaterialManager } from './AcTrFillMaterialManager'
 import { AcTrLineMaterialManager } from './AcTrLineMaterialManager'
+import {
+  AcTrMaterialCacheStats
+} from './AcTrMaterialManager'
 import { AcTrPointMaterialManager } from './AcTrPointMaterialManager'
 import { AcTrStyleManagerOptions } from './AcTrStyleManagerOptions'
+
+/** Aggregated material-cache stats across point / line / fill managers. */
+export interface AcTrStyleManagerStats {
+  point: AcTrMaterialCacheStats
+  line: AcTrMaterialCacheStats
+  fill: AcTrMaterialCacheStats
+  totalCount: number
+  totalEstimatedBytes: number
+}
 
 /**
  * Central style/material access point for the CAD viewer.
@@ -33,11 +45,17 @@ export class AcTrStyleManager {
     maxFragmentUniforms: 1024,
     resolution: new THREE.Vector2(1, 1),
     showLineWeight: false,
-    currentBackgroundColor: MODEL_SPACE_BACKGROUND
+    currentBackgroundColor: ACGI_MODEL_SPACE_BACKGROUND
   }
   private pointMgr: AcTrPointMaterialManager
   private lineMgr: AcTrLineMaterialManager
   private fillMgr: AcTrFillMaterialManager
+  /**
+   * When true, fat-line materials are used even if {@link showLineWeight}
+   * (LWDISPLAY) is off. Overlay transients (markup / measurement) set this
+   * for the duration of conversion so ribbon lineweight is visible.
+   */
+  private _forceShowLineWeight = false
 
   constructor() {
     this.pointMgr = new AcTrPointMaterialManager(this.options)
@@ -45,7 +63,7 @@ export class AcTrStyleManager {
     this.fillMgr = new AcTrFillMaterialManager(this.options)
   }
 
-  /** Stores unsupported text styles mapped by name → usage count. */
+  /** Unsupported text styles mapped by name → usage count. */
   public unsupportedTextStyles: Record<string, number> = {}
 
   /**
@@ -73,7 +91,9 @@ export class AcTrStyleManager {
     const hasLinePattern = !!(
       traits.lineType.pattern && traits.lineType.pattern.length > 0
     )
-    const forceBasicMaterial = !this.options.showLineWeight && !hasLinePattern
+    const showLineWeight =
+      this.options.showLineWeight || this._forceShowLineWeight
+    const forceBasicMaterial = !showLineWeight && !hasLinePattern
     return this.lineMgr.getMaterial(traits, {
       basicMaterialOnly: basicMaterialOnly || forceBasicMaterial
     })!
@@ -91,6 +111,18 @@ export class AcTrStyleManager {
    */
   set showLineWeight(value: boolean) {
     this.options.showLineWeight = value
+  }
+
+  /**
+   * Whether overlay conversion should honor entity lineweights even when
+   * {@link showLineWeight} is false.
+   */
+  get forceShowLineWeight(): boolean {
+    return this._forceShowLineWeight
+  }
+
+  set forceShowLineWeight(value: boolean) {
+    this._forceShowLineWeight = value
   }
 
   /**
@@ -112,7 +144,7 @@ export class AcTrStyleManager {
   set currentBackgroundColor(value: number) {
     this.options.currentBackgroundColor = value
     this.changeBackground(value)
-    this.repaintForegroundMaterials(foregroundColorForBackground(value))
+    this.repaintForegroundMaterials(acgiForegroundColorForBackground(value))
   }
 
   /**
@@ -251,6 +283,23 @@ export class AcTrStyleManager {
     this.lineMgr.dispose()
     this.pointMgr.dispose()
     this.fillMgr.dispose()
+  }
+
+  /**
+   * Returns aggregated material-cache stats for memory diagnostics.
+   */
+  getStats(): AcTrStyleManagerStats {
+    const point = this.pointMgr.getStats()
+    const line = this.lineMgr.getStats()
+    const fill = this.fillMgr.getStats()
+    return {
+      point,
+      line,
+      fill,
+      totalCount: point.count + line.count + fill.count,
+      totalEstimatedBytes:
+        point.estimatedBytes + line.estimatedBytes + fill.estimatedBytes
+    }
   }
 
   updateLineResolution(width: number, height: number): void {

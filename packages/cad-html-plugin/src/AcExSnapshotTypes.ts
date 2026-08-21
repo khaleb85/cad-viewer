@@ -3,8 +3,16 @@ import type { AcExOsnapCatalog } from './AcExOsnapPrimitiveTypes'
 /**
  * Current snapshot schema version.
  * Increment when breaking changes are introduced to {@link AcExSnapshot}.
+ *
+ * v3 adds {@link AcExLayoutSnapshot.viewports} so the offline HTML viewer can
+ * scissor-render model space through paper-space viewports.
+ *
+ * Optional {@link AcExLineBatch.renderOrder} / {@link AcExMeshBatch.renderOrder}
+ * is a backward-compatible flag on v3 batches: hatch fills use `-1` so they
+ * sit below linework on the shared Z plane, matching the live viewer's
+ * `AcGiSubEntityTraits.drawOrder` / `Object3D.renderOrder` tiers.
  */
-export const ACEX_SNAPSHOT_VERSION = 2 as const
+export const ACEX_SNAPSHOT_VERSION = 3 as const
 
 /**
  * Literal type of the supported snapshot schema version.
@@ -131,6 +139,16 @@ export interface AcExLineBatch {
    * {@link AcExLineBatch.linePattern} is set.
    */
   lineDistances?: Float32Array
+  /**
+   * Screen-space line width in pixels for wide lines rendered with
+   * `LineSegments2` / `LineMaterial`. Omitted for 1px `THREE.LineSegments`.
+   */
+  lineWidth?: number
+  /**
+   * Three.js `Object3D.renderOrder` for same-plane compositing.
+   * Omitted when `0` (the default linework tier).
+   */
+  renderOrder?: number
 }
 
 /**
@@ -186,6 +204,31 @@ export interface AcExMeshBatch {
   gradientPositions?: Float32Array
   /** Material side when a custom fill shader is used (`0` = front, `1` = back). */
   side?: number
+  /**
+   * Three.js `Object3D.renderOrder` for same-plane compositing.
+   * Hatch fills are `-1` so they sit below linework; omitted when `0`.
+   */
+  renderOrder?: number
+}
+
+/**
+ * One paper-space viewport that shows a rectangle of model space.
+ *
+ * Matches the live viewer's `AcGiViewport.box` (paper) and `viewBox` (model)
+ * so the offline HTML viewer can scissor-render model geometry through the
+ * viewport, the same way {@link AcTrLayoutView} draws `AcTrViewportView`s.
+ */
+export interface AcExViewportSnapshot {
+  /** Viewport border in paper-space WCS (`AcGiViewport.box`). */
+  paper: AcExExtents
+  /** Model-space rectangle shown through the viewport (`AcGiViewport.viewBox`). */
+  model: AcExExtents
+  /**
+   * View twist in radians (`AcGiViewport.viewTwistAngle`, DXF group 51).
+   * Omitted when zero. Paper↔model mapping and the scissor camera rotate by
+   * this angle around the model view center.
+   */
+  twist?: number
 }
 
 /**
@@ -218,7 +261,35 @@ export interface AcExLayoutSnapshot {
    * {@link AcExLineBatch} / {@link AcExMeshBatch} vertices.
    */
   osnap?: AcExOsnapCatalog
+  /**
+   * User-created paper-space viewports (skipped for model space).
+   *
+   * The default `*Paper_Space` viewport is omitted. The offline viewer uses
+   * these descriptors to scissor-render model-space batches inside each frame.
+   */
+  viewports?: AcExViewportSnapshot[]
 }
+
+/** Camera state for restoring the export-time view in the offline HTML viewer. */
+export interface AcExViewState {
+  /** View center X in world coordinates. */
+  centerX: number
+  /** View center Y in world coordinates. */
+  centerY: number
+  /** Orthographic zoom scaled for the offline viewer frustum. */
+  zoom: number
+}
+
+/** How the offline HTML viewer frames the drawing on first open. */
+export type AcExInitialViewMode = 'fit' | 'current'
+
+/**
+ * Offline viewer capability profile embedded at export time.
+ *
+ * - `view` — pan/zoom and layer visibility only (no measurement, markup, or OSNAP data).
+ * - `measure` — full viewer with measurement tools, markup annotations, and analytic OSNAP catalog.
+ */
+export type AcExViewerMode = 'view' | 'measure'
 
 /**
  * Display-only snapshot embedded in exported HTML.
@@ -250,6 +321,28 @@ export interface AcExSnapshot {
     background: number
     /** Export-time UI locale from the CAD app (informational; runtime uses browser language). */
     locale?: string
+    /**
+     * Initial framing when the HTML file opens. Defaults to `'fit'` when omitted
+     * for snapshots produced before this option existed.
+     */
+    initialView?: AcExInitialViewMode
+    /**
+     * Saved view center and zoom when {@link AcExSnapshot.meta.initialView} is
+     * `'current'`.
+     */
+    viewState?: AcExViewState
+    /**
+     * Viewer capability profile. Defaults to `'measure'` when omitted for
+     * snapshots produced before this option existed.
+     */
+    viewerMode?: AcExViewerMode
+    /**
+     * When `false`, paper-space layouts were not exported. The offline viewer
+     * hides the layout switcher and may release CPU geometry after the first
+     * draw. Defaults to `true` when omitted for snapshots produced before this
+     * option existed.
+     */
+    exportLayouts?: boolean
   }
   /** Layer table used by the layer drawer (visibility toggles, swatches). */
   layers: AcExLayerSnapshot[]

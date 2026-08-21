@@ -4,6 +4,7 @@ import {
   AcDbBlockTableRecord,
   AcDbDatabase,
   AcDbDataGenerator,
+  AcDbEllipse,
   AcDbHatch,
   AcDbLeader,
   AcDbLine,
@@ -11,12 +12,14 @@ import {
   AcDbMLeaderContentType,
   AcDbMLine,
   AcDbPoint,
+  AcDbPolyline,
   AcDbRasterImage,
   AcDbRay,
   AcDbTable,
   AcDbText,
   AcDbTrace,
   AcDbXline,
+  AcGeCircArc2d,
   AcGeLine2d,
   AcGeLoop2d,
   AcGePoint2d,
@@ -79,6 +82,148 @@ describe('buildOsnapCatalog', () => {
     expect(line?.y0).toBeCloseTo(0, 5)
     expect(line?.x1).toBeCloseTo(0, 5)
     expect(line?.y1).toBeCloseTo(10, 5)
+  })
+
+  it('exports all snap-capable primitives', () => {
+    const db = new AcDbDatabase()
+    const modelSpace = db.tables.blockTable.modelSpace
+    modelSpace.appendEntity(
+      new AcDbLine(new AcGePoint3d(0, 0, 0), new AcGePoint3d(10, 0, 0))
+    )
+    modelSpace.appendEntity(
+      new AcDbEllipse(
+        new AcGePoint3d(20, 0, 0),
+        AcGeVector3d.Z_AXIS,
+        new AcGeVector3d(4, 0, 0),
+        4,
+        2,
+        0,
+        Math.PI * 2
+      )
+    )
+
+    const catalog = buildOsnapCatalog(db, modelSpace.objectId)
+
+    expect(catalog.primitives.some(prim => prim.kind === 'line')).toBe(true)
+    expect(catalog.primitives.some(prim => prim.kind === 'ellipse')).toBe(true)
+  })
+
+  it('exports polyline segments as line primitives', () => {
+    const db = new AcDbDatabase()
+    const modelSpace = db.tables.blockTable.modelSpace
+    const polyline = new AcDbPolyline()
+    polyline.addVertexAt(0, new AcGePoint2d(0, 0))
+    polyline.addVertexAt(1, new AcGePoint2d(10, 0))
+    polyline.addVertexAt(2, new AcGePoint2d(10, 10))
+    modelSpace.appendEntity(polyline)
+
+    const catalog = buildOsnapCatalog(db, modelSpace.objectId)
+    expect(catalog.primitives.filter(p => p.kind === 'line').length).toBe(2)
+  })
+
+  it('snaps nearest on both CCW and CW polyline bulge segments', () => {
+    const db = new AcDbDatabase()
+    const modelSpace = db.tables.blockTable.modelSpace
+    const polyline = new AcDbPolyline()
+    // Shallow clockwise bulge (below the chord) then a CCW semicircle.
+    polyline.addVertexAt(0, new AcGePoint2d(0, 0), -Math.tan(Math.PI / 16))
+    polyline.addVertexAt(1, new AcGePoint2d(40, 0), 1)
+    polyline.addVertexAt(2, new AcGePoint2d(50, 0))
+    modelSpace.appendEntity(polyline)
+
+    const catalog = buildOsnapCatalog(db, modelSpace.objectId)
+    expect(catalog.primitives.filter(p => p.kind === 'arc')).toHaveLength(2)
+
+    const index = new AcExOsnapIndex(['nearest'])
+    index.rebuild({
+      btrId: modelSpace.objectId,
+      name: 'Model',
+      isModelSpace: true,
+      lineBatches: [],
+      meshBatches: [],
+      osnap: catalog
+    })
+
+    const cw = new AcGeCircArc2d(
+      { x: 0, y: 0 },
+      { x: 40, y: 0 },
+      -Math.tan(Math.PI / 16)
+    )
+    const ccw = new AcGeCircArc2d({ x: 40, y: 0 }, { x: 50, y: 0 }, 1)
+    const cwMid = cw.midPoint
+    const ccwMid = ccw.midPoint
+
+    const cwSnap = index.findSnap(cwMid.x, cwMid.y, 1)
+    expect(cwSnap?.mode).toBe('nearest')
+    expect(cwSnap?.x).toBeCloseTo(cwMid.x, 5)
+    expect(cwSnap?.y).toBeCloseTo(cwMid.y, 5)
+
+    const ccwSnap = index.findSnap(ccwMid.x, ccwMid.y, 1)
+    expect(ccwSnap?.mode).toBe('nearest')
+    expect(ccwSnap?.x).toBeCloseTo(ccwMid.x, 5)
+    expect(ccwSnap?.y).toBeCloseTo(ccwMid.y, 5)
+
+    expect(index.findCircleOrArcNear(cwMid.x, cwMid.y, 1)?.r).toBeCloseTo(
+      cw.radius,
+      5
+    )
+    expect(index.findCircleOrArcNear(ccwMid.x, ccwMid.y, 1)?.r).toBeCloseTo(
+      ccw.radius,
+      5
+    )
+  })
+
+  it('locks the polyline arc the cursor is closer to at a shared vertex', () => {
+    const db = new AcDbDatabase()
+    const modelSpace = db.tables.blockTable.modelSpace
+    const polyline = new AcDbPolyline()
+    polyline.addVertexAt(0, new AcGePoint2d(0, 0), -Math.tan(Math.PI / 16))
+    polyline.addVertexAt(1, new AcGePoint2d(40, 0), 1)
+    polyline.addVertexAt(2, new AcGePoint2d(50, 0))
+    modelSpace.appendEntity(polyline)
+
+    const catalog = buildOsnapCatalog(db, modelSpace.objectId)
+    const index = new AcExOsnapIndex(['nearest'])
+    index.rebuild({
+      btrId: modelSpace.objectId,
+      name: 'Model',
+      isModelSpace: true,
+      lineBatches: [],
+      meshBatches: [],
+      osnap: catalog
+    })
+
+    const first = new AcGeCircArc2d(
+      { x: 0, y: 0 },
+      { x: 40, y: 0 },
+      -Math.tan(Math.PI / 16)
+    )
+    const second = new AcGeCircArc2d({ x: 40, y: 0 }, { x: 50, y: 0 }, 1)
+    const toward = (
+      curve: AcGeCircArc2d,
+      fromStart: boolean,
+      dist: number
+    ) => {
+      const pts = curve.getPoints(16)
+      const origin = fromStart ? pts[0]! : pts[pts.length - 1]!
+      const inward = fromStart ? pts[1]! : pts[pts.length - 2]!
+      const ix = inward.x - origin.x
+      const iy = inward.y - origin.y
+      const len = Math.hypot(ix, iy)
+      return {
+        x: origin.x + (ix / len) * dist,
+        y: origin.y + (iy / len) * dist
+      }
+    }
+
+    const towardFirst = toward(first, false, 0.05)
+    const towardSecond = toward(second, true, 0.05)
+    expect(
+      index.findCircleOrArcNear(towardFirst.x, towardFirst.y, 2)?.r
+    ).toBeCloseTo(first.radius, 5)
+    expect(
+      index.findCircleOrArcNear(towardSecond.x, towardSecond.y, 2)?.r
+    ).toBeCloseTo(second.radius, 5)
   })
 
   it('exports snap primitives for dimension anonymous blocks', () => {

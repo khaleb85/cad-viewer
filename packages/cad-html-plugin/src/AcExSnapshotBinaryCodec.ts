@@ -13,6 +13,8 @@ const MAGIC = 0x58454341 // 'ACEX' little-endian
 const F_LINE_INDICES = 1
 const F_LINE_PATTERN = 2
 const F_LINE_DISTANCES = 4
+const F_LINE_WIDTH = 8
+const F_LINE_RENDER_ORDER = 16
 
 const F_MESH_INDICES = 1
 const F_MESH_HATCH = 2
@@ -20,6 +22,7 @@ const F_MESH_GRADIENT_FILL = 4
 const F_MESH_GRADIENT_POS = 8
 const F_MESH_SIDE = 16
 const F_MESH_POINTS = 32
+const F_MESH_RENDER_ORDER = 64
 
 /**
  * Serializes a snapshot to a compact binary byte array.
@@ -95,6 +98,7 @@ function writeLayout(writer: BinaryWriter, layout: AcExLayoutSnapshot): void {
   writer.writeString(layout.name)
   writer.writeU8(layout.isModelSpace ? 1 : 0)
   writer.writeJson(layout.osnap ?? null)
+  writer.writeJson(layout.viewports ?? null)
 
   writer.writeU32(layout.lineBatches.length)
   for (const batch of layout.lineBatches) {
@@ -113,6 +117,10 @@ function readLayout(reader: BinaryReader): AcExLayoutSnapshot {
   const isModelSpace = reader.readU8() !== 0
   const osnapValue = reader.readJson<AcExLayoutSnapshot['osnap'] | null>()
   const osnap = osnapValue ?? undefined
+  const viewportsValue = reader.readJson<
+    AcExLayoutSnapshot['viewports'] | null
+  >()
+  const viewports = viewportsValue ?? undefined
 
   const lineBatchCount = reader.readU32()
   const lineBatches: AcExLineBatch[] = []
@@ -126,7 +134,15 @@ function readLayout(reader: BinaryReader): AcExLayoutSnapshot {
     meshBatches.push(readMeshBatch(reader))
   }
 
-  return { btrId, name, isModelSpace, lineBatches, meshBatches, osnap }
+  return {
+    btrId,
+    name,
+    isModelSpace,
+    lineBatches,
+    meshBatches,
+    osnap,
+    viewports
+  }
 }
 
 function writeLineBatch(writer: BinaryWriter, batch: AcExLineBatch): void {
@@ -143,6 +159,12 @@ function writeLineBatch(writer: BinaryWriter, batch: AcExLineBatch): void {
   if (batch.lineDistances && batch.lineDistances.length > 0) {
     flags |= F_LINE_DISTANCES
   }
+  if (batch.lineWidth != null && batch.lineWidth > 0) {
+    flags |= F_LINE_WIDTH
+  }
+  if (batch.renderOrder != null && batch.renderOrder !== 0) {
+    flags |= F_LINE_RENDER_ORDER
+  }
   writer.writeU8(flags)
 
   if (flags & F_LINE_INDICES) {
@@ -153,6 +175,12 @@ function writeLineBatch(writer: BinaryWriter, batch: AcExLineBatch): void {
   }
   if (flags & F_LINE_DISTANCES) {
     writer.writeFloat32Array(batch.lineDistances!)
+  }
+  if (flags & F_LINE_WIDTH) {
+    writer.writeF32(batch.lineWidth!)
+  }
+  if (flags & F_LINE_RENDER_ORDER) {
+    writer.writeI32(batch.renderOrder!)
   }
 }
 
@@ -178,6 +206,12 @@ function readLineBatch(reader: BinaryReader): AcExLineBatch {
   if (flags & F_LINE_DISTANCES) {
     batch.lineDistances = reader.readFloat32Array()
   }
+  if (flags & F_LINE_WIDTH) {
+    batch.lineWidth = reader.readF32()
+  }
+  if (flags & F_LINE_RENDER_ORDER) {
+    batch.renderOrder = reader.readI32()
+  }
   return batch
 }
 
@@ -198,6 +232,9 @@ function writeMeshBatch(writer: BinaryWriter, batch: AcExMeshBatch): void {
   }
   if (batch.side != null) flags |= F_MESH_SIDE
   if (batch.points) flags |= F_MESH_POINTS
+  if (batch.renderOrder != null && batch.renderOrder !== 0) {
+    flags |= F_MESH_RENDER_ORDER
+  }
   writer.writeU8(flags)
 
   if (flags & F_MESH_INDICES) {
@@ -214,6 +251,9 @@ function writeMeshBatch(writer: BinaryWriter, batch: AcExMeshBatch): void {
   }
   if (flags & F_MESH_SIDE) {
     writer.writeU8(batch.side!)
+  }
+  if (flags & F_MESH_RENDER_ORDER) {
+    writer.writeI32(batch.renderOrder!)
   }
 }
 
@@ -249,6 +289,9 @@ function readMeshBatch(reader: BinaryReader): AcExMeshBatch {
   if (flags & F_MESH_POINTS) {
     batch.points = true
   }
+  if (flags & F_MESH_RENDER_ORDER) {
+    batch.renderOrder = reader.readI32()
+  }
   return batch
 }
 
@@ -266,6 +309,13 @@ class BinaryWriter {
   writeU32(value: number): void {
     const chunk = new Uint8Array(4)
     new DataView(chunk.buffer).setUint32(0, value >>> 0, true)
+    this.chunks.push(chunk)
+    this.length += 4
+  }
+
+  writeI32(value: number): void {
+    const chunk = new Uint8Array(4)
+    new DataView(chunk.buffer).setInt32(0, value | 0, true)
     this.chunks.push(chunk)
     this.length += 4
   }
@@ -300,6 +350,7 @@ class BinaryWriter {
   }
 
   writeFloat32Array(array: Float32Array): void {
+    this.alignTo(4)
     const bytes = new Uint8Array(
       array.buffer,
       array.byteOffset,
@@ -310,6 +361,7 @@ class BinaryWriter {
   }
 
   writeUint32Array(array: Uint32Array): void {
+    this.alignTo(4)
     const bytes = new Uint8Array(
       array.buffer,
       array.byteOffset,
@@ -317,6 +369,17 @@ class BinaryWriter {
     )
     this.writeU32(bytes.length)
     this.writeBytes(bytes)
+  }
+
+  private alignTo(alignment: number): void {
+    const remainder = this.length % alignment
+    if (remainder === 0) {
+      return
+    }
+    const pad = alignment - remainder
+    for (let i = 0; i < pad; i++) {
+      this.writeU8(0)
+    }
   }
 
   toUint8Array(): Uint8Array {
@@ -346,6 +409,17 @@ class BinaryReader {
       4
     )
     const value = view.getUint32(0, true)
+    this.offset += 4
+    return value
+  }
+
+  readI32(): number {
+    const view = new DataView(
+      this.bytes.buffer,
+      this.bytes.byteOffset + this.offset,
+      4
+    )
+    const value = view.getInt32(0, true)
     this.offset += 4
     return value
   }
@@ -394,25 +468,47 @@ class BinaryReader {
     return JSON.parse(text) as T
   }
 
+  private alignTo(alignment: number): void {
+    const remainder = this.offset % alignment
+    if (remainder === 0) {
+      return
+    }
+    this.offset += alignment - remainder
+  }
+
   readFloat32Array(): Float32Array {
+    this.alignTo(4)
     const byteLength = this.readU32()
     if (byteLength === 0) {
       return new Float32Array(0)
     }
+    if (byteLength % 4 !== 0) {
+      throw new Error('Invalid float32 buffer length')
+    }
     const bytes = this.readBytes(byteLength)
-    const buffer = new ArrayBuffer(byteLength)
-    new Uint8Array(buffer).set(bytes)
-    return new Float32Array(buffer)
+    if (bytes.byteOffset % 4 === 0) {
+      return new Float32Array(bytes.buffer, bytes.byteOffset, byteLength / 4)
+    }
+    const copy = new ArrayBuffer(byteLength)
+    new Uint8Array(copy).set(bytes)
+    return new Float32Array(copy)
   }
 
   readUint32Array(): Uint32Array {
+    this.alignTo(4)
     const byteLength = this.readU32()
     if (byteLength === 0) {
       return new Uint32Array(0)
     }
+    if (byteLength % 4 !== 0) {
+      throw new Error('Invalid uint32 buffer length')
+    }
     const bytes = this.readBytes(byteLength)
-    const buffer = new ArrayBuffer(byteLength)
-    new Uint8Array(buffer).set(bytes)
-    return new Uint32Array(buffer)
+    if (bytes.byteOffset % 4 === 0) {
+      return new Uint32Array(bytes.buffer, bytes.byteOffset, byteLength / 4)
+    }
+    const copy = new ArrayBuffer(byteLength)
+    new Uint8Array(copy).set(bytes)
+    return new Uint32Array(copy)
   }
 }

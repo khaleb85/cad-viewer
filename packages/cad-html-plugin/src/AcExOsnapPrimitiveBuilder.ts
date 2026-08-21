@@ -54,6 +54,7 @@ import {
 } from '@mlightcad/data-model'
 import * as THREE from 'three'
 
+import { wcsPointToOcsArcAngle } from './AcExOsnapPrimitiveToAcGe'
 import type {
   AcExOsnapArcPrimitive,
   AcExOsnapCatalog,
@@ -67,6 +68,46 @@ import type {
 /** Maps entity extrusion normal to arc/circle winding sign. @internal */
 function normalSignFromVector(normal: AcGeVector3dLike): 1 | -1 {
   return normal.z >= 0 ? 1 : -1
+}
+
+/**
+ * Serializes a WCS circular arc using OCS angles expected by HTML snap.
+ *
+ * Clockwise `AcGeCircArc2d` getters Y-mirror public angles; HTML reconstruction
+ * X-mirrors when `normalSign` is `-1`. Invert {@link wcsPointToOcsArcAngle}
+ * from the actual endpoints so both CCW and CW bulges round-trip.
+ */
+function pushGeCircArc(
+  out: AcExOsnapPrimitive[],
+  layer: string,
+  arc: AcGeCircArc2d
+) {
+  if (!(arc.radius > 0) || !Number.isFinite(arc.radius)) return
+  const normalSign: 1 | -1 = arc.clockwise ? -1 : 1
+  const cx = arc.center.x
+  const cy = arc.center.y
+  out.push({
+    kind: 'arc',
+    layer,
+    cx,
+    cy,
+    r: arc.radius,
+    startAngle: wcsPointToOcsArcAngle(
+      cx,
+      cy,
+      arc.startPoint.x,
+      arc.startPoint.y,
+      normalSign
+    ),
+    endAngle: wcsPointToOcsArcAngle(
+      cx,
+      cy,
+      arc.endPoint.x,
+      arc.endPoint.y,
+      normalSign
+    ),
+    normalSign
+  })
 }
 
 /** Half-length used when exporting infinite rays/xlines as finite segments. @internal */
@@ -540,18 +581,7 @@ function push2dPolyline(
     if (AcGeTol.isPositive(Math.abs(bulge))) {
       const startW = transformPoint(matrix, start)
       const endW = transformPoint(matrix, end)
-      const arc2d = new AcGeCircArc2d(startW, endW, bulge)
-      const center = arc2d.center
-      out.push({
-        kind: 'arc',
-        layer,
-        cx: center.x,
-        cy: center.y,
-        r: arc2d.radius,
-        startAngle: arc2d.startAngle,
-        endAngle: arc2d.endAngle,
-        normalSign: arc2d.clockwise ? -1 : 1
-      })
+      pushGeCircArc(out, layer, new AcGeCircArc2d(startW, endW, bulge))
     } else {
       pushLine(out, layer, matrix, start, end)
     }
@@ -743,18 +773,7 @@ function pushPolyline(
     if (AcGeTol.isPositive(Math.abs(bulge))) {
       const startW = transformPoint(matrix, { x: start.x, y: start.y, z: 0 })
       const endW = transformPoint(matrix, { x: end.x, y: end.y, z: 0 })
-      const arc2d = new AcGeCircArc2d(startW, endW, bulge)
-      const center = arc2d.center
-      out.push({
-        kind: 'arc',
-        layer,
-        cx: center.x,
-        cy: center.y,
-        r: arc2d.radius,
-        startAngle: arc2d.startAngle,
-        endAngle: arc2d.endAngle,
-        normalSign: arc2d.clockwise ? -1 : 1
-      })
+      pushGeCircArc(out, layer, new AcGeCircArc2d(startW, endW, bulge))
     } else {
       pushLine(
         out,
@@ -776,26 +795,24 @@ function pushCircArc2dBoundary(
   elevation: number
 ) {
   if (scaleIsUniform(matrix)) {
-    const center = transformPoint(matrix, {
-      x: arc.center.x,
-      y: arc.center.y,
+    const startW = transformPoint(matrix, {
+      x: arc.startPoint.x,
+      y: arc.startPoint.y,
       z: elevation
     })
-    const sx = new THREE.Vector3(
-      matrix.elements[0],
-      matrix.elements[1],
-      matrix.elements[2]
-    ).length()
-    out.push({
-      kind: 'arc',
-      layer,
-      cx: center.x,
-      cy: center.y,
-      r: arc.radius * sx,
-      startAngle: arc.startAngle,
-      endAngle: arc.endAngle,
-      normalSign: arc.clockwise ? -1 : 1
+    const endW = transformPoint(matrix, {
+      x: arc.endPoint.x,
+      y: arc.endPoint.y,
+      z: elevation
     })
+    const det2d =
+      matrix.elements[0]! * matrix.elements[5]! -
+      matrix.elements[4]! * matrix.elements[1]!
+    const bulge =
+      (arc.clockwise ? -1 : 1) *
+      Math.tan(arc.deltaAngle / 4) *
+      (det2d < 0 ? -1 : 1)
+    pushGeCircArc(out, layer, new AcGeCircArc2d(startW, endW, bulge))
     return
   }
 
@@ -880,18 +897,7 @@ function pushHatchPolyline2d(
     if (AcGeTol.isPositive(Math.abs(bulge))) {
       const startW = transformPoint(matrix, start3)
       const endW = transformPoint(matrix, end3)
-      const arc2d = new AcGeCircArc2d(startW, endW, bulge)
-      const center = arc2d.center
-      out.push({
-        kind: 'arc',
-        layer,
-        cx: center.x,
-        cy: center.y,
-        r: arc2d.radius,
-        startAngle: arc2d.startAngle,
-        endAngle: arc2d.endAngle,
-        normalSign: arc2d.clockwise ? -1 : 1
-      })
+      pushGeCircArc(out, layer, new AcGeCircArc2d(startW, endW, bulge))
     } else {
       pushLine(out, layer, matrix, start3, end3)
     }
@@ -1025,14 +1031,18 @@ function visitTableEntity(
   insertLayer: string,
   out: AcExOsnapPrimitive[],
   blockStack: Set<AcDbObjectId>,
-  database: AcDbDatabase
+  database: AcDbDatabase,
+  includeLayer?: (layerName: string) => boolean
 ) {
   const layer = effectiveLayer(entity.layer, insertLayer)
+  if (includeLayer && !includeLayer(layer)) {
+    return
+  }
   const block = resolveTableBlock(entity, database)
   if (block && !blockStack.has(block.objectId) && blockHasEntities(block)) {
     blockStack.add(block.objectId)
     const nested = composeTransforms(matrix, blockInsertTransform(entity))
-    visitBlock(block, nested, layer, out, blockStack, database)
+    visitBlock(block, nested, layer, out, blockStack, database, includeLayer)
     blockStack.delete(block.objectId)
     return
   }
@@ -1101,14 +1111,26 @@ function visitEntity(
   insertLayer: string,
   out: AcExOsnapPrimitive[],
   blockStack: Set<AcDbObjectId>,
-  database: AcDbDatabase
+  database: AcDbDatabase,
+  includeLayer?: (layerName: string) => boolean
 ) {
   if (!entity.visibility) return
 
   const layer = effectiveLayer(entity.layer, insertLayer)
+  if (includeLayer && !includeLayer(layer)) {
+    return
+  }
 
   if (entity instanceof AcDbTable) {
-    visitTableEntity(entity, matrix, insertLayer, out, blockStack, database)
+    visitTableEntity(
+      entity,
+      matrix,
+      insertLayer,
+      out,
+      blockStack,
+      database,
+      includeLayer
+    )
     return
   }
 
@@ -1118,7 +1140,15 @@ function visitEntity(
     blockStack.add(block.objectId)
     const nested = composeTransforms(matrix, entity.getFullInsertionTransform())
     const blockInsertLayer = effectiveLayer(entity.layer, insertLayer)
-    visitBlock(block, nested, blockInsertLayer, out, blockStack, database)
+    visitBlock(
+      block,
+      nested,
+      blockInsertLayer,
+      out,
+      blockStack,
+      database,
+      includeLayer
+    )
     blockStack.delete(block.objectId)
     return
   }
@@ -1132,7 +1162,7 @@ function visitEntity(
       matrix,
       dimension.getFullDimBlockTransform()
     )
-    visitBlock(block, nested, layer, out, blockStack, database)
+    visitBlock(block, nested, layer, out, blockStack, database, includeLayer)
     blockStack.delete(block.objectId)
     return
   }
@@ -1285,10 +1315,19 @@ function visitBlock(
   insertLayer: string,
   out: AcExOsnapPrimitive[],
   blockStack: Set<AcDbObjectId>,
-  database: AcDbDatabase
+  database: AcDbDatabase,
+  includeLayer?: (layerName: string) => boolean
 ) {
   for (const entity of block.newIterator()) {
-    visitEntity(entity, matrix, insertLayer, out, blockStack, database)
+    visitEntity(
+      entity,
+      matrix,
+      insertLayer,
+      out,
+      blockStack,
+      database,
+      includeLayer
+    )
   }
 }
 
@@ -1344,9 +1383,15 @@ function ellipseFromArc(entity: AcDbArc): AcDbEllipse {
  * layoutSnapshot.osnap = osnap
  * ```
  */
+export interface AcExOsnapCatalogOptions {
+  /** When set, only entities on layers for which this returns `true` are exported. */
+  includeLayer?: (layerName: string) => boolean
+}
+
 export function buildOsnapCatalog(
   database: AcDbDatabase,
-  layoutBtrId: string
+  layoutBtrId: string,
+  options: AcExOsnapCatalogOptions = {}
 ): AcExOsnapCatalog {
   const block = resolveLayoutBlock(database, layoutBtrId)
   if (!block) {
@@ -1355,6 +1400,14 @@ export function buildOsnapCatalog(
 
   const primitives: AcExOsnapPrimitive[] = []
   const identity = new THREE.Matrix4()
-  visitBlock(block, identity, '0', primitives, new Set(), database)
+  visitBlock(
+    block,
+    identity,
+    '0',
+    primitives,
+    new Set(),
+    database,
+    options.includeLayer
+  )
   return { primitives }
 }

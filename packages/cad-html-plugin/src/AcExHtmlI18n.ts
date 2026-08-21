@@ -1,8 +1,20 @@
 /** Supported locales in the offline HTML viewer. */
-export type AcExHtmlLocale = 'en' | 'zh'
+export type AcExHtmlLocale = 'en' | 'zh' | 'cs' | 'tr'
 
-/** All locales accepted by the offline viewer, in display order. */
-export const ACEX_HTML_LOCALES: AcExHtmlLocale[] = ['en', 'zh']
+/**
+ * All locales accepted by the offline viewer, in display order.
+ * The language strip lists these options; add a locale here plus a
+ * {@link ACEX_HTML_LOCALE_BADGES} entry and a `MESSAGES` tree to support it.
+ */
+export const ACEX_HTML_LOCALES: AcExHtmlLocale[] = ['en', 'zh', 'cs', 'tr']
+
+/** Short button badge per locale (shown on the language parent and strip). */
+export const ACEX_HTML_LOCALE_BADGES: Record<AcExHtmlLocale, string> = {
+  en: 'EN',
+  zh: '中',
+  cs: 'CS',
+  tr: 'TR'
+}
 
 /**
  * `localStorage` key used to persist the user's language choice
@@ -16,35 +28,89 @@ export const ACEX_HTML_LOCALE_STORAGE_KEY = 'mlcad-html-locale'
  */
 export type AcExHtmlMessageKey =
   | 'toolbar.viewerTools'
+  | 'toolbar.select'
+  | 'toolbar.pan'
+  | 'toolbar.zoom'
   | 'toolbar.zoomExtents'
+  | 'toolbar.zoomWindow'
+  | 'toolbar.zoomOriginal'
   | 'toolbar.measureDistance'
   | 'toolbar.measureAngle'
   | 'toolbar.measureArc'
   | 'toolbar.measureArea'
   | 'toolbar.measureCoordinate'
   | 'toolbar.clearMeasurements'
-  | 'toolbar.settings'
+  | 'toolbar.measureHide'
+  | 'toolbar.measureShow'
+  | 'toolbar.measureImport'
+  | 'toolbar.measureExport'
+  | 'toolbar.measure'
+  | 'toolbar.annotation'
+  | 'toolbar.markupCloud'
+  | 'toolbar.markupCallout'
+  | 'toolbar.markupText'
+  | 'toolbar.markupRect'
+  | 'toolbar.markupCircle'
+  | 'toolbar.markupArrow'
+  | 'toolbar.markupStamp'
+  | 'toolbar.markupHide'
+  | 'toolbar.markupShow'
+  | 'toolbar.clearMarkups'
+  | 'toolbar.markupImport'
+  | 'toolbar.markupExport'
+  | 'toolbar.snap'
   | 'toolbar.layers'
+  | 'toolbar.layout'
   | 'toolbar.language'
-  | 'toolbar.languageSwitch'
+  | 'toolbar.localeEn'
+  | 'toolbar.localeZh'
+  | 'toolbar.localeCs'
+  | 'toolbar.localeTr'
   | 'toolbar.collapse'
   | 'toolbar.expand'
-  | 'settings.toolbar'
-  | 'settings.measureColor'
   | 'settings.ortho'
   | 'settings.polar'
   | 'settings.polarAngles'
+  | 'drawStyle.color'
+  | 'drawStyle.lineWeight'
+  | 'drawStyle.fontSize'
   | 'layers.title'
   | 'layers.close'
   | 'layers.showAll'
   | 'layers.hideAll'
   | 'layers.zoomTo'
   | 'status.ready'
+  | 'status.zoomWindowHint'
   | 'status.measureDistanceHint'
   | 'status.measureAngleHint'
   | 'status.measureArcHint'
   | 'status.measureAreaHint'
   | 'status.measureCoordinateHint'
+  | 'status.measureExported'
+  | 'status.measureImported'
+  | 'status.measureImportFailed'
+  | 'status.markupCloudHint'
+  | 'status.markupCalloutHint'
+  | 'status.markupTextHint'
+  | 'status.markupRectHint'
+  | 'status.markupCircleHint'
+  | 'status.markupArrowHint'
+  | 'status.markupStampHint'
+  | 'status.markupArrowEndHint'
+  | 'status.markupRectCornerHint'
+  | 'status.markupCloudCornerHint'
+  | 'status.markupCalloutAnchorHint'
+  | 'status.markupCircleRadiusHint'
+  | 'status.markupTextPrompt'
+  | 'status.markupTextEditHint'
+  | 'status.markupShapeCalloutHint'
+  | 'status.markupDefaultLabel'
+  | 'status.markupSelected'
+  | 'status.markupSelectedCount'
+  | 'status.markupCount'
+  | 'status.markupExported'
+  | 'status.markupImported'
+  | 'status.markupImportFailed'
   | 'status.distance'
   | 'status.coordinates'
   | 'status.angle'
@@ -68,26 +134,56 @@ const MESSAGES: Record<AcExHtmlLocale, AcExMessageTree> = {
   en: {
     toolbar: {
       viewerTools: 'Viewer tools',
+      select: 'Select',
+      pan: 'Pan',
+      zoom: 'Zoom',
       zoomExtents: 'Zoom extents',
+      zoomWindow: 'Zoom window',
+      zoomOriginal: 'Original view',
       measureDistance: 'Measure distance',
       measureAngle: 'Measure angle',
       measureArc: 'Measure arc length',
       measureArea: 'Measure area',
       measureCoordinate: 'Measure coordinates',
       clearMeasurements: 'Clear measurements',
-      settings: 'Measure settings',
+      measureHide: 'Hide measurements',
+      measureShow: 'Show measurements',
+      measureImport: 'Import measurements',
+      measureExport: 'Export measurements',
+      measure: 'Measurement',
+      annotation: 'Review',
+      markupCloud: 'Cloud',
+      markupCallout: 'Callout',
+      markupText: 'Text',
+      markupRect: 'Rectangle',
+      markupCircle: 'Circle',
+      markupArrow: 'Arrow',
+      markupStamp: 'Stamp',
+      markupHide: 'Hide markups',
+      markupShow: 'Show markups',
+      clearMarkups: 'Clear markups',
+      markupImport: 'Import markups',
+      markupExport: 'Export markups',
+      snap: 'Object snap',
       layers: 'Layers',
+      layout: 'Layout',
       language: 'Language',
-      languageSwitch: 'Switch to Chinese',
+      localeEn: 'English',
+      localeZh: '中文',
+      localeCs: 'Čeština',
+      localeTr: 'Türkçe',
       collapse: 'Collapse toolbar',
       expand: 'Expand toolbar'
     },
     settings: {
-      toolbar: 'Measure settings',
-      measureColor: 'Measure color',
       ortho: 'Toggle orthogonal mode',
       polar: 'Polar tracking angles',
       polarAngles: 'Polar tracking angles'
+    },
+    drawStyle: {
+      color: 'Color',
+      lineWeight: 'Lineweight',
+      fontSize: 'Text height'
     },
     layers: {
       title: 'Layers',
@@ -98,16 +194,45 @@ const MESSAGES: Record<AcExHtmlLocale, AcExMessageTree> = {
     },
     status: {
       ready: 'Ready',
+      zoomWindowHint: 'Click two corners to zoom to a window.',
       measureDistanceHint:
         'Click two points to measure distance (object snap enabled).',
       measureAngleHint:
         'Click vertex, then two points on each arm (object snap enabled).',
       measureArcHint:
-        'Click arc start, a point on the arc, then arc end (object snap enabled).',
+        'Click a circle or arc to measure along it, or click start, a point on the arc, then end (object snap enabled). Ctrl (⌘ on Mac) switches major/minor arc.',
       measureAreaHint:
         'Click polygon vertices; click near the first point or press Enter to finish.',
       measureCoordinateHint:
         'Click a point to read its X/Y coordinates (object snap enabled).',
+      measureExported: 'Exported {count} measurement(s).',
+      measureImported: 'Imported {count} measurement(s).',
+      measureImportFailed: 'Failed to import measurements: {error}',
+      markupCloudHint: 'Click two corners to draw a revision cloud.',
+      markupCalloutHint: 'Click the leader tip, then the text anchor.',
+      markupTextHint: 'Click a point to place text.',
+      markupRectHint: 'Click two corners to draw a rectangle.',
+      markupCircleHint: 'Click the center, then a point on the circumference.',
+      markupArrowHint: 'Click the start point, then the arrow tip.',
+      markupStampHint:
+        'Click to place a stamp (cycles approved / rejected / …).',
+      markupArrowEndHint: 'Click the arrow tip.',
+      markupRectCornerHint: 'Click the opposite corner.',
+      markupCloudCornerHint: 'Click the opposite corner.',
+      markupCalloutAnchorHint: 'Click the text bubble position.',
+      markupCircleRadiusHint: 'Click a point on the circumference.',
+      markupTextPrompt: 'Enter markup text',
+      markupTextEditHint:
+        'Type text on the canvas. Enter to finish, Esc to cancel.',
+      markupShapeCalloutHint:
+        'Click to place the text box (leader attaches to the shape). Esc cancels the callout.',
+      markupDefaultLabel: 'Note',
+      markupSelected: 'Selected markup: {type}',
+      markupSelectedCount: 'Selected markups: {count}',
+      markupCount: 'Markups: {count}',
+      markupExported: 'Exported {count} markup(s).',
+      markupImported: 'Imported {count} markup(s).',
+      markupImportFailed: 'Failed to import markups: {error}',
       distance: 'Distance: {value}',
       coordinates: 'X: {x}  Y: {y}',
       angle: 'Angle: {value}',
@@ -123,26 +248,56 @@ const MESSAGES: Record<AcExHtmlLocale, AcExMessageTree> = {
   zh: {
     toolbar: {
       viewerTools: '查看器工具',
+      select: '选择',
+      pan: '平移',
+      zoom: '缩放',
       zoomExtents: '范围缩放',
+      zoomWindow: '窗口缩放',
+      zoomOriginal: '原始视口',
       measureDistance: '测量距离',
       measureAngle: '测量角度',
       measureArc: '测量弧长',
       measureArea: '测量面积',
       measureCoordinate: '测量坐标',
       clearMeasurements: '清除测量',
-      settings: '测量设置',
+      measureHide: '隐藏测量',
+      measureShow: '显示测量',
+      measureImport: '导入测量',
+      measureExport: '导出测量',
+      measure: '测量',
+      annotation: '审阅',
+      markupCloud: '云线',
+      markupCallout: '标注',
+      markupText: '文字',
+      markupRect: '矩形',
+      markupCircle: '圆',
+      markupArrow: '箭头',
+      markupStamp: '图章',
+      markupHide: '隐藏批注',
+      markupShow: '显示批注',
+      clearMarkups: '清除批注',
+      markupImport: '导入批注',
+      markupExport: '导出批注',
+      snap: '对象捕捉',
       layers: '图层',
+      layout: '布局',
       language: '语言',
-      languageSwitch: '切换到 English',
+      localeEn: 'English',
+      localeZh: '中文',
+      localeCs: 'Čeština',
+      localeTr: 'Türkçe',
       collapse: '收起工具栏',
       expand: '展开工具栏'
     },
     settings: {
-      toolbar: '测量设置',
-      measureColor: '测量颜色',
       ortho: '切换正交模式',
       polar: '极轴追踪角度',
       polarAngles: '极轴追踪角度'
+    },
+    drawStyle: {
+      color: '颜色',
+      lineWeight: '线宽',
+      fontSize: '字高'
     },
     layers: {
       title: '图层',
@@ -153,11 +308,39 @@ const MESSAGES: Record<AcExHtmlLocale, AcExMessageTree> = {
     },
     status: {
       ready: '就绪',
+      zoomWindowHint: '点击两个角点以窗口缩放。',
       measureDistanceHint: '点击两点以测量距离（已启用对象捕捉）。',
       measureAngleHint: '依次点击顶点与两条边上的点（已启用对象捕捉）。',
-      measureArcHint: '依次点击弧起点、弧上一点与弧端点（已启用对象捕捉）。',
+      measureArcHint:
+        '点击圆或圆弧可沿其测量；否则依次点击弧起点、弧上一点与弧端点（已启用对象捕捉）。锁定后按 Ctrl（Mac 为 Control 或 ⌘）可在大弧与小弧之间切换。',
       measureAreaHint: '依次点击多边形顶点；靠近首点或按 Enter 完成。',
       measureCoordinateHint: '点击一点以读取其 X/Y 坐标（已启用对象捕捉）。',
+      measureExported: '已导出 {count} 条测量。',
+      measureImported: '已导入 {count} 条测量。',
+      measureImportFailed: '导入测量失败：{error}',
+      markupCloudHint: '点击两个对角点绘制修订云线。',
+      markupCalloutHint: '先点击引线端点，再点击文字位置。',
+      markupTextHint: '点击一点放置文字。',
+      markupRectHint: '点击两个对角点绘制矩形。',
+      markupCircleHint: '先点击圆心，再点击圆周上一点。',
+      markupArrowHint: '先点击起点，再点击箭头端点。',
+      markupStampHint: '点击放置图章（在批准/拒绝等之间循环）。',
+      markupArrowEndHint: '点击箭头端点。',
+      markupRectCornerHint: '点击对角点。',
+      markupCloudCornerHint: '点击对角点。',
+      markupCalloutAnchorHint: '点击文字气泡位置。',
+      markupCircleRadiusHint: '点击圆周上一点。',
+      markupTextPrompt: '输入批注文字',
+      markupTextEditHint: '在画布上输入文字。Enter 完成，Esc 取消。',
+      markupShapeCalloutHint:
+        '点击放置文本框（引线自动贴到图形）。Esc 取消引线和文本框。',
+      markupDefaultLabel: '批注',
+      markupSelected: '已选批注：{type}',
+      markupSelectedCount: '已选批注：{count} 个',
+      markupCount: '批注数：{count}',
+      markupExported: '已导出 {count} 条批注。',
+      markupImported: '已导入 {count} 条批注。',
+      markupImportFailed: '导入批注失败：{error}',
       distance: '距离：{value}',
       coordinates: 'X：{x}  Y：{y}',
       angle: '角度：{value}',
@@ -169,6 +352,235 @@ const MESSAGES: Record<AcExHtmlLocale, AcExMessageTree> = {
       loadFailed: '无法加载图纸：{error}',
       noLayout: '快照中没有布局数据。'
     }
+  },
+  cs: {
+    toolbar: {
+      viewerTools: 'Nástroje prohlížeče',
+      select: 'Výběr',
+      pan: 'Posun',
+      zoom: 'Přiblížení',
+      zoomExtents: 'Zoom na rozsah',
+      zoomWindow: 'Přiblížit oknem',
+      zoomOriginal: 'Původní pohled',
+      measureDistance: 'Změřit vzdálenost',
+      measureAngle: 'Změřit úhel',
+      measureArc: 'Změřit délku oblouku',
+      measureArea: 'Změřit plochu',
+      measureCoordinate: 'Změřit souřadnice',
+      clearMeasurements: 'Vymazat měření',
+      measureHide: 'Skrýt měření',
+      measureShow: 'Zobrazit měření',
+      measureImport: 'Importovat měření',
+      measureExport: 'Exportovat měření',
+      measure: 'Měření',
+      annotation: 'Kontrola',
+      markupCloud: 'Obláček',
+      markupCallout: 'Odkaz',
+      markupText: 'Text',
+      markupRect: 'Obdélník',
+      markupCircle: 'Kružnice',
+      markupArrow: 'Šipka',
+      markupStamp: 'Razítko',
+      markupHide: 'Skrýt poznámky',
+      markupShow: 'Zobrazit poznámky',
+      clearMarkups: 'Vymazat poznámky',
+      markupImport: 'Importovat poznámky',
+      markupExport: 'Exportovat poznámky',
+      snap: 'Uchopení objektů',
+      layers: 'Hladiny',
+      layout: 'Rozvržení',
+      language: 'Jazyk',
+      localeEn: 'English',
+      localeZh: '中文',
+      localeCs: 'Čeština',
+      localeTr: 'Türkçe',
+      collapse: 'Sbalit panel nástrojů',
+      expand: 'Rozbalit panel nástrojů'
+    },
+    settings: {
+      ortho: 'Přepnout ortogonální režim',
+      polar: 'Úhly polárního trasování',
+      polarAngles: 'Úhly polárního trasování'
+    },
+    drawStyle: {
+      color: 'Barva',
+      lineWeight: 'Tloušťka čáry',
+      fontSize: 'Výška textu'
+    },
+    layers: {
+      title: 'Hladiny',
+      close: 'Zavřít hladiny',
+      showAll: 'Zobrazit vše',
+      hideAll: 'Skrýt vše',
+      zoomTo: 'Přiblížit na {name}'
+    },
+    status: {
+      ready: 'Připraveno',
+      zoomWindowHint: 'Klikněte na dva rohy pro přiblížení oknem.',
+      measureDistanceHint:
+        'Klikněte na dva body pro změření vzdálenosti (uchopení objektů zapnuto).',
+      measureAngleHint:
+        'Klikněte na vrchol, poté na dva body na každém rameni (uchopení objektů zapnuto).',
+      measureArcHint:
+        'Klikněte na kružnici nebo oblouk pro měření podél něj, nebo klikněte na začátek, bod na oblouku a konec (uchopení objektů zapnuto). Ctrl (⌘ na Macu) přepíná velký/malý oblouk.',
+      measureAreaHint:
+        'Klikejte na vrcholy mnohoúhelníku; dokončete kliknutím poblíž prvního bodu nebo stiskem Enter.',
+      measureCoordinateHint:
+        'Klikněte na bod pro zobrazení jeho souřadnic X/Y (uchopení objektů zapnuto).',
+      measureExported: 'Exportováno {count} měření.',
+      measureImported: 'Importováno {count} měření.',
+      measureImportFailed: 'Import měření selhal: {error}',
+      markupCloudHint: 'Klikněte na dva rohy pro nakreslení obláčku.',
+      markupCalloutHint: 'Klikněte na hrot vodítka a poté na kotvu textu.',
+      markupTextHint: 'Klikněte pro umístění textu.',
+      markupRectHint: 'Klikněte na dva rohy pro nakreslení obdélníku.',
+      markupCircleHint: 'Klikněte na střed a poté na bod na kružnici.',
+      markupArrowHint: 'Klikněte na začátek a poté na hrot šipky.',
+      markupStampHint:
+        'Klikněte pro umístění razítka (schváleno / zamítnuto / …).',
+      markupArrowEndHint: 'Klikněte na hrot šipky.',
+      markupRectCornerHint: 'Klikněte na protilehlý roh.',
+      markupCloudCornerHint: 'Klikněte na protilehlý roh.',
+      markupCalloutAnchorHint: 'Klikněte na pozici textové bubliny.',
+      markupCircleRadiusHint: 'Klikněte na bod na kružnici.',
+      markupTextPrompt: 'Zadejte text poznámky',
+      markupTextEditHint:
+        'Pište text přímo na plátno. Enter dokončí, Esc zruší.',
+      markupShapeCalloutHint:
+        'Klikněte pro umístění textového pole (vodítko se připojí k tvaru). Esc zruší odkaz.',
+      markupDefaultLabel: 'Poznámka',
+      markupSelected: 'Vybraná poznámka: {type}',
+      markupSelectedCount: 'Vybrané poznámky: {count}',
+      markupCount: 'Poznámky: {count}',
+      markupExported: 'Exportováno {count} poznámek.',
+      markupImported: 'Importováno {count} poznámek.',
+      markupImportFailed: 'Import poznámek selhal: {error}',
+      distance: 'Vzdálenost: {value}',
+      coordinates: 'X: {x}  Y: {y}',
+      angle: 'Úhel: {value}',
+      arcLength: 'Délka oblouku: {value}',
+      area: 'Plocha: {value}',
+      lengthTotal: 'Celková délka: {value}',
+      areaTotal: 'Celková plocha: {value}',
+      zoomLayer: 'Zoom: {name}',
+      loadFailed: 'Nepodařilo se načíst výkres: {error}',
+      noLayout: 'Snímek neobsahuje data rozvržení.'
+    }
+  },
+  tr: {
+    toolbar: {
+      viewerTools: 'Görüntüleyici araçları',
+      select: 'Seç',
+      pan: 'Kaydır',
+      zoom: 'Yakınlaştır',
+      zoomExtents: 'Sınırlara yakınlaştır',
+      zoomWindow: 'Pencere Yakınlaştır',
+      zoomOriginal: 'Orijinal görünüm',
+      measureDistance: 'Mesafe ölç',
+      measureAngle: 'Açı ölç',
+      measureArc: 'Yay uzunluğu ölç',
+      measureArea: 'Alan ölç',
+      measureCoordinate: 'Koordinat ölç',
+      clearMeasurements: 'Ölçümleri temizle',
+      measureHide: 'Ölçümleri gizle',
+      measureShow: 'Ölçümleri göster',
+      measureImport: 'Ölçümleri içe aktar',
+      measureExport: 'Ölçümleri dışa aktar',
+      measure: 'Ölçüm',
+      annotation: 'İnceleme',
+      markupCloud: 'Bulut',
+      markupCallout: 'Çağrı',
+      markupText: 'Metin',
+      markupRect: 'Dikdörtgen',
+      markupCircle: 'Daire',
+      markupArrow: 'Ok',
+      markupStamp: 'Damga',
+      markupHide: 'İşaretlemeleri gizle',
+      markupShow: 'İşaretlemeleri göster',
+      clearMarkups: 'İşaretlemeleri temizle',
+      markupImport: 'İşaretlemeleri içe aktar',
+      markupExport: 'İşaretlemeleri dışa aktar',
+      snap: 'Nesne Yakalama',
+      layers: 'Katmanlar',
+      layout: 'Düzen',
+      language: 'Dil',
+      localeEn: 'English',
+      localeZh: '中文',
+      localeCs: 'Čeština',
+      localeTr: 'Türkçe',
+      collapse: 'Araç çubuğunu daralt',
+      expand: 'Araç çubuğunu genişlet'
+    },
+    settings: {
+      ortho: 'Dik modu aç/kapat',
+      polar: 'Kutupsal izleme açıları',
+      polarAngles: 'Kutupsal izleme açıları'
+    },
+    drawStyle: {
+      color: 'Renk',
+      lineWeight: 'Çizgi kalınlığı',
+      fontSize: 'Yazı yüksekliği'
+    },
+    layers: {
+      title: 'Katmanlar',
+      close: 'Katmanları kapat',
+      showAll: 'Tümünü göster',
+      hideAll: 'Tümünü gizle',
+      zoomTo: '{name} katmanına yakınlaştır'
+    },
+    status: {
+      ready: 'Hazır',
+      zoomWindowHint: 'Pencere yakınlaştırmak için iki köşeyi tıklayın.',
+      measureDistanceHint:
+        'Mesafe ölçmek için iki nokta tıklayın (nesne yakalama etkin).',
+      measureAngleHint:
+        'Önce köşe noktasını, sonra her koldan birer nokta tıklayın (nesne yakalama etkin).',
+      measureArcHint:
+        'Ölçmek için bir çember veya yaya tıklayın; ya da yay başlangıcı, yay üzerindeki bir nokta ve yay sonunu tıklayın (nesne yakalama etkin). Ctrl (Mac’te ⌘) büyük/küçük yay arasında geçiş yapar.',
+      measureAreaHint:
+        'Çokgen köşelerini tıklayın; bitirmek için ilk noktanın yakınına tıklayın veya Enter’a basın.',
+      measureCoordinateHint:
+        'X/Y koordinatlarını okumak için bir nokta tıklayın (nesne yakalama etkin).',
+      measureExported: '{count} ölçüm dışa aktarıldı.',
+      measureImported: '{count} ölçüm içe aktarıldı.',
+      measureImportFailed: 'Ölçüm içe aktarılamadı: {error}',
+      markupCloudHint: 'Revizyon bulutu çizmek için iki köşe tıklayın.',
+      markupCalloutHint: 'Önce lider ucunu, sonra metin konumunu tıklayın.',
+      markupTextHint: 'Metin yerleştirmek için bir nokta tıklayın.',
+      markupRectHint: 'Dikdörtgen çizmek için iki köşe tıklayın.',
+      markupCircleHint:
+        'Önce merkezi, sonra çevre üzerindeki bir noktayı tıklayın.',
+      markupArrowHint: 'Önce başlangıcı, sonra ok ucunu tıklayın.',
+      markupStampHint:
+        'Damga yerleştirmek için tıklayın (onaylandı / reddedildi / …).',
+      markupArrowEndHint: 'Ok ucunu tıklayın.',
+      markupRectCornerHint: 'Karşı köşeyi tıklayın.',
+      markupCloudCornerHint: 'Karşı köşeyi tıklayın.',
+      markupCalloutAnchorHint: 'Metin balonu konumunu tıklayın.',
+      markupCircleRadiusHint: 'Çevre üzerindeki bir noktayı tıklayın.',
+      markupTextPrompt: 'İşaretleme metnini girin',
+      markupTextEditHint:
+        'Metni tuval üzerinde yazın. Enter ile bitirin, Esc ile iptal edin.',
+      markupShapeCalloutHint:
+        'Metin kutusunu yerleştirmek için tıklayın (lider şekle bağlanır). Esc çağrıyı iptal eder.',
+      markupDefaultLabel: 'Not',
+      markupSelected: 'Seçili işaretleme: {type}',
+      markupSelectedCount: 'Seçili işaretlemeler: {count}',
+      markupCount: 'İşaretlemeler: {count}',
+      markupExported: '{count} işaretleme dışa aktarıldı.',
+      markupImported: '{count} işaretleme içe aktarıldı.',
+      markupImportFailed: 'İşaretleme içe aktarılamadı: {error}',
+      distance: 'Mesafe: {value}',
+      coordinates: 'X: {x}  Y: {y}',
+      angle: 'Açı: {value}',
+      arcLength: 'Yay uzunluğu: {value}',
+      area: 'Alan: {value}',
+      lengthTotal: 'Toplam uzunluk: {value}',
+      areaTotal: 'Toplam alan: {value}',
+      zoomLayer: 'Yakınlaştır: {name}',
+      loadFailed: 'Çizim yüklenemedi: {error}',
+      noLayout: 'Anlık görüntüde yerleşim verisi yok.'
+    }
   }
 }
 
@@ -176,33 +588,35 @@ const MESSAGES: Record<AcExHtmlLocale, AcExMessageTree> = {
  * Type guard for {@link AcExHtmlLocale}.
  *
  * @param value - Arbitrary string to test.
- * @returns `true` when `value` is `'en'` or `'zh'`.
+ * @returns `true` when `value` is one of {@link ACEX_HTML_LOCALES}.
  */
 export function isAcExHtmlLocale(value: string): value is AcExHtmlLocale {
-  return value === 'en' || value === 'zh'
+  return (ACEX_HTML_LOCALES as readonly string[]).includes(value)
 }
 
 /**
  * Normalizes a BCP 47 or short locale tag to a supported {@link AcExHtmlLocale}.
  *
  * @param value - Locale string from snapshot meta, `<html lang>`, or `navigator.language`.
- * @returns `'en'`, `'zh'`, or `null` when unrecognized.
+ * @returns a supported locale, or `null` when unrecognized.
  */
 export function resolveAcExHtmlLocale(
   value?: string | null
 ): AcExHtmlLocale | null {
   if (value == null || value === '') return null
   const normalized = value.toLowerCase().replace('_', '-')
-  if (normalized === 'en' || normalized.startsWith('en-')) return 'en'
-  if (normalized === 'zh' || normalized.startsWith('zh')) return 'zh'
+  for (const locale of ACEX_HTML_LOCALES) {
+    if (normalized === locale || normalized.startsWith(`${locale}-`)) {
+      return locale
+    }
+  }
   return null
 }
 
 /**
  * Detects locale from the browser's language preferences.
- * Chinese (`zh*`) maps to `'zh'`; all other languages default to `'en'`.
- *
- * @returns `'zh'` when a preferred browser language is Chinese, otherwise `'en'`.
+ * Returns the first preferred language that maps to a supported locale;
+ * defaults to `'en'`.
  */
 export function detectBrowserAcExHtmlLocale(): AcExHtmlLocale {
   if (typeof navigator === 'undefined') return 'en'
@@ -214,8 +628,7 @@ export function detectBrowserAcExHtmlLocale(): AcExHtmlLocale {
 
   for (const candidate of candidates) {
     const resolved = resolveAcExHtmlLocale(candidate)
-    if (resolved === 'zh') return 'zh'
-    if (resolved === 'en') return 'en'
+    if (resolved) return resolved
   }
 
   return 'en'
@@ -289,9 +702,9 @@ export class AcExHtmlI18n {
     return this._locale
   }
 
-  /** Short badge text shown on the language toolbar button (`EN` or `中`). */
+  /** Short badge text shown on the language parent button and locale strip. */
   get localeBadge(): string {
-    return this._locale === 'zh' ? '中' : 'EN'
+    return ACEX_HTML_LOCALE_BADGES[this._locale]
   }
 
   /**
@@ -319,12 +732,15 @@ export class AcExHtmlI18n {
   }
 
   /**
-   * Switches between English and Chinese, persists the choice, and refreshes the DOM.
+   * Advances to the next locale in {@link ACEX_HTML_LOCALES} (wrapping around),
+   * persists the choice, and refreshes the DOM. Kept for tests and hosts that
+   * still cycle locales programmatically.
    *
-   * @returns The locale after toggling.
+   * @returns The locale after switching.
    */
   toggleLocale(): AcExHtmlLocale {
-    const next: AcExHtmlLocale = this._locale === 'en' ? 'zh' : 'en'
+    const index = ACEX_HTML_LOCALES.indexOf(this._locale)
+    const next = ACEX_HTML_LOCALES[(index + 1) % ACEX_HTML_LOCALES.length]
     this.setLocale(next)
     return next
   }
@@ -384,8 +800,8 @@ export class AcExHtmlI18n {
 
     const langBtn = document.getElementById('mlcad-lang-btn')
     if (langBtn) {
-      langBtn.setAttribute('title', this.t('toolbar.languageSwitch'))
-      langBtn.setAttribute('aria-label', this.t('toolbar.languageSwitch'))
+      langBtn.setAttribute('title', this.t('toolbar.language'))
+      langBtn.setAttribute('aria-label', this.t('toolbar.language'))
     }
   }
 }

@@ -1,10 +1,13 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "resolveJsonModule": true,
     "rootDir": "./src",
     "outDir": "./lib",
     "paths": {
-      "@mlightcad/cad-pdf-plugin": ["./src/index.ts"]
+      "@mlightcad/cad-pdf-plugin": [
+        "./src/index.ts"
+      ]
     }
   },
   "include": [

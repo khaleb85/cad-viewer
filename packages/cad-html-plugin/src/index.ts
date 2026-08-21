@@ -6,7 +6,9 @@
 
 /** Snapshot schema types, version constant, and geometry batch shapes. */
 export * from './AcExSnapshotTypes'
-/** Gzip/base64 encode and decode for embedded snapshot payloads. */
+/** Gzip encode and decode for embedded snapshot payloads. */
+export * from './AcExSnapshotCompression'
+/** Compressed/base64 encode and decode for embedded snapshot payloads. */
 export * from './AcExSnapshotCodec'
 /** Binary snapshot serialization used by {@link encodeSnapshot}. */
 export {
@@ -54,7 +56,20 @@ export const HTML_VIEWER_RUNTIME_FILE = 'viewer-runtime.iife.js'
 export { AcApExportHtmlCmd } from './AcApExportHtmlCmd'
 export { AcApHtmlConvertor } from './AcApHtmlConvertor'
 export {
+  type AcApHtmlExportOptions,
+  captureAcApHtmlViewState,
+  resolveAcApHtmlExportOptions
+} from './AcApHtmlExportOptions'
+export {
+  type AcApHtmlPluginOptions,
+  configureHtmlPlugin,
+  DEFAULT_HTML_VIEWER_RUNTIME_URL,
+  getHtmlPluginOptions,
+  resolveViewerRuntimeUrl
+} from './AcApHtmlPluginOptions'
+export {
   AcApHtmlSnapshotBuilder,
+  listDatabaseLayouts,
   type AcApHtmlSnapshotBuilderOptions
 } from './AcApHtmlSnapshotBuilder'
 export { createHtmlPlugin } from './createHtmlPlugin'

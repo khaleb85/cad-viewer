@@ -3,6 +3,10 @@ import {
   extractLineBatchSnapSegments,
   mergeConnectedSegments
 } from '../src/AcExOsnap'
+import {
+  intersectLineSegmentPoints,
+  intersectionGeomToleranceForSnap
+} from '../src/AcExOsnapIntersections'
 
 describe('mergeConnectedSegments', () => {
   it('merges indexed polyline edges into one logical segment', () => {
@@ -21,6 +25,44 @@ function f32(values: number[]): Float32Array {
 function u32(values: number[]): Uint32Array {
   return Uint32Array.from(values)
 }
+
+describe('intersectLineSegmentPoints', () => {
+  it('finds T-junction when stem endpoint is slightly off crossbar', () => {
+    const geomTol = intersectionGeomToleranceForSnap(2, 1)
+    const paramTol = geomTol * 1e-6
+    const hits = intersectLineSegmentPoints(
+      { x0: 0, y0: 5, x1: 10, y1: 5 },
+      { x0: 5, y0: 5.001, x1: 5, y1: 10 },
+      paramTol,
+      geomTol
+    )
+    expect(hits).toEqual([{ x: 5, y: 5 }])
+  })
+
+  it('finds L-corner where one line ends where the other starts', () => {
+    const geomTol = intersectionGeomToleranceForSnap(2, 1)
+    const paramTol = geomTol * 1e-6
+    const hits = intersectLineSegmentPoints(
+      { x0: 0, y0: 0, x1: 10, y1: 0 },
+      { x0: 10, y0: 0, x1: 10, y1: 10 },
+      paramTol,
+      geomTol
+    )
+    expect(hits).toEqual([{ x: 10, y: 0 }])
+  })
+
+  it('finds L-corner when shared endpoints are slightly off', () => {
+    const geomTol = intersectionGeomToleranceForSnap(2, 1)
+    const paramTol = geomTol * 1e-6
+    const hits = intersectLineSegmentPoints(
+      { x0: 0, y0: 0, x1: 10, y1: 0 },
+      { x0: 10.001, y0: 0, x1: 10.001, y1: 10 },
+      paramTol,
+      geomTol
+    )
+    expect(hits).toEqual([{ x: 10.001, y: 0 }])
+  })
+})
 
 describe('AcExOsnapIndex', () => {
   const layout = {
@@ -43,6 +85,67 @@ describe('AcExOsnapIndex', () => {
     index.rebuild(layout)
     const snap = index.findSnap(0.4, 0.2, 1)
     expect(snap).toEqual({ x: 0, y: 0, mode: 'endpoint' })
+  })
+
+  it('derives endpoint snap points from catalog primitives', () => {
+    const index = new AcExOsnapIndex(['endpoint', 'nearest'])
+    index.rebuild({
+      ...layout,
+      lineBatches: [],
+      osnap: {
+        primitives: [
+          {
+            kind: 'line',
+            layer: '0',
+            x0: 0,
+            y0: 0,
+            x1: 10,
+            y1: 0
+          }
+        ]
+      }
+    })
+    expect(index.findSnap(0.2, 0.1, 1)).toEqual({
+      x: 0,
+      y: 0,
+      mode: 'endpoint'
+    })
+    expect(index.findSnap(5, 0.1, 1)?.mode).toBe('nearest')
+  })
+
+  it('snaps to intersection from catalog primitives', () => {
+    const index = new AcExOsnapIndex(['intersection', 'endpoint'])
+    index.rebuild({
+      ...layout,
+      lineBatches: [],
+      osnap: {
+        primitives: [
+          {
+            kind: 'line',
+            layer: '0',
+            x0: 0,
+            y0: 0,
+            x1: 10,
+            y1: 10
+          },
+          {
+            kind: 'line',
+            layer: '0',
+            x0: 0,
+            y0: 10,
+            x1: 10,
+            y1: 0
+          }
+        ]
+      }
+    })
+    const snap = index.findSnap(5.1, 4.9, 1)
+    expect(snap).toEqual({ x: 5, y: 5, mode: 'intersection' })
+    expect(index.findSnap(0.2, 0.1, 1)).toEqual({
+      x: 0,
+      y: 0,
+      mode: 'endpoint'
+    })
   })
 
   it('snaps to segment midpoint', () => {
@@ -186,6 +289,314 @@ describe('AcExOsnapIndex', () => {
     expect(snap).toEqual({ x: 0, y: 0, mode: 'endpoint' })
   })
 
+  it('snaps to T-junction where stem ends on crossbar interior', () => {
+    const tLayout = {
+      ...layout,
+      osnap: {
+        primitives: [
+          {
+            kind: 'line' as const,
+            layer: '0',
+            x0: 0,
+            y0: 5,
+            x1: 10,
+            y1: 5
+          },
+          {
+            kind: 'line' as const,
+            layer: '0',
+            x0: 5,
+            y0: 0,
+            x1: 5,
+            y1: 5
+          }
+        ]
+      }
+    }
+    const index = new AcExOsnapIndex(['intersection'])
+    index.rebuild(tLayout)
+    const snap = index.findSnap(5.1, 4.9, 1)
+    expect(snap).toEqual({ x: 5, y: 5, mode: 'intersection' })
+  })
+
+  it('snaps to T-junction where stem starts on crossbar interior', () => {
+    const tLayout = {
+      ...layout,
+      osnap: {
+        primitives: [
+          {
+            kind: 'line' as const,
+            layer: '0',
+            x0: 0,
+            y0: 5,
+            x1: 10,
+            y1: 5
+          },
+          {
+            kind: 'line' as const,
+            layer: '0',
+            x0: 5,
+            y0: 5,
+            x1: 5,
+            y1: 10
+          }
+        ]
+      }
+    }
+    const index = new AcExOsnapIndex(['intersection'])
+    index.rebuild(tLayout)
+    const snap = index.findSnap(5.1, 4.9, 1)
+    expect(snap).toEqual({ x: 5, y: 5, mode: 'intersection' })
+  })
+
+  it('snaps to T-junction when stem endpoint is slightly off crossbar', () => {
+    const tLayout = {
+      ...layout,
+      osnap: {
+        primitives: [
+          {
+            kind: 'line' as const,
+            layer: '0',
+            x0: 0,
+            y0: 5,
+            x1: 10,
+            y1: 5
+          },
+          {
+            kind: 'line' as const,
+            layer: '0',
+            x0: 5,
+            y0: 5.001,
+            x1: 5,
+            y1: 10
+          }
+        ]
+      }
+    }
+    const index = new AcExOsnapIndex(['intersection'])
+    index.rebuild(tLayout)
+    const snap = index.findSnap(5.1, 4.9, 1)
+    expect(snap).toEqual({ x: 5, y: 5, mode: 'intersection' })
+  })
+
+  it('snaps to L-corner where two line endpoints meet', () => {
+    const cornerLayout = {
+      ...layout,
+      osnap: {
+        primitives: [
+          {
+            kind: 'line' as const,
+            layer: '0',
+            x0: 0,
+            y0: 0,
+            x1: 10,
+            y1: 0
+          },
+          {
+            kind: 'line' as const,
+            layer: '0',
+            x0: 10,
+            y0: 0,
+            x1: 10,
+            y1: 10
+          }
+        ]
+      }
+    }
+    const index = new AcExOsnapIndex(['intersection'])
+    index.rebuild(cornerLayout)
+    const snap = index.findSnap(9.9, 0.1, 1)
+    expect(snap).toEqual({ x: 10, y: 0, mode: 'intersection' })
+  })
+
+  it('snaps to L-corner in tessellated fallback layout', () => {
+    const cornerLayout = {
+      btrId: 'model',
+      name: 'Model',
+      isModelSpace: true,
+      lineBatches: [
+        {
+          layer: '0',
+          color: 0xffffff,
+          offset: [0, 0, 0] as [number, number, number],
+          positions: f32([0, 0, 0, 10, 0, 0, 10, 0, 0, 10, 10, 0])
+        }
+      ],
+      meshBatches: []
+    }
+    const index = new AcExOsnapIndex(['intersection'])
+    index.rebuild(cornerLayout)
+    const snap = index.findSnap(9.9, 0.1, 1)
+    expect(snap).toEqual({ x: 10, y: 0, mode: 'intersection' })
+  })
+
+  it('snaps to line-line intersection from analytic primitives', () => {
+    const crossLayout = {
+      ...layout,
+      osnap: {
+        primitives: [
+          {
+            kind: 'line' as const,
+            layer: '0',
+            x0: 0,
+            y0: 5,
+            x1: 10,
+            y1: 5
+          },
+          {
+            kind: 'line' as const,
+            layer: '0',
+            x0: 5,
+            y0: 0,
+            x1: 5,
+            y1: 10
+          }
+        ]
+      }
+    }
+    const index = new AcExOsnapIndex(['intersection'])
+    index.rebuild(crossLayout)
+    const snap = index.findSnap(5.1, 4.9, 1)
+    expect(snap).toEqual({ x: 5, y: 5, mode: 'intersection' })
+  })
+
+  it('prefers intersection over nearest at a crossing', () => {
+    const crossLayout = {
+      ...layout,
+      osnap: {
+        primitives: [
+          {
+            kind: 'line' as const,
+            layer: '0',
+            x0: 0,
+            y0: 5,
+            x1: 10,
+            y1: 5
+          },
+          {
+            kind: 'line' as const,
+            layer: '0',
+            x0: 5,
+            y0: 0,
+            x1: 5,
+            y1: 10
+          }
+        ]
+      }
+    }
+    const index = new AcExOsnapIndex(['intersection', 'nearest'])
+    index.rebuild(crossLayout)
+    const snap = index.findSnap(5.05, 5.05, 1)
+    expect(snap?.mode).toBe('intersection')
+    expect(snap?.x).toBeCloseTo(5, 10)
+    expect(snap?.y).toBeCloseTo(5, 10)
+  })
+
+  it('hides intersection when either source layer is hidden', () => {
+    const crossLayout = {
+      ...layout,
+      osnap: {
+        primitives: [
+          {
+            kind: 'line' as const,
+            layer: 'A',
+            x0: 0,
+            y0: 5,
+            x1: 10,
+            y1: 5
+          },
+          {
+            kind: 'line' as const,
+            layer: 'B',
+            x0: 5,
+            y0: 0,
+            x1: 5,
+            y1: 10
+          }
+        ]
+      }
+    }
+    const index = new AcExOsnapIndex(['intersection'])
+    index.rebuild(crossLayout)
+    expect(index.findSnap(5.1, 4.9, 1)?.mode).toBe('intersection')
+    index.setLayerHidden('A', true)
+    expect(index.findSnap(5.1, 4.9, 1)).toBeUndefined()
+    index.setLayerHidden('A', false)
+    index.setLayerHidden('B', true)
+    expect(index.findSnap(5.1, 4.9, 1)).toBeUndefined()
+  })
+
+  it('does not snap to parallel line intersections', () => {
+    const parallelLayout = {
+      ...layout,
+      osnap: {
+        primitives: [
+          {
+            kind: 'line' as const,
+            layer: '0',
+            x0: 0,
+            y0: 0,
+            x1: 10,
+            y1: 0
+          },
+          {
+            kind: 'line' as const,
+            layer: '0',
+            x0: 0,
+            y0: 2,
+            x1: 10,
+            y1: 2
+          }
+        ]
+      }
+    }
+    const index = new AcExOsnapIndex(['intersection'])
+    index.rebuild(parallelLayout)
+    expect(index.findSnap(5, 1, 2)).toBeUndefined()
+  })
+
+  it('snaps to T-junction in tessellated fallback layout', () => {
+    const tLayout = {
+      btrId: 'model',
+      name: 'Model',
+      isModelSpace: true,
+      lineBatches: [
+        {
+          layer: '0',
+          color: 0xffffff,
+          offset: [0, 0, 0] as [number, number, number],
+          positions: f32([0, 5, 0, 10, 5, 0, 5, 5, 0, 5, 10, 0])
+        }
+      ],
+      meshBatches: []
+    }
+    const index = new AcExOsnapIndex(['intersection'])
+    index.rebuild(tLayout)
+    const snap = index.findSnap(5.1, 4.9, 1)
+    expect(snap).toEqual({ x: 5, y: 5, mode: 'intersection' })
+  })
+
+  it('snaps to segment intersection in tessellated fallback layout', () => {
+    const crossLayout = {
+      btrId: 'model',
+      name: 'Model',
+      isModelSpace: true,
+      lineBatches: [
+        {
+          layer: '0',
+          color: 0xffffff,
+          offset: [0, 0, 0] as [number, number, number],
+          positions: f32([0, 5, 0, 10, 5, 0, 5, 0, 0, 5, 10, 0])
+        }
+      ],
+      meshBatches: []
+    }
+    const index = new AcExOsnapIndex(['intersection'])
+    index.rebuild(crossLayout)
+    const snap = index.findSnap(5.1, 4.9, 1)
+    expect(snap).toEqual({ x: 5, y: 5, mode: 'intersection' })
+  })
+
   it('rebuilds large tessellated layouts without blowing the call stack', () => {
     const positions = new Float32Array(200_000 * 6)
     for (let i = 0; i < 200_000; i++) {
@@ -216,5 +627,79 @@ describe('AcExOsnapIndex', () => {
       y: 0,
       mode: 'endpoint'
     })
+  })
+
+  it('finds a circle or arc whose curve is within the aperture', () => {
+    const index = new AcExOsnapIndex()
+    index.rebuild({
+      ...layout,
+      lineBatches: [],
+      osnap: {
+        primitives: [
+          {
+            kind: 'circle',
+            layer: '0',
+            cx: 0,
+            cy: 0,
+            r: 10,
+            normalSign: 1
+          },
+          {
+            kind: 'arc',
+            layer: '0',
+            cx: 40,
+            cy: 0,
+            r: 10,
+            startAngle: 0,
+            endAngle: Math.PI / 2,
+            normalSign: 1
+          }
+        ]
+      }
+    })
+    expect(index.findCircleOrArcNear(10.2, 0, 1)).toEqual({
+      cx: 0,
+      cy: 0,
+      r: 10,
+      x: 10,
+      y: 0
+    })
+    expect(index.findCircleOrArcNear(50.2, 0, 1)).toEqual({
+      cx: 40,
+      cy: 0,
+      r: 10,
+      x: 50,
+      y: 0
+    })
+    expect(index.findCircleOrArcNear(30, 0, 1)).toBeUndefined()
+  })
+
+  it('keeps the start on the drawn arc when a nearby pick would project off it', () => {
+    const index = new AcExOsnapIndex()
+    index.rebuild({
+      ...layout,
+      lineBatches: [],
+      osnap: {
+        primitives: [
+          {
+            kind: 'arc',
+            layer: '0',
+            cx: 0,
+            cy: 0,
+            r: 10,
+            startAngle: 0,
+            endAngle: Math.PI / 2,
+            normalSign: 1
+          }
+        ]
+      }
+    })
+    const hit = index.findCircleOrArcNear(9, -1, 2)
+    expect(hit?.cx).toBe(0)
+    expect(hit?.cy).toBe(0)
+    expect(hit?.r).toBe(10)
+    // Radial projection of (9, -1) lands below the X axis (complementary).
+    expect(hit!.y).toBeGreaterThanOrEqual(0)
+    expect(hit!.x).toBeCloseTo(10, 1)
   })
 })

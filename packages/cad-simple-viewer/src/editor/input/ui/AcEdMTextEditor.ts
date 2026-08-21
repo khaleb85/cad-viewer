@@ -14,7 +14,7 @@ import * as THREE from 'three'
 
 import { AcApDocManager } from '../../../app'
 import { AcTrView2d } from '../../../view'
-import { isLightBackground } from '../../global/AcEdUiColor'
+import { acgiIsLightBackground } from '../../global/AcEdUiColor'
 
 function acGiAttachmentToMText(
   ap: AcGiMTextAttachmentPoint | undefined
@@ -398,7 +398,7 @@ export class AcEdMTextEditor {
       initialAttachmentPoint
     } = options
     const origin = new THREE.Vector3(location.x, location.y, location.z ?? 0)
-    const isLightBg = isLightBackground(view.backgroundColor)
+    const isLightBg = acgiIsLightBackground(view.backgroundColor)
     const cursorColor = isLightBg ? '#000000' : '#ffffff'
     const docManager = AcApDocManager.instance
     const database = docManager.curDocument.database
@@ -491,7 +491,7 @@ export class AcEdMTextEditor {
       const onRenderFrame = () => {
         if (done) return
         mtextInputBox.update()
-        view.isDirty = true
+        view.isHtmlDirty = true
       }
 
       const onSysVarChanged = (args: { name: string; database: unknown }) => {
@@ -502,7 +502,7 @@ export class AcEdMTextEditor {
           return
         }
         mtextInputBox.setToolbarTheme(getToolbarTheme())
-        view.isDirty = true
+        view.isHtmlDirty = true
       }
 
       const cleanup = () => {
@@ -517,7 +517,7 @@ export class AcEdMTextEditor {
         AcDbSysVarManager.instance().events.sysVarChanged.removeEventListener(
           onSysVarChanged
         )
-        view.isDirty = true
+        view.isHtmlDirty = true
       }
 
       const finish = (result: AcEdMTextEditorResult | null) => {

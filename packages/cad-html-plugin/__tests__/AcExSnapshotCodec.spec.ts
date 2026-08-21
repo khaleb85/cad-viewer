@@ -38,7 +38,8 @@ describe('AcExSnapshotCodec', () => {
       activeLayoutBtrId: 'ms'
     }
     const encoded = encodeSnapshot(snapshot)
-    const decoded = decodeSnapshot(encoded)
+    expect(encoded.compression).toBe('gzip')
+    const decoded = decodeSnapshot(encoded.payload)
     expect(decoded.meta.extents.maxX).toBe(10)
     expect(decoded.layers[0]?.name).toBe('0')
   })
@@ -93,7 +94,8 @@ describe('AcExSnapshotCodec', () => {
       activeLayoutBtrId: 'ms'
     }
 
-    const decoded = decodeSnapshot(encodeSnapshot(snapshot))
+    const encoded = encodeSnapshot(snapshot)
+    const decoded = decodeSnapshot(encoded.payload)
     const line = decoded.layouts[0]!.lineBatches[0]!
     expect(Array.from(line.positions)).toEqual([0, 0, 0, 10, 0, 0])
     expect(Array.from(line.indices!)).toEqual([0, 1])
@@ -154,10 +156,166 @@ describe('AcExSnapshotCodec', () => {
       activeLayoutBtrId: 'ms'
     }
 
-    const line = decodeSnapshot(encodeSnapshot(snapshot)).layouts[0]!
-      .lineBatches[0]!
+    const encoded = encodeSnapshot(snapshot)
+    const line = decodeSnapshot(encoded.payload).layouts[0]!.lineBatches[0]!
     expect(line.offset[0]).toBe(largeOrigin)
     expect(line.offset[1]).toBe(largeOrigin + 100)
     expect(Array.from(line.positions)).toEqual([0.5, 1.25, 0, 10.5, 2.75, 0])
+  })
+
+  it('round-trips wide-line lineWidth through binary codec', () => {
+    const snapshot = {
+      version: ACEX_SNAPSHOT_VERSION,
+      meta: {
+        createdAt: '2026-01-01T00:00:00.000Z',
+        extents: { minX: 0, minY: 0, maxX: 10, maxY: 10 },
+        units: {
+          insunits: 4,
+          lunits: 2,
+          luprec: 4,
+          aunits: 0,
+          auprec: 0,
+          measurement: 1,
+          ltscale: 1,
+          angbase: 0,
+          angdir: 0
+        },
+        background: 0
+      },
+      layers: [{ name: '0', color: 0xffffff, visible: true }],
+      layouts: [
+        {
+          btrId: 'ms',
+          name: '*Model_Space',
+          isModelSpace: true,
+          lineBatches: [
+            {
+              layer: '0',
+              color: 0x00ff00,
+              offset: [100_000, 2_000_000, 0] as [number, number, number],
+              positions: f32([0, 0, 0, 100, 50, 0]),
+              lineWidth: 2.5
+            }
+          ],
+          meshBatches: []
+        }
+      ],
+      activeLayoutBtrId: 'ms'
+    }
+
+    const encoded = encodeSnapshot(snapshot)
+    const line = decodeSnapshot(encoded.payload).layouts[0]!.lineBatches[0]!
+    expect(line.lineWidth).toBe(2.5)
+    expect(line.color).toBe(0x00ff00)
+    expect(Array.from(line.positions)).toEqual([0, 0, 0, 100, 50, 0])
+    expect(line.offset).toEqual([100_000, 2_000_000, 0])
+  })
+
+  it('round-trips paper-space viewport descriptors', () => {
+    const snapshot = {
+      version: ACEX_SNAPSHOT_VERSION,
+      meta: {
+        createdAt: '2026-01-01T00:00:00.000Z',
+        extents: { minX: 0, minY: 0, maxX: 10, maxY: 10 },
+        units: {
+          insunits: 4,
+          lunits: 2,
+          luprec: 4,
+          aunits: 0,
+          auprec: 0,
+          measurement: 1,
+          ltscale: 1,
+          angbase: 0,
+          angdir: 0
+        },
+        background: 0
+      },
+      layers: [{ name: '0', color: 0xffffff, visible: true }],
+      layouts: [
+        {
+          btrId: 'ps',
+          name: 'Layout1',
+          isModelSpace: false,
+          lineBatches: [],
+          meshBatches: [],
+          viewports: [
+            {
+              paper: { minX: 0, minY: 0, maxX: 12, maxY: 9 },
+              model: { minX: 100, minY: 200, maxX: 400, maxY: 500 },
+              twist: Math.PI / 4
+            }
+          ]
+        }
+      ],
+      activeLayoutBtrId: 'ps'
+    }
+
+    const decoded = decodeSnapshot(encodeSnapshot(snapshot).payload)
+    expect(decoded.layouts[0]!.viewports?.[0]?.paper).toEqual({
+      minX: 0,
+      minY: 0,
+      maxX: 12,
+      maxY: 9
+    })
+    expect(decoded.layouts[0]!.viewports?.[0]?.model).toEqual({
+      minX: 100,
+      minY: 200,
+      maxX: 400,
+      maxY: 500
+    })
+    expect(decoded.layouts[0]!.viewports?.[0]?.twist).toBeCloseTo(Math.PI / 4)
+  })
+
+  it('round-trips signed renderOrder so hatch fills stay below linework', () => {
+    const snapshot = {
+      version: ACEX_SNAPSHOT_VERSION,
+      meta: {
+        createdAt: '2026-01-01T00:00:00.000Z',
+        extents: { minX: 0, minY: 0, maxX: 10, maxY: 10 },
+        units: {
+          insunits: 4,
+          lunits: 2,
+          luprec: 4,
+          aunits: 0,
+          auprec: 0,
+          measurement: 1,
+          ltscale: 1,
+          angbase: 0,
+          angdir: 0
+        },
+        background: 0
+      },
+      layers: [{ name: '0', color: 0xffffff, visible: true }],
+      layouts: [
+        {
+          btrId: 'ms',
+          name: '*Model_Space',
+          isModelSpace: true,
+          lineBatches: [
+            {
+              layer: '0',
+              color: 0xff0000,
+              offset: [0, 0, 0] as [number, number, number],
+              positions: f32([0, 0, 0, 10, 0, 0])
+            }
+          ],
+          meshBatches: [
+            {
+              layer: '0',
+              color: 0x00ff00,
+              offset: [0, 0, 0] as [number, number, number],
+              positions: f32([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+              indices: Uint32Array.from([0, 1, 2]),
+              renderOrder: -1
+            }
+          ]
+        }
+      ],
+      activeLayoutBtrId: 'ms'
+    }
+
+    const decoded = decodeSnapshot(encodeSnapshot(snapshot).payload)
+    expect(decoded.layouts[0]!.lineBatches[0]!.renderOrder).toBeUndefined()
+    expect(decoded.layouts[0]!.meshBatches[0]!.renderOrder).toBe(-1)
   })
 })

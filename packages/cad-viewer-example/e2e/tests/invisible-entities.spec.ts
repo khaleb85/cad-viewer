@@ -2,6 +2,8 @@ import { expect, test, type Page } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
+import { uploadFixture } from '../helpers/fileUpload'
+
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
 const invisibleFixturePath = path.resolve(
   currentDir,
@@ -30,12 +32,6 @@ const visibleInBlockFixturePath = path.resolve(
 )
 
 test.describe.configure({ mode: 'serial' })
-
-async function uploadFixture(page: Page, filePath: string) {
-  const fileInput = page.locator('input[type="file"]').first()
-  await expect(fileInput).toBeAttached()
-  await fileInput.setInputFiles(filePath)
-}
 
 /**
  * Counts non-background canvas pixels (any visible linework/fill).

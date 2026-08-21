@@ -1,10 +1,31 @@
 import { AcDbObjectId, AcGeBox2d, AcGeBox3d } from '@mlightcad/data-model'
-import { AcTrEntity, AcTrGroup } from '@mlightcad/three-renderer'
+import {
+  AcTrDirectEntityMeta,
+  AcTrEntity,
+  AcTrEntityPreview,
+  AcTrGroup,
+  disposePreviewSubset
+} from '@mlightcad/three-renderer'
 import * as THREE from 'three'
 
 import { AcEdLayerInfo, AcEdSpatialQueryResultItem } from '../editor'
+import { unionSpatialQueryItems } from '../editor/view/AcEdSpatialQueryResult'
 import { AcTrHierarchicalSpatialIndex } from '../spatialIndex'
+import type { AcTrSpatialSearchOptions } from '../spatialIndex/AcTrSpatialIndex'
 import { AcTrLayer, AcTrLayerStats } from './AcTrLayer'
+
+/** Options for {@link AcTrLayout.createEntityPreviewRoot}. */
+export interface AcTrEntityPreviewRootOptions {
+  /**
+   * Behavior when one entity id cannot be extracted from a layer batch group.
+   *
+   * - `fail` (default): dispose the partial preview and return `null`
+   * - `skip`: ignore that id and continue with the remaining ids
+   */
+  missingEntity?: 'fail' | 'skip'
+  /** When true, every requested id must exist in this layout. */
+  requireAllEntities?: boolean
+}
 
 /**
  * Interface representing statistics for a layout.
@@ -81,8 +102,19 @@ export class AcTrLayout {
   private _extentExcludedObjectIds: Set<AcDbObjectId>
   /** Map of layers indexed by layer name */
   private _layers: Map<string, AcTrLayer>
+  /**
+   * INSERT object id → INSERT's own layer name. Used when freezing an INSERT
+   * layer to hide fragments that were bucketed onto other layers.
+   */
+  private _insertLayerByObjectId: Map<AcDbObjectId, string>
   /** The flag indicating whether the layout is loaded/activated */
   private _isLoaded: boolean
+  /**
+   * True when this layout renders a read-only reference/overlay drawing.
+   * Reference layouts are not registered in {@link AcTrScene}'s layout map
+   * and must not participate in selection, grips, or host edits.
+   */
+  isReference = false
 
   /**
    * Creates a new layout instance.
@@ -95,6 +127,7 @@ export class AcTrLayout {
     this._boxDirty = true
     this._extentExcludedObjectIds = new Set()
     this._layers = new Map()
+    this._insertLayerByObjectId = new Map()
     this._isLoaded = false
   }
 
@@ -119,7 +152,7 @@ export class AcTrLayout {
    * Gets the bounding box that contains all entities in this layout.
    *
    * Derived from packed batch vertex buffers (same source as GPU draw data),
-   * not from accumulated {@link AcTrEntity.box} metadata.
+   * not from accumulated {@link AcTrEntity.wcsBbox} metadata.
    *
    * @returns The layout's bounding box
    */
@@ -196,6 +229,13 @@ export class AcTrLayout {
   }
 
   /**
+   * Approximate spatial-index memory / cardinality stats for this layout.
+   */
+  get spatialIndexStats() {
+    return this._spatialIndex.getStats()
+  }
+
+  /**
    * The statistics of this layout.
    * Provides detailed information about memory usage and entity counts.
    */
@@ -264,6 +304,7 @@ export class AcTrLayout {
     this._cachedBox.makeEmpty()
     this._boxDirty = true
     this._extentExcludedObjectIds.clear()
+    this._insertLayerByObjectId.clear()
     this._spatialIndex.clear()
     return this
   }
@@ -326,6 +367,11 @@ export class AcTrLayout {
 
     layer.addEntity(entity)
 
+    const insertLayerName = entity.userData.insertLayerName
+    if (insertLayerName) {
+      this._insertLayerByObjectId.set(entity.objectId, insertLayerName)
+    }
+
     if (!extendBbox) {
       this._extentExcludedObjectIds.add(entity.objectId)
     } else {
@@ -336,6 +382,42 @@ export class AcTrLayout {
     this.registerEntitySpatialIndex(entity)
 
     return this
+  }
+
+  /**
+   * Adds an entity via direct batch append (no temporary drawable tree).
+   *
+   * @returns `true` when geometry and spatial index were registered.
+   */
+  addDirectEntity(
+    meta: AcTrDirectEntityMeta,
+    extendBbox: boolean = true
+  ): boolean {
+    if (!meta.objectId) {
+      throw new Error('Object id is required to add one entity!')
+    }
+    if (!meta.layerName) {
+      throw new Error('Layer name is required to add one entity!')
+    }
+
+    const layer = this._layers.get(meta.layerName)
+    if (!layer) {
+      throw new Error(`layer '${meta.layerName}' doesn't exist!`)
+    }
+
+    const appended = layer.addDirectEntity(meta)
+    if (!appended) {
+      return false
+    }
+
+    if (!extendBbox) {
+      this._extentExcludedObjectIds.add(meta.objectId)
+    } else {
+      this._extentExcludedObjectIds.delete(meta.objectId)
+    }
+    this.invalidateBox()
+    this.registerSpatialIndexBox(meta.objectId, meta.wcsBbox)
+    return true
   }
 
   /**
@@ -354,6 +436,7 @@ export class AcTrLayout {
     if (result) {
       this._spatialIndex.removeById(objectId)
       this._extentExcludedObjectIds.delete(objectId)
+      this._insertLayerByObjectId.delete(objectId)
       this.invalidateBox()
     }
     return result
@@ -368,6 +451,10 @@ export class AcTrLayout {
   updateEntity(entity: AcTrEntity) {
     for (const [_, layer] of this._layers) {
       if (layer.updateEntity(entity)) {
+        const insertLayerName = entity.userData.insertLayerName
+        if (insertLayerName) {
+          this._insertLayerByObjectId.set(entity.objectId, insertLayerName)
+        }
         this._spatialIndex.removeById(entity.objectId)
         this.registerEntitySpatialIndex(entity)
         this.invalidateBox()
@@ -419,6 +506,177 @@ export class AcTrLayout {
   }
 
   /**
+   * Returns true when requested entities can be previewed in this layout.
+   *
+   * Uses batch bounds only and does not clone preview geometry.
+   *
+   * @param entityIds - Database object ids required for preview creation
+   * @param options - When {@link AcTrEntityPreviewRootOptions.requireAllEntities} is
+   *   true (default), every id must be present; otherwise at least one id is enough
+   */
+  canCreateEntityPreview(
+    entityIds: AcDbObjectId[],
+    options?: Pick<AcTrEntityPreviewRootOptions, 'requireAllEntities'>
+  ): boolean {
+    if (entityIds.length === 0) {
+      return false
+    }
+
+    const requireAllEntities = options?.requireAllEntities ?? true
+    if (requireAllEntities) {
+      for (const id of entityIds) {
+        if (!this.hasEntity(id)) {
+          return false
+        }
+        const scratch = new THREE.Box3()
+        this.computeEntityPreviewBoundsBox([id], scratch)
+        if (scratch.isEmpty()) {
+          return false
+        }
+      }
+      return true
+    }
+
+    return !this.computeEntityPreviewBoundsBox(entityIds).isEmpty()
+  }
+
+  /**
+   * Returns entity ids that have drawable batch bounds in this layout.
+   *
+   * @param entityIds - Database object ids to check
+   */
+  findPreviewableEntityIds(entityIds: AcDbObjectId[]): AcDbObjectId[] {
+    const previewable: AcDbObjectId[] = []
+    for (const id of entityIds) {
+      if (!this.hasEntity(id)) {
+        continue
+      }
+      const scratch = new THREE.Box3()
+      this.computeEntityPreviewBoundsBox([id], scratch)
+      if (!scratch.isEmpty()) {
+        previewable.push(id)
+      }
+    }
+    return previewable
+  }
+
+  /**
+   * Computes world-space bounds for the requested entities from packed batch data.
+   *
+   * This avoids building a preview subset or traversing cloned drawables.
+   *
+   * @param entityIds - Database object ids to measure
+   * @param target - Optional output box
+   * @returns Axis-aligned bounds box, empty when nothing matched
+   */
+  computeEntityPreviewBoundsBox(
+    entityIds: AcDbObjectId[],
+    target = new THREE.Box3()
+  ) {
+    target.makeEmpty()
+    if (entityIds.length === 0) {
+      return target
+    }
+
+    const includeObjectIds = new Set(entityIds)
+    const scratch = new THREE.Box3()
+    for (const layer of this._layers.values()) {
+      layer.computeBatchBoundingBox(scratch, undefined, includeObjectIds)
+      if (!scratch.isEmpty()) {
+        target.union(scratch)
+      }
+    }
+    return target
+  }
+
+  /**
+   * Computes a 2D preview framing box for the requested entities in this layout.
+   *
+   * @param entityIds - Database object ids to measure
+   * @param margin - Margin multiplier applied around the raw bounds
+   */
+  computeEntityPreviewBounds2d(
+    entityIds: AcDbObjectId[],
+    margin = 1.1
+  ): AcGeBox2d | null {
+    const box = this.computeEntityPreviewBoundsBox(entityIds)
+    return AcTrEntityPreview.box3ToBounds2d(box, margin)
+  }
+
+  /**
+   * Builds one preview root group by extracting GPU-resident geometry from layer batches.
+   *
+   * Entities that are missing from this layout or cannot be extracted are skipped.
+   * Returns `null` only when no drawable geometry could be collected.
+   *
+   * @param entityIds - Database object ids to include in the preview overlay
+   * @returns Preview root group, or `null` when no preview geometry was extracted
+   */
+  createEntityPreviewRoot(
+    entityIds: AcDbObjectId[],
+    options?: AcTrEntityPreviewRootOptions
+  ): THREE.Group | null {
+    const missingEntity = options?.missingEntity ?? 'fail'
+    const requireAllEntities = options?.requireAllEntities ?? false
+
+    if (requireAllEntities) {
+      for (const id of entityIds) {
+        if (!this.hasEntity(id)) {
+          return null
+        }
+      }
+    }
+
+    const idsByLayer = new Map<AcTrLayer, Set<AcDbObjectId>>()
+
+    for (const id of entityIds) {
+      const layers = this.getLayersByObjectId(id)
+      if (layers.length === 0) {
+        if (requireAllEntities || missingEntity === 'fail') {
+          return null
+        }
+        continue
+      }
+      for (const layer of layers) {
+        let layerIds = idsByLayer.get(layer)
+        if (!layerIds) {
+          layerIds = new Set()
+          idsByLayer.set(layer, layerIds)
+        }
+        layerIds.add(id)
+      }
+    }
+
+    if (idsByLayer.size === 0) {
+      return null
+    }
+
+    const previewRoot = new THREE.Group()
+    previewRoot.name = 'EntityPreviewRoot'
+    for (const [layer, ids] of idsByLayer) {
+      const idList = [...ids]
+      const subset = layer.createPreviewSubset(idList, {
+        // Complex blocks/hatches may need several drawable slots per entity.
+        maxSlots: Math.max(10000, idList.length * 8),
+        missingEntity
+      })
+      if (!subset || subset.children.length === 0) {
+        if (missingEntity === 'fail') {
+          disposePreviewSubset(previewRoot)
+          return null
+        }
+        continue
+      }
+      previewRoot.add(subset)
+    }
+
+    if (previewRoot.children.length === 0) {
+      return null
+    }
+    return previewRoot
+  }
+
+  /**
    * Gets the layer with the specified name from this layout
    * @param name - Layer name
    * @returns - The layer with the specified name in this layout
@@ -464,16 +722,57 @@ export class AcTrLayout {
   }
 
   /**
+   * Applies AutoCAD INSERT-layer freeze semantics across decomposed fragments.
+   *
+   * Freezing the INSERT's own layer hides every scene bucket that shares that
+   * INSERT object id, including geometry bucketed onto other layers — even when
+   * the INSERT has no fragment on its own layer (only other-layer buckets).
+   * Thawing restores those other-layer buckets (the INSERT layer group
+   * visibility is handled separately by {@link updateLayer}).
+   *
+   * @param insertLayerName - Layer being frozen or thawed.
+   * @param frozen - True when the layer is now frozen.
+   * @returns Object ids whose cross-layer visibility was changed.
+   */
+  applyInsertLayerFreeze(
+    insertLayerName: string,
+    frozen: boolean
+  ): AcDbObjectId[] {
+    const touched: AcDbObjectId[] = []
+    for (const [objectId, layerName] of this._insertLayerByObjectId) {
+      if (layerName !== insertLayerName) {
+        continue
+      }
+      let changed = false
+      for (const layer of this.getLayersByObjectId(objectId)) {
+        // INSERT-layer bucket visibility comes from the layer group itself.
+        if (layer.name === insertLayerName) {
+          continue
+        }
+        if (layer.setEntityVisible(objectId, !frozen)) {
+          changed = true
+        }
+      }
+      if (changed) {
+        touched.push(objectId)
+      }
+    }
+    if (touched.length > 0) {
+      this.invalidateBox()
+    }
+    return touched
+  }
+
+  /**
    * Hover the specified entities.
    * Applies hover highlighting to the entities with the given IDs.
    *
    * @param ids - Array of entity object IDs to hover
    */
   hover(ids: AcDbObjectId[]) {
-    ids.forEach(id => {
-      const layers = this.getLayersByObjectId(id)
-      layers.forEach(layer => layer.hover([id]))
-    })
+    this.applyHighlightToLayers(ids, (layer, entityIds) =>
+      layer.hover(entityIds)
+    )
   }
 
   /**
@@ -483,10 +782,9 @@ export class AcTrLayout {
    * @param ids - Array of entity object IDs to unhover
    */
   unhover(ids: AcDbObjectId[]) {
-    ids.forEach(id => {
-      const layers = this.getLayersByObjectId(id)
-      layers.forEach(layer => layer.unhover([id]))
-    })
+    this.applyHighlightToLayers(ids, (layer, entityIds) =>
+      layer.unhover(entityIds)
+    )
   }
 
   /**
@@ -496,10 +794,9 @@ export class AcTrLayout {
    * @param ids - Array of entity object IDs to select
    */
   select(ids: AcDbObjectId[]) {
-    ids.forEach(id => {
-      const layers = this.getLayersByObjectId(id)
-      layers.forEach(layer => layer.select([id]))
-    })
+    this.applyHighlightToLayers(ids, (layer, entityIds) =>
+      layer.select(entityIds)
+    )
   }
 
   /**
@@ -509,10 +806,34 @@ export class AcTrLayout {
    * @param ids - Array of entity object IDs to unselect
    */
   unselect(ids: AcDbObjectId[]) {
-    ids.forEach(id => {
+    this.applyHighlightToLayers(ids, (layer, entityIds) =>
+      layer.unselect(entityIds)
+    )
+  }
+
+  /**
+   * Groups entity ids by render layer and applies one bulk highlight call per layer.
+   *
+   * @param ids - Entity object ids whose highlight state should change.
+   * @param apply - Layer callback invoked once per layer with its grouped entity ids.
+   */
+  private applyHighlightToLayers(
+    ids: AcDbObjectId[],
+    apply: (layer: AcTrLayer, entityIds: AcDbObjectId[]) => void
+  ) {
+    const layerToIds = new Map<AcTrLayer, AcDbObjectId[]>()
+    for (const id of ids) {
       const layers = this.getLayersByObjectId(id)
-      layers.forEach(layer => layer.unselect([id]))
-    })
+      for (const layer of layers) {
+        const bucket = layerToIds.get(layer)
+        if (bucket) {
+          bucket.push(id)
+        } else {
+          layerToIds.set(layer, [id])
+        }
+      }
+    }
+    layerToIds.forEach((entityIds, layer) => apply(layer, entityIds))
   }
 
   /**
@@ -522,14 +843,16 @@ export class AcTrLayout {
    * @param box - Input the query bounding box (2D or 3D)
    * @returns Return query results containing entity IDs and their bounds
    */
-  search(box: AcGeBox2d | AcGeBox3d) {
-    const results = this._spatialIndex.search({
-      minX: box.min.x,
-      minY: box.min.y,
-      maxX: box.max.x,
-      maxY: box.max.y
-    })
-    return results
+  search(box: AcGeBox2d | AcGeBox3d, options?: AcTrSpatialSearchOptions) {
+    return this._spatialIndex.search(
+      {
+        minX: box.min.x,
+        minY: box.min.y,
+        maxX: box.max.x,
+        maxY: box.max.y
+      },
+      options
+    )
   }
 
   /**
@@ -586,20 +909,90 @@ export class AcTrLayout {
     return boxes
   }
 
+  /**
+   * Registers one render entity in the layout spatial index.
+   *
+   * Inserts a root bounding box for coarse queries and, when child geometry is
+   * available, builds a child-level index so snapping and fine-grained spatial
+   * queries can resolve sub-entities (for example block references).
+   *
+   * Root bounds are chosen in this order:
+   * 1. Union of {@link getSpatialIndexChildBoxes} when precomputed child boxes
+   *    are attached to `entity.userData`.
+   * 2. Union of `AcTrGroup.wcsChildBoxes` when the entity is a block group.
+   * 3. The entity's own `wcsBbox` as a fallback.
+   *
+   * Child indexing uses `ensureChildIndex` for userData child boxes (typical of
+   * INSERT paths split across layers) or `createChildIndex` for a single
+   * `AcTrGroup` hierarchy.
+   *
+   * @param entity - The render entity to index. Called from
+   *                 {@link addEntity} and {@link updateEntity} after layer
+   *                 membership is updated.
+   */
   private registerEntitySpatialIndex(entity: AcTrEntity) {
-    const box = entity.box
+    const spatialIndexChildBoxes = this.getSpatialIndexChildBoxes(entity)
+
+    let rootBox: {
+      minX: number
+      minY: number
+      maxX: number
+      maxY: number
+      id: AcDbObjectId
+    }
+
+    if (spatialIndexChildBoxes && spatialIndexChildBoxes.length > 0) {
+      const union = unionSpatialQueryItems(spatialIndexChildBoxes)
+      rootBox = {
+        minX: union.minX,
+        minY: union.minY,
+        maxX: union.maxX,
+        maxY: union.maxY,
+        id: entity.objectId
+      }
+    } else if (entity instanceof AcTrGroup && entity.wcsChildBoxes.length > 0) {
+      const union = unionSpatialQueryItems(
+        entity.wcsChildBoxes.map(box => ({
+          minX: box.minX,
+          minY: box.minY,
+          maxX: box.maxX,
+          maxY: box.maxY,
+          id: box.id
+        }))
+      )
+      rootBox = {
+        minX: union.minX,
+        minY: union.minY,
+        maxX: union.maxX,
+        maxY: union.maxY,
+        id: entity.objectId
+      }
+    } else {
+      rootBox = {
+        minX: entity.wcsBbox.min.x,
+        minY: entity.wcsBbox.min.y,
+        maxX: entity.wcsBbox.max.x,
+        maxY: entity.wcsBbox.max.y,
+        id: entity.objectId
+      }
+    }
+
     this._spatialIndex.insert({
-      minX: box.min.x,
-      minY: box.min.y,
-      maxX: box.max.x,
-      maxY: box.max.y,
+      minX: rootBox.minX,
+      minY: rootBox.minY,
+      maxX: rootBox.maxX,
+      maxY: rootBox.maxY,
       id: entity.objectId
     })
+
+    if (spatialIndexChildBoxes && spatialIndexChildBoxes.length > 0) {
+      entity.wcsBbox.min.set(rootBox.minX, rootBox.minY, entity.wcsBbox.min.z)
+      entity.wcsBbox.max.set(rootBox.maxX, rootBox.maxY, entity.wcsBbox.max.z)
+    }
 
     // Some INSERT rendering paths split one block reference into multiple layer
     // groups (AcTrEntity instead of AcTrGroup). Keep child-box index via userData
     // so object snap can still resolve gsMark to sub-entities.
-    const spatialIndexChildBoxes = this.getSpatialIndexChildBoxes(entity)
     if (spatialIndexChildBoxes) {
       this._spatialIndex.ensureChildIndex(
         entity.objectId,
@@ -609,5 +1002,18 @@ export class AcTrLayout {
       // If it is one block group, build spatial index for entities in this block.
       this._spatialIndex.createChildIndex(entity)
     }
+  }
+
+  /**
+   * Registers a simple axis-aligned WCS box in the spatial index by object id.
+   */
+  private registerSpatialIndexBox(objectId: AcDbObjectId, wcsBbox: THREE.Box3) {
+    this._spatialIndex.insert({
+      minX: wcsBbox.min.x,
+      minY: wcsBbox.min.y,
+      maxX: wcsBbox.max.x,
+      maxY: wcsBbox.max.y,
+      id: objectId
+    })
   }
 }

@@ -16,7 +16,7 @@ function createPatternedHatchMaterial(
 ): THREE.ShaderMaterial {
   const traits = AcTrSubEntityTraitsUtil.createDefaultTraits()
   traits.layer = 'A-HATCH'
-  traits.rgbColor = 0x00ff00
+  traits.color.setRGB(0, 255, 0)
   traits.drawOrder = -1
   traits.fillType = {
     solidFill: false,
@@ -48,6 +48,25 @@ function cloneUnbatchedHatchMesh(source: THREE.Mesh): THREE.Mesh {
   return cloned
 }
 
+function cloneUnbatchedHatchMeshFromGroup(source: THREE.Mesh): THREE.Mesh {
+  const cloned = source.clone() as THREE.Mesh
+  cloned.geometry = source.geometry.clone()
+  cloned.material = source.material
+  source.updateMatrixWorld(true)
+  source.matrixWorld.decompose(_position, _quaternion, _scale)
+  cloned.position.copy(_position)
+  cloned.quaternion.copy(_quaternion)
+  cloned.scale.copy(_scale)
+  getSceneDrawableUserData(cloned).bakedWorldMatrix =
+    source.matrixWorld.toArray()
+  cloned.updateMatrix()
+  return cloned
+}
+
+const _position = /*@__PURE__*/ new THREE.Vector3()
+const _quaternion = /*@__PURE__*/ new THREE.Quaternion()
+const _scale = /*@__PURE__*/ new THREE.Vector3()
+
 describe('patterned hatch HTML export', () => {
   it('collects hatch pattern data from unbatched world-baked meshes', () => {
     const styleManager = new AcTrStyleManager()
@@ -73,6 +92,7 @@ describe('patterned hatch HTML export', () => {
     const { meshBatches } = collectBatchesFromObject3D(root)
     expect(meshBatches).toHaveLength(1)
     expect(meshBatches[0]?.hatchPattern?.patternLines.length).toBeGreaterThan(0)
+    expect(meshBatches[0]?.renderOrder).toBe(-1)
 
     const viewerMaterial = createViewerMeshMaterial(meshBatches[0]!)
     expect(viewerMaterial).toBeInstanceOf(THREE.ShaderMaterial)
@@ -129,11 +149,44 @@ describe('patterned hatch HTML export', () => {
       activeLayoutBtrId: 'ms'
     }
 
-    const decoded = decodeSnapshot(encodeSnapshot(snapshot))
+    const encoded = encodeSnapshot(snapshot)
+    const decoded = decodeSnapshot(encoded.payload)
     const decodedBatch = decoded.layouts[0]!.meshBatches[0]!
     expect(decodedBatch.hatchPattern).toEqual(batch.hatchPattern)
+    expect(decodedBatch.renderOrder).toBe(-1)
 
     const viewerMaterial = createViewerMeshMaterial(decodedBatch)
     expect(viewerMaterial).toBeInstanceOf(THREE.ShaderMaterial)
+  })
+
+  it('world-bakes patterned hatch clones that keep local geometry under object transforms', () => {
+    const styleManager = new AcTrStyleManager()
+    const material = createPatternedHatchMaterial(styleManager)
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(
+        new Float32Array([0, 0, 0, 10, 0, 0, 0, 10, 0]),
+        3
+      )
+    )
+
+    const source = new THREE.Mesh(geometry, material)
+    source.position.set(100, 200, 0)
+    source.rotation.z = Math.PI / 6
+    source.updateMatrixWorld(true)
+
+    const root = new THREE.Group()
+    root.add(cloneUnbatchedHatchMeshFromGroup(source))
+
+    const { meshBatches } = collectBatchesFromObject3D(root)
+    expect(meshBatches).toHaveLength(1)
+
+    const exported = meshBatches[0]!
+    expect(exported.offset).toEqual([0, 0, 0])
+    expect(exported.hatchPattern?.patternLines.length).toBeGreaterThan(0)
+    expect(exported.positions[0]).toBeCloseTo(100, 3)
+    expect(exported.positions[1]).toBeCloseTo(200, 3)
+    expect(createViewerMeshMaterial(exported).type).toBe('ShaderMaterial')
   })
 })

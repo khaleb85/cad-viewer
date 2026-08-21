@@ -2,6 +2,8 @@ import {
   ColorSettings,
   createDefaultColorSettings,
   DefaultFontsPreset,
+  FontManager,
+  type MemoryUsageReport,
   MTextData,
   MTextObject,
   RenderMode,
@@ -24,7 +26,10 @@ class AcTrMTextStyleManager implements StyleManager {
   }
 
   getMeshBasicMaterial(traits: ColorSettings): THREE.Material {
-    const entityTraits = AcTrSubEntityTraitsUtil.createTraitsForMText(traits)
+    const entityTraits = AcTrSubEntityTraitsUtil.createTraitsForMText(
+      traits,
+      this._styleManager.currentBackgroundColor
+    )
     // Route MText glyph fills through the dedicated helper so their
     // linework-tier `drawOrder` semantics stay explicit even though
     // they are rasterized as meshes.
@@ -32,7 +37,10 @@ class AcTrMTextStyleManager implements StyleManager {
   }
 
   getLineBasicMaterial(traits: ColorSettings): THREE.Material {
-    const entityTraits = AcTrSubEntityTraitsUtil.createTraitsForMText(traits)
+    const entityTraits = AcTrSubEntityTraitsUtil.createTraitsForMText(
+      traits,
+      this._styleManager.currentBackgroundColor
+    )
     return this._styleManager.getLineMaterial(entityTraits, true)
   }
 }
@@ -48,6 +56,8 @@ export class AcTrMTextRenderer {
   private _renderMode?: RenderMode
   private _styleManager?: AcTrStyleManager
   private _defaultFonts?: DefaultFontsPreset | string | readonly string[]
+  private _lazyFontLoading?: boolean
+  private _awaitFontsBeforeDraw?: boolean
 
   private constructor() {
     // Do nothing for now
@@ -70,6 +80,13 @@ export class AcTrMTextRenderer {
    */
   overrideStyleManager(value: AcTrStyleManager) {
     this._styleManager = value
+    // Apply immediately when the unified renderer already exists (e.g. re-init
+    // or late override). Otherwise reconstruct would keep DefaultStyleManager
+    // materials without `isForeground` tracking.
+    if (this._renderer) {
+      const styleManager = new AcTrMTextStyleManager(value)
+      this._renderer.setStyleManager(styleManager)
+    }
   }
 
   /**
@@ -104,6 +121,25 @@ export class AcTrMTextRenderer {
   ): Promise<void> {
     this._defaultFonts = fonts
     await this.applyDefaultFonts()
+  }
+
+  /**
+   * Mirrors {@link FontManager.lazyFontLoading} onto the main thread and worker pool.
+   */
+  async setLazyFontLoading(enabled: boolean): Promise<void> {
+    this._lazyFontLoading = enabled
+    FontManager.instance.lazyFontLoading = enabled
+    await this.applyLazyFontLoading()
+  }
+
+  /**
+   * When true with lazy loading, {@link asyncRenderMText} / {@link asyncRenderShape}
+   * wait for referenced fonts before building glyph geometry.
+   */
+  async setAwaitFontsBeforeDraw(enabled: boolean): Promise<void> {
+    this._awaitFontsBeforeDraw = enabled
+    FontManager.instance.awaitFontsBeforeDraw = enabled
+    await this.applyAwaitFontsBeforeDraw()
   }
 
   /**
@@ -177,17 +213,46 @@ export class AcTrMTextRenderer {
   }
 
   /**
-   * Initialize the renderer with worker URL
-   * @param workerUrl - URL to the worker script
+   * Initialize the renderer.
+   *
+   * When render mode is `main`, the unified renderer is created without
+   * eagerly spawning web workers. The worker URL is still stored so worker
+   * mode can be enabled later if needed.
+   *
+   * @param workerUrl - URL to the worker script used when render mode is `worker`
    */
-  initialize(workerUrl: string | URL): void {
-    this._workerUrl = workerUrl
-    this._renderer = new UnifiedRenderer('worker', { workerUrl })
+  initialize(workerUrl?: string | URL): void {
+    if (workerUrl !== undefined) {
+      this._workerUrl = workerUrl
+    }
+
+    if (this._renderer) {
+      this._renderer.destroy()
+      this._renderer = undefined
+    }
+
+    const mode = this._renderMode ?? 'worker'
+    const workerConfig = this._workerUrl ? { workerUrl: this._workerUrl } : {}
+
+    if (mode === 'worker') {
+      if (!this._workerUrl) {
+        throw new Error(
+          'AcTrMTextRenderer worker URL is required for worker render mode'
+        )
+      }
+      this._renderer = new UnifiedRenderer('worker', workerConfig)
+    } else {
+      this._renderer = new UnifiedRenderer('main', workerConfig)
+    }
+
     if (this._renderMode) {
       this._renderer.setDefaultMode(this._renderMode)
     }
+
     this.applyFontUrl()
     void this.applyDefaultFonts()
+    void this.applyLazyFontLoading()
+    void this.applyAwaitFontsBeforeDraw()
     if (this._styleManager) {
       const styleManager = new AcTrMTextStyleManager(this._styleManager)
       this._renderer.setStyleManager(styleManager)
@@ -195,14 +260,51 @@ export class AcTrMTextRenderer {
   }
 
   /**
-   * Dispose of the renderer and reset the singleton
+   * Estimates memory used by mtext-renderer (loaded fonts, caches, workers).
+   *
+   * Prefers {@link UnifiedRenderer.estimateMemoryUsage} when the renderer is
+   * initialized; otherwise falls back to the main-thread {@link FontManager}.
+   */
+  async estimateMemoryUsage(): Promise<MemoryUsageReport> {
+    if (this._renderer) {
+      return this._renderer.estimateMemoryUsage()
+    }
+
+    const mainThread = FontManager.instance.estimateMemoryUsage({ id: 'main' })
+    return {
+      collectedAt: Date.now(),
+      totalEstimatedBytes: mainThread.totalEstimatedBytes,
+      mainThread,
+      workers: [],
+      indexedDbFontCache: {
+        fontCount: 0,
+        totalBytes: 0,
+        fonts: []
+      }
+    }
+  }
+
+  /**
+   * Dispose of the renderer and reset cached configuration.
    */
   dispose(): void {
     if (this._renderer) {
       this._renderer.destroy()
       this._renderer = undefined
     }
-    // AcTrMTextRenderer._instance = null
+    this._workerUrl = undefined
+    this._renderMode = undefined
+    this._defaultFonts = undefined
+    this._lazyFontLoading = undefined
+    this._awaitFontsBeforeDraw = undefined
+  }
+
+  /**
+   * Dispose and discard the singleton instance.
+   */
+  public static resetInstance(): void {
+    AcTrMTextRenderer.getInstance().dispose()
+    AcTrMTextRenderer._instance = null
   }
 
   private ensureRendererCreated() {
@@ -220,6 +322,18 @@ export class AcTrMTextRenderer {
   private async applyDefaultFonts() {
     if (this._renderer && this._defaultFonts !== undefined) {
       await this._renderer.setDefaultFonts(this._defaultFonts)
+    }
+  }
+
+  private async applyLazyFontLoading() {
+    if (this._renderer && this._lazyFontLoading !== undefined) {
+      await this._renderer.setLazyFontLoading(this._lazyFontLoading)
+    }
+  }
+
+  private async applyAwaitFontsBeforeDraw() {
+    if (this._renderer && this._awaitFontsBeforeDraw !== undefined) {
+      await this._renderer.setAwaitFontsBeforeDraw(this._awaitFontsBeforeDraw)
     }
   }
 }

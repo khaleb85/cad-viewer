@@ -21,9 +21,12 @@ const config: Config = {
     ]
   },
   transformIgnorePatterns: [
-    '/node_modules/(?!.*mtext-parser)'
+    '/node_modules/(?!.*(mtext-parser|rbush|quickselect))'
   ],
-  testPathIgnorePatterns: ['packages/dxf-json/', '/e2e/'],
+  testPathIgnorePatterns: [
+    '/e2e/',
+    '/__tests__/helpers/'
+  ],
   moduleNameMapper: {
     '^lodash-es$': 'lodash',
     '^three/examples/jsm/lines/LineMaterial\\.js$':

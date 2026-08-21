@@ -1,7 +1,17 @@
 import { AcDbObjectId } from '@mlightcad/data-model'
 
 import { AcEdSpatialQueryResultItem } from '../editor/view'
-import { AcTrSpatialIndex, AcTrSpatialIndexBBox } from './AcTrSpatialIndex'
+import {
+  AcTrSpatialIndex,
+  AcTrSpatialIndexBBox,
+  AcTrSpatialIndexStats,
+  AcTrSpatialSearchOptions,
+  estimateSpatialItemsBytes,
+  isSpatialBoxFullyInside
+} from './AcTrSpatialIndex'
+
+/** Approx. Map entry overhead (key pointer + value pointer + slot). */
+const MAP_ENTRY_BYTES = 40
 
 /**
  * A simple spatial index implementation that performs linear scanning
@@ -25,38 +35,81 @@ import { AcTrSpatialIndex, AcTrSpatialIndexBBox } from './AcTrSpatialIndex'
  * not scale well for large numbers of items.
  */
 export class AcTrLinearSpatialIndex implements AcTrSpatialIndex {
-  /** Items indexed by object id */
-  private items = new Map<AcDbObjectId, AcEdSpatialQueryResultItem>()
+  /**
+   * Items keyed by object id, or by an internal anon key when `item.id` is
+   * empty so multiple hatch fill islands can coexist.
+   */
+  private items = new Map<string, AcEdSpatialQueryResultItem>()
+  private anonKeySeq = 0
+
+  private storageKey(item: AcEdSpatialQueryResultItem): string {
+    if (typeof item.id === 'string' && item.id.length > 0) {
+      return item.id
+    }
+    return `__anon_${this.anonKeySeq++}`
+  }
 
   insert(item: AcEdSpatialQueryResultItem): void {
-    this.items.set(item.id, item)
+    if (typeof item.id === 'string' && item.id.length > 0) {
+      this.items.set(item.id, item)
+      return
+    }
+    this.items.set(this.storageKey(item), item)
   }
 
   load(items: readonly AcEdSpatialQueryResultItem[]): void {
     for (const item of items) {
-      this.items.set(item.id, item)
+      this.insert(item)
     }
   }
 
   remove(item: AcEdSpatialQueryResultItem): void {
-    this.items.delete(item.id)
+    if (typeof item.id === 'string' && item.id.length > 0) {
+      this.items.delete(item.id)
+      return
+    }
+    for (const [key, value] of this.items) {
+      if (
+        value === item ||
+        (value.id === item.id &&
+          value.minX === item.minX &&
+          value.minY === item.minY &&
+          value.maxX === item.maxX &&
+          value.maxY === item.maxY)
+      ) {
+        this.items.delete(key)
+        return
+      }
+    }
   }
 
   removeById(id: AcDbObjectId): void {
-    this.items.delete(id)
+    if (typeof id === 'string' && id.length > 0) {
+      this.items.delete(id)
+    }
   }
 
   clear(): void {
     this.items.clear()
   }
 
-  search(bbox: AcTrSpatialIndexBBox): AcEdSpatialQueryResultItem[] {
+  search(
+    bbox: AcTrSpatialIndexBBox,
+    options?: AcTrSpatialSearchOptions
+  ): AcEdSpatialQueryResultItem[] {
     const result: AcEdSpatialQueryResultItem[] = []
 
     for (const item of this.items.values()) {
-      if (intersects(item, bbox)) {
-        result.push(item)
+      if (!intersects(item, bbox)) {
+        continue
       }
+      if (
+        options?.selectionMode === 'window' &&
+        !isSpatialBoxFullyInside(item, bbox)
+      ) {
+        continue
+      }
+      result.push(item)
     }
 
     return result
@@ -73,6 +126,17 @@ export class AcTrLinearSpatialIndex implements AcTrSpatialIndex {
 
   all(): AcEdSpatialQueryResultItem[] {
     return Array.from(this.items.values())
+  }
+
+  getStats(): AcTrSpatialIndexStats {
+    const items = this.all()
+    const itemCount = items.length
+    return {
+      kind: 'linear',
+      itemCount,
+      estimatedBytes:
+        estimateSpatialItemsBytes(items) + itemCount * MAP_ENTRY_BYTES
+    }
   }
 }
 

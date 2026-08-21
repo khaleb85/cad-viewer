@@ -7,9 +7,10 @@ A vanilla TypeScript demo that shows how to embed [`@mlightcad/cad-simple-viewer
 - **Local files** — Open `.dxf` / `.dwg` via file picker (toolbar **Open** or center **Open File**)
 - **Sample drawings** — Sidebar loads predefined files from the [cad-data](https://github.com/mlightcad/cad-data) CDN
 - **Viewer toolbar** — Zoom fit, zoom window, background toggle, pickbox size, line-weight display, export HTML/PDF
-- **Lazy plugins** — registered from `@mlightcad/cad-*-plugin/register` in `src/register.ts`; `chtml` / `cpdf` / `csvg` load plugin chunks on demand
+- **Lazy plugins** — registered from `@mlightcad/cad-*-plugin/register` in `src/register.ts`; `-chtml` / `cpdf` / `csvg` load plugin chunks on demand (`chtml` runs the same command-line export when no dialog command is registered)
 - **Browser-only** — Parsing and rendering run in the browser (Web Workers + WebAssembly for DWG)
 - **Responsive layout** — Sidebar + viewer pane; stacks vertically on narrow screens
+- **HTML converter** — Dedicated page (`html-converter.html`) to upload a drawing, adjust export options, and download a self-contained HTML file with no backend
 
 ## Prerequisites
 
@@ -49,7 +50,7 @@ cd packages/cad-simple-viewer-example
 pnpm dev
 ```
 
-Vite prints the local URL (default `http://localhost:5173`).
+Vite prints the local URL (default `http://localhost:5173`). Open `/html-converter.html` for the in-browser DWG/DXF → offline HTML converter.
 
 ### Production
 
@@ -70,16 +71,26 @@ The build copies parser workers and `viewer-runtime.iife.js` into `dist/` (see `
    - **Switch BG** — Toggle drawing background
    - **Set Pickbox** — Prompt to set `PICKBOX` system variable
    - **LineWeight: On/Off** — Toggle `lwdisplay` on the current database
-   - **Export HTML** / **Export PDF** — Run `chtml` / `cpdf` (plugins must be registered; see `src/main.ts`)
+   - **Export HTML** / **Export PDF** — Run `chtml` / `cpdf` from the toolbar (`chtml` uses command-line prompts here; `-chtml` is equivalent). Plugins must be registered; see `src/main.ts`.
 
 Toast messages at the top report success or errors. The window title updates when a document is activated.
+
+### HTML converter
+
+Open `/html-converter.html` (or `cad-simple-viewer/html-converter.html` when served from `packages/examples`). Choose a local `.dwg` / `.dxf`, or load the sample `canteen.dwg`. Export options match the full viewer dialog:
+
+- Invisible layers and paper-space layouts
+- Initial view (zoom to extents vs the viewport saved in the drawing)
+- Viewer mode (view-only vs measure & review)
+
+Click **Convert and download HTML**. The page opens the drawing locally, builds a snapshot with `AcApHtmlSnapshotBuilder`, packs it with `packHtml`, and downloads the file — nothing is uploaded to a server.
 
 ## Supported formats
 
 | Format | Notes |
 |--------|--------|
-| **DXF** | Parsed in a Web Worker (`dxf-parser-worker.js`) |
-| **DWG** | LibreDWG WebAssembly via `libredwg-parser-worker.js` |
+| **DXF** | Built-in parser in `@mlightcad/data-model` |
+| **DWG** | Optional `@mlightcad/libredwg-converter` (GPL) — registered by this example |
 
 ## What this example demonstrates
 
@@ -90,11 +101,11 @@ Integration patterns useful when building your own host app (not a full CAD UI l
 | Document manager | `AcApDocManager.createInstance({ container, baseUrl, webworkerFileUrls, commandAliases, … })` |
 | Local open | `openDocument(name, ArrayBuffer, options)` with `AcApOpenDatabaseOptions` |
 | Remote open | `openUrl(url, options)` for CDN sample files |
-| Commands | `sendStringToExecute('zoom\\nall')`, `switchbg`, plugin commands `chtml` / `cpdf` |
+| Commands | `sendStringToExecute('zoom\\nall')`, `switchbg`, plugin commands `chtml` / `-chtml` / `cpdf` |
 | System variables | `AcDbSysVarManager` + `sendStringToExecute` (e.g. `PICKBOX`) |
 | Plugins | Lazy registration via `@mlightcad/*/register` in `src/register.ts` (only needed plugins) |
 | Command aliases | Demo overrides (`LINE` → `LX`, etc.) via `commandAliases` |
-| Workers & assets | `webworkerFileUrls`, `htmlViewerRuntimeUrl`, static copy in Vite |
+| Workers & assets | `webworkerFileUrls`, static copy in Vite; HTML runtime via plugin options |
 
 Lazy initialization: `AcApDocManager` is created on first file open, not at page load.
 
@@ -103,9 +114,11 @@ Lazy initialization: `AcApDocManager` is created on first file open, not at page
 | Path | Role |
 |------|------|
 | `index.html` | Layout: sidebar, toolbar, canvas container, styles |
+| `html-converter.html` | Browser-only DWG/DXF → offline HTML converter UI |
 | `src/main.ts` | `CadViewerApp` — wiring UI to `AcApDocManager` |
+| `src/htmlConverter.ts` | Converter page: open drawing, collect options, snapshot + `packHtml` |
 | `src/register.ts` | Registers export plugins from `@mlightcad/cad-*-plugin/register` |
-| `vite.config.ts` | `base: './'`, copies workers + `viewer-runtime.iife.js` |
+| `vite.config.ts` | `base: './'`, MPA entries, copies workers + `viewer-runtime.iife.js` |
 | `package.json` | Scripts and workspace dependencies |
 
 ## Dependencies
@@ -114,7 +127,7 @@ Lazy initialization: `AcApDocManager` is created on first file open, not at page
 |---------|------|
 | `@mlightcad/cad-simple-viewer` | Core viewer, `AcApDocManager`, commands |
 | `@mlightcad/data-model` | Database, system variables, logging |
-| `@mlightcad/cad-html-plugin` | Offline HTML export (`chtml`) |
+| `@mlightcad/cad-html-plugin` | Offline HTML export (`-chtml`; toolbar uses `chtml` as alias when no dialog is registered) |
 | `@mlightcad/cad-pdf-plugin` | PDF export (`cpdf`) |
 | `three` | Peer of the viewer render stack |
 
@@ -141,7 +154,7 @@ From the monorepo root: `pnpm dev:simple`, `pnpm preview:simple`.
 
 - [`@mlightcad/cad-viewer`](../cad-viewer) + [`cad-viewer-example`](../cad-viewer-example) — Full Vue UI, i18n, ribbons, dialogs
 - [`@mlightcad/cad-html-plugin`](../cad-html-plugin) — HTML export details and `viewer-runtime.iife.js`
-- [`@mlightcad/cad-html-exporter-cli`](../cad-html-exporter-cli) — Headless HTML export (same viewer path as this example)
+- [`@mlightcad/cad-simple-viewer-cli`](../cad-simple-viewer-cli) — Headless HTML export (same viewer path as this example)
 
 ## License
 

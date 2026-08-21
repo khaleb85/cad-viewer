@@ -98,6 +98,37 @@ describe('FloatingInputBoxes Enter priority', () => {
     expect(boxes.onNone).not.toHaveBeenCalled()
     expect(boxes.xInput.markInvalid).toHaveBeenCalledTimes(1)
   })
+
+  test('dynamic preview coordinates are not committed when user did not type', () => {
+    const boxes = createBoxes({
+      userTyped: false,
+      useDefaultValue: false,
+      allowNone: true
+    })
+    boxes.xInput.value = '123.45'
+    boxes.yInput = {
+      userTyped: false,
+      value: '67.89',
+      focused: false,
+      markValid: jest.fn(),
+      markInvalid: jest.fn(),
+      focus: jest.fn(),
+      select: jest.fn(),
+      isEventTarget: () => false
+    } as any
+    boxes.twoInputs = true
+    boxes.validateFn = jest.fn(() => ({
+      isValid: true,
+      value: { x: 123.45, y: 67.89, z: 0 }
+    }))
+    const e = createEnterEvent()
+
+    ;(boxes as any).handleKeyDown(e)
+
+    expect(boxes.onNone).toHaveBeenCalledTimes(1)
+    expect(boxes.onCommit).not.toHaveBeenCalled()
+    expect(boxes.validateFn).not.toHaveBeenCalled()
+  })
 })
 
 describe('Prompt option classes behavior matrix', () => {
@@ -187,5 +218,33 @@ describe('Prompt option classes behavior matrix', () => {
       opt.allowNone = false
       expect(simulateEnterByPromptOptions(opt as any)).toBe('invalid')
     })
+  })
+})
+
+describe('Prompt default display message', () => {
+  test('appends numeric default when useDefaultValue is true', () => {
+    const opt = new AcEdPromptDoubleOptions('Specify scale:')
+    expect(opt.getDisplayMessage()).toBe('Specify scale:')
+    expect(opt.getDefaultValueDisplayText()).toBeUndefined()
+
+    opt.useDefaultValue = true
+    opt.defaultValue = 1
+    expect(opt.getDefaultValueDisplayText()).toBe('1')
+    expect(opt.getDisplayMessage()).toBe('Specify scale <1>')
+  })
+
+  test('appends string default when useDefaultValue is true', () => {
+    const opt = new AcEdPromptStringOptions('Enter name')
+    opt.useDefaultValue = true
+    opt.defaultValue = 'ANSI31'
+    expect(opt.getDisplayMessage()).toBe('Enter name <ANSI31>')
+  })
+
+  test('leaves raw message unchanged so CLI can place default after keywords', () => {
+    const opt = new AcEdPromptDistanceOptions('Specify distance')
+    opt.useDefaultValue = true
+    opt.defaultValue = 10.5
+    expect(opt.message).toBe('Specify distance')
+    expect(opt.getDefaultValueDisplayText()).toBe('10.5')
   })
 })

@@ -1,33 +1,59 @@
 import { existsSync } from 'fs'
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
+import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
+import {
+  LIBREDWG_CONVERTER_PACKAGE,
+  LIBREDWG_PARSER_WASM_FILE,
+  LIBREDWG_PARSER_WORKER_FILE,
+  MTEXT_RENDERER_WORKER_FILE
+} from '../../tools/worker-assets.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 /** Relative to this package root; works with vite-plugin-static-copy on Windows. */
 const VIEWER_RUNTIME_SRC = '../cad-html-plugin/dist/viewer-runtime.iife.js'
 
-function assertViewerRuntimeExists(): void {
+export default defineConfig(() => {
   const runtimePath = resolve(__dirname, VIEWER_RUNTIME_SRC)
-  if (!existsSync(runtimePath)) {
-    throw new Error(
-      'viewer-runtime.iife.js was not found. Build @mlightcad/cad-html-plugin first ' +
-        '(pnpm --filter @mlightcad/cad-html-plugin build, or nx run-many -t build).'
+  const hasViewerRuntime = existsSync(runtimePath)
+  if (!hasViewerRuntime) {
+    console.warn(
+      '[cad-simple-viewer-example] viewer-runtime.iife.js not found — HTML export (chtml) will be unavailable. ' +
+        'Build @mlightcad/cad-html-plugin to enable it. Opening DXF/DWG does not require this file.'
     )
   }
-}
 
-export default defineConfig(() => {
-  assertViewerRuntimeExists()
+  const realdwgRoot = resolve(__dirname, '../../../realdwg-web')
+  const libredwgDist = `./node_modules/${LIBREDWG_CONVERTER_PACKAGE}/dist`
+  const libredwgWasmSrc = resolve(
+    __dirname,
+    'node_modules',
+    LIBREDWG_CONVERTER_PACKAGE,
+    'dist',
+    LIBREDWG_PARSER_WASM_FILE
+  )
 
   return {
     base: './',
+    server: {
+      // Local pnpm overrides point at sibling realdwg-web packages.
+      fs: {
+        allow: [resolve(__dirname, '../..'), realdwgRoot]
+      },
+      watch: {
+        // Avoid HMR reloads when realdwg-web rebuilds mid OPENPROF run.
+        ignored: ['**/realdwg-web/**']
+      }
+    },
     build: {
       modulePreload: false,
       minify: true,
       rollupOptions: {
+        // Coordly embeds only the viewer entry; the html-converter entry is
+        // dropped because `inlineDynamicImports` requires a single input.
         input: {
           main: resolve(__dirname, 'index.html')
         },
@@ -44,20 +70,37 @@ export default defineConfig(() => {
       }
     },
     plugins: [
+      vue(),
       viteStaticCopy({
         targets: [
           {
-            src: './node_modules/@mlightcad/data-model/dist/dxf-parser-worker.js',
-            dest: 'workers'
+            src: `./node_modules/@mlightcad/cad-simple-viewer/dist/${MTEXT_RENDERER_WORKER_FILE}`,
+            dest: 'workers',
+            rename: { stripBase: true }
           },
           {
-            src: './node_modules/@mlightcad/cad-simple-viewer/dist/*-worker.js',
-            dest: 'workers'
+            src: `${libredwgDist}/${LIBREDWG_PARSER_WORKER_FILE}`,
+            dest: 'workers',
+            rename: { stripBase: true }
           },
-          {
-            src: VIEWER_RUNTIME_SRC,
-            dest: ''
-          }
+          ...(existsSync(libredwgWasmSrc)
+            ? [
+                {
+                  src: `${libredwgDist}/${LIBREDWG_PARSER_WASM_FILE}`,
+                  dest: 'workers',
+                  rename: { stripBase: true }
+                }
+              ]
+            : []),
+          ...(hasViewerRuntime
+            ? [
+                {
+                  src: VIEWER_RUNTIME_SRC,
+                  dest: '',
+                  rename: { stripBase: true }
+                }
+              ]
+            : [])
         ]
       })
     ]

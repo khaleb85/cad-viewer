@@ -2,52 +2,38 @@ import * as THREE from 'three'
 
 import type { AcExLayoutSnapshot, AcExSnapshot } from './AcExSnapshotTypes'
 
-/** Returns a shallow copy of a float vertex buffer. */
-export function copyFloat32Buffer(source: Float32Array): Float32Array {
-  return new Float32Array(source)
-}
-
-/** Returns a shallow copy of an index buffer. */
-export function copyUint32Buffer(source: Uint32Array): Uint32Array {
-  return new Uint32Array(source)
-}
-
 /**
- * Whether tessellated batch buffers on the active layout can be dropped after
- * the THREE scene is built.
+ * Clears tessellated batch typed arrays on every snapshot layout.
  *
- * When an analytic OSNAP catalog exists, layer visibility toggles filter
- * primitives only and never re-read {@link AcExLayoutSnapshot.lineBatches}.
+ * Call only after the THREE scene has uploaded geometry to the GPU and any
+ * OSNAP index has been built from analytic primitives or tessellated segments.
  */
-export function canReleaseActiveLayoutBatches(
-  layout: AcExLayoutSnapshot
-): boolean {
-  return (layout.osnap?.primitives.length ?? 0) > 0
-}
-
-/**
- * Clears tessellated batch typed arrays on snapshot layouts to reclaim CPU memory.
- *
- * Inactive layouts are always cleared. The active layout is cleared only when
- * {@link canReleaseActiveLayoutBatches} is true so OSNAP can still fall back to
- * tessellated segments when no analytic catalog was exported.
- */
-export function releaseSnapshotBatchBuffers(
-  snapshot: AcExSnapshot,
-  activeLayoutBtrId: string
-): void {
+export function releaseSnapshotBatchBuffers(snapshot: AcExSnapshot): void {
   for (const layout of snapshot.layouts) {
-    const isActive = layout.btrId === activeLayoutBtrId
-    if (!isActive || canReleaseActiveLayoutBatches(layout)) {
-      clearLayoutBatchBuffers(layout)
-    }
+    clearLayoutBatchBuffers(layout)
+  }
+}
+
+/**
+ * Drops {@link AcExLayoutSnapshot.osnap} from every layout after
+ * {@link AcExOsnapIndex.rebuild}.
+ *
+ * Call only after the index has copied or retained the catalog's
+ * `primitives` array (the runtime keeps that reference internally).
+ * Inactive layout catalogs become fully reclaimable; the active layout
+ * catalog wrapper is removed from the snapshot while primitive data
+ * remains alive for nearest / intersection snap queries.
+ */
+export function releaseSnapshotOsnapCatalogs(snapshot: AcExSnapshot): void {
+  for (const layout of snapshot.layouts) {
+    layout.osnap = undefined
   }
 }
 
 /**
  * Removes the embedded snapshot script from the DOM after decode.
  *
- * The gzip/base64 payload is often the largest resident string in memory.
+ * The compressed/base64 payload is often the largest resident string in memory.
  */
 export function removeSnapshotElement(element: HTMLElement): void {
   element.textContent = ''
@@ -94,17 +80,46 @@ function clearLayoutBatchBuffers(layout: AcExLayoutSnapshot): void {
 }
 
 function releaseBufferGeometryCpuArrays(geometry: THREE.BufferGeometry): void {
+  const releasedInterleaved = new Set<THREE.InterleavedBuffer>()
   for (const key in geometry.attributes) {
-    const attr = geometry.attributes[key] as THREE.BufferAttribute
-    attr.array = new Float32Array(0)
-    attr.clearUpdateRanges()
-    attr.needsUpdate = false
+    releaseAttributeCpuArray(geometry.attributes[key], releasedInterleaved)
   }
 
   const index = geometry.getIndex()
   if (index) {
-    index.array = new Uint32Array(0)
-    index.clearUpdateRanges()
-    index.needsUpdate = false
+    releaseAttributeCpuArray(index, releasedInterleaved)
   }
+}
+
+type AcExCpuReleasableAttribute =
+  | THREE.BufferAttribute
+  | THREE.InterleavedBufferAttribute
+
+function releaseAttributeCpuArray(
+  attr: AcExCpuReleasableAttribute,
+  releasedInterleaved: Set<THREE.InterleavedBuffer>
+): void {
+  const candidate = attr as THREE.InterleavedBufferAttribute & {
+    isInterleavedBufferAttribute?: boolean
+    isBufferAttribute?: boolean
+  }
+  if (candidate.isInterleavedBufferAttribute === true) {
+    const data = candidate.data
+    if (data && !releasedInterleaved.has(data)) {
+      releasedInterleaved.add(data)
+      data.array = new Float32Array(0)
+      data.needsUpdate = false
+    }
+    candidate.needsUpdate = false
+    return
+  }
+
+  if (candidate.isBufferAttribute !== true) {
+    return
+  }
+
+  const bufferAttr = candidate as unknown as THREE.BufferAttribute
+  bufferAttr.array = new Float32Array(0) as typeof bufferAttr.array
+  bufferAttr.clearUpdateRanges()
+  bufferAttr.needsUpdate = false
 }

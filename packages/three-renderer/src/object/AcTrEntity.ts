@@ -1,15 +1,19 @@
 import { AcGeMatrix3d, AcGePoint3d, AcGiEntity } from '@mlightcad/data-model'
 import * as THREE from 'three'
 
-import { AcTrStyleManager } from '../style/AcTrStyleManager'
+import type { AcTrBatchDrawPolicy } from '../draw/AcTrBatchDrawPolicy'
+import type { AcTrDrawMode } from '../draw/AcTrDrawMode'
+import { AcTrRenderContext } from '../renderer/AcTrRenderContext'
 import {
   AcTrMaterialUtil,
   AcTrMatrixUtil,
+  effectiveLayer,
   isObjectHierarchyVisible
 } from '../util'
 import {
   type AcTrEntityUserData,
-  getObjectUserData
+  getObjectUserData,
+  getSceneDrawableUserData
 } from '../util/AcTrObjectUserData'
 import { AcTrObject } from './AcTrObject'
 
@@ -18,24 +22,42 @@ import { AcTrObject } from './AcTrObject'
  */
 export class AcTrEntity extends AcTrObject implements AcGiEntity {
   declare userData: AcTrEntityUserData
-  protected _box: THREE.Box3
+  protected _wcsBbox: THREE.Box3
   protected _basePoint?: AcGePoint3d
 
-  constructor(styleManager: AcTrStyleManager) {
-    super(styleManager)
-    this._box = new THREE.Box3()
+  constructor(context: AcTrRenderContext) {
+    super(context)
+    this._wcsBbox = new THREE.Box3()
   }
 
   /**
-   * The bounding box without considering transformation matrix applied on this object.
-   * If you want to get bounding box with transformation matrix, please call `applyMatrix4`
-   * for this box.
+   * Shared batch/unbatch policy from the owning {@link AcTrRenderContext}.
    */
-  get box() {
-    return this._box
+  protected get batchDrawPolicy(): AcTrBatchDrawPolicy {
+    return this.renderContext.batchDrawPolicy
   }
-  set box(box: THREE.Box3) {
-    this._box.copy(box)
+
+  /**
+   * Resolves how this entity should enter the scene graph. Subclasses override
+   * this to return `'unbatch'` when they cannot batch, or delegate to
+   * {@link AcTrBatchDrawPolicy} for coordinate-based rules.
+   */
+  resolveDrawMode(): AcTrDrawMode {
+    return 'batch'
+  }
+
+  /**
+   * Axis-aligned bounding box in world (WCS) coordinates.
+   *
+   * Used for spatial indexing, selection, and raycast fallback. Subclasses must
+   * populate this in WCS when geometry is built; {@link applyMatrix} updates it
+   * when a block or insert transform is applied.
+   */
+  get wcsBbox() {
+    return this._wcsBbox
+  }
+  set wcsBbox(box: THREE.Box3) {
+    this._wcsBbox.copy(box)
   }
 
   /**
@@ -149,11 +171,26 @@ export class AcTrEntity extends AcTrObject implements AcGiEntity {
       // Copy first because we will mutate the hierarchy during traversal.
       const children = [...object.children]
       for (const child of children) {
-        // Propagate layer information downward when the leaf itself does not define one.
+        // Propagate INSERT layer-0 inheritance downward. Nested AcTrGroup nodes
+        // already carry the nested INSERT layer (set by AcDbRenderingCache
+        // attachEntityInfo) before the outer group flattens them.
         const objectData = getObjectUserData(object)
         const childData = getObjectUserData(child)
-        if (!childData.layerName && objectData.layerName) {
-          childData.layerName = objectData.layerName
+        if (objectData.layerName) {
+          if (!childData.layerName) {
+            childData.layerName = objectData.layerName
+          } else {
+            const resolved = effectiveLayer(
+              childData.layerName,
+              objectData.layerName
+            )
+            if (resolved !== childData.layerName) {
+              if (childData.layerName === '0') {
+                childData.authoredLayerName = '0'
+              }
+              childData.layerName = resolved
+            }
+          }
         }
 
         if (child.children.length > 0) {
@@ -214,22 +251,28 @@ export class AcTrEntity extends AcTrObject implements AcGiEntity {
     // Step 1: Remove the object from the parent if it exists
     if (isRemoveFromParent) object.removeFromParent()
 
-    // Step 2: Dispose of geometry if it exists
+    // Step 2: Dispose of geometry if it exists. Skip buffers borrowed from an
+    // immutable block-template cache entry — batching already cloned what it
+    // needed, and disposing here would corrupt later INSERT hits.
+    const sharesTemplateGeometry =
+      getSceneDrawableUserData(object).sharesTemplateGeometry === true
     if (
       object instanceof THREE.Mesh ||
       object instanceof THREE.Line ||
       object instanceof THREE.Points
     ) {
-      if (object.geometry) {
+      if (object.geometry && !sharesTemplateGeometry) {
         object.geometry.dispose()
       }
     }
 
-    // Step 3: Dispose of material(s)
+    // Step 3: Dispose of material(s). Template-instance leaves also reuse style
+    // cache materials with the template; disposing them would break later hits.
     if (
-      object instanceof THREE.Mesh ||
-      object instanceof THREE.Line ||
-      object instanceof THREE.Points
+      !sharesTemplateGeometry &&
+      (object instanceof THREE.Mesh ||
+        object instanceof THREE.Line ||
+        object instanceof THREE.Points)
     ) {
       const materials = Array.isArray(object.material)
         ? object.material
@@ -266,14 +309,78 @@ export class AcTrEntity extends AcTrObject implements AcGiEntity {
   }
 
   /**
+   * Marks one drawable or placement container for the unbatched scene path.
+   */
+  protected markDrawableUnbatched(object: THREE.Object3D) {
+    getSceneDrawableUserData(object).noBatch = true
+  }
+
+  /**
+   * Marks every geometry leaf currently under this entity as unbatched.
+   *
+   * Only render leaves (objects with both geometry and material) are tagged.
+   * Entity containers such as {@link AcTrLine} also store a geometry reference
+   * for bounds/metadata and must not enter the unbatched clone path themselves.
+   */
+  protected markUnbatchedLeaves() {
+    this.traverse(object => {
+      if (
+        !('geometry' in object) ||
+        !('material' in object) ||
+        !(object.geometry instanceof THREE.BufferGeometry)
+      ) {
+        return
+      }
+      this.markDrawableUnbatched(object)
+    })
+  }
+
+  protected finalizeLeafDrawables() {
+    if (this.resolveDrawMode() === 'unbatch') {
+      this.markUnbatchedLeaves()
+    }
+  }
+
+  /**
    * Remove this object from its parent and release geometry and material resource used by this object.
    */
   dispose() {
     AcTrEntity.disposeObject(this)
   }
 
-  async draw() {
-    // Do nothing for now
+  /**
+   * Builds drawable geometry asynchronously (for example via a worker).
+   *
+   * Progressive loading uses this path; interactive previews and non-progressive
+   * conversion prefer {@link syncDraw}.
+   */
+  async asyncDraw() {}
+
+  /**
+   * Builds or refreshes drawable geometry synchronously.
+   *
+   * Deferred entity types such as MTEXT and block references override this
+   * method. The default implementation is a no-op for entities whose geometry
+   * is fully produced during worldDraw conversion.
+   */
+  syncDraw(): void {}
+
+  /**
+   * Returns true when drawable child geometry is already attached.
+   */
+  hasDrawableGeometry(): boolean {
+    return this.children.length > 0
+  }
+
+  /**
+   * Direct child count for {@link AcGiEntity.childCount}.
+   *
+   * Used by {@link AcDbRenderingCache} to skip {@link compactForInstancing} on
+   * tiny block templates. For {@link AcTrGroup}, this is the post-flatten leaf
+   * count under this object.
+   */
+  get childCount() {
+    return this.children.length
   }
 
   /**
@@ -290,33 +397,9 @@ export class AcTrEntity extends AcTrObject implements AcGiEntity {
     const threeMatrix = AcTrMatrixUtil.createMatrix4(matrix)
     this.applyMatrix4(threeMatrix)
     this.updateMatrixWorld(true)
-    this._box.applyMatrix4(threeMatrix)
-  }
-
-  /**
-   * @inheritdoc
-   */
-  bakeTransformToChildren(): void {
-    // Ensure the object's world matrix is up to date
-    this.updateWorldMatrix(true, false)
-
-    // Cache the object's current world matrix
-    const objectWorldMatrix = this.matrixWorld.clone()
-
-    // Bake the object's world transform into all direct children
-    this.children.forEach(child => {
-      // Ensure the child's local matrix is up to date
-      child.updateMatrix()
-
-      // child.localMatrix = objectWorldMatrix * child.localMatrix
-      child.applyMatrix4(objectWorldMatrix)
-    })
-
-    // Reset the object to an identity transform
-    this.position.set(0, 0, 0)
-    this.rotation.set(0, 0, 0)
-    this.scale.set(1, 1, 1)
-    this.updateMatrix()
+    if (!this._wcsBbox.isEmpty()) {
+      this._wcsBbox.applyMatrix4(threeMatrix)
+    }
   }
 
   /**
@@ -356,11 +439,14 @@ export class AcTrEntity extends AcTrObject implements AcGiEntity {
 
   /**
    * @inheritdoc
+   *
+   * @param shareGeometry - When true, leaf drawables alias source buffers
+   *   (see {@link copyGeometry}). Block-template clones pass true.
    */
-  fastDeepClone() {
-    const cloned = new AcTrEntity(this.styleManager)
+  fastDeepClone(shareGeometry: boolean = false) {
+    const cloned = new AcTrEntity(this.renderContext)
     cloned.copy(this, false)
-    this.copyGeometry(this, cloned)
+    this.copyGeometry(this, cloned, shareGeometry)
     return cloned
   }
 
@@ -371,7 +457,7 @@ export class AcTrEntity extends AcTrObject implements AcGiEntity {
     this.objectId = object.objectId
     this.ownerId = object.ownerId
     this.layerName = object.layerName
-    this.box = object.box
+    this.wcsBbox = object.wcsBbox
     return super.copy(object, recursive)
   }
 
@@ -379,21 +465,35 @@ export class AcTrEntity extends AcTrObject implements AcGiEntity {
    * Clone geometries in the source's direct children and copy them to the target
    * @param source Input the source entity
    * @param target Input the target entity
+   * @param shareGeometry When true, leaf drawables alias the source
+   *   {@link THREE.BufferGeometry} instead of deep-cloning buffers. Used for
+   *   immutable block-template instances; callers must not mutate shared
+   *   buffers in place (batching already clones before rebase).
    */
-  protected copyGeometry(source: AcTrEntity, target: AcTrEntity) {
+  protected copyGeometry(
+    source: AcTrEntity,
+    target: AcTrEntity,
+    shareGeometry: boolean = false
+  ) {
     for (let i = 0; i < source.children.length; i++) {
       const child = source.children[i]
 
       if (child instanceof AcTrEntity) {
-        target.add(child.fastDeepClone())
+        // Propagate shareGeometry so nested MTEXT/SHAPE/group leaves also
+        // alias template buffers instead of deep-cloning mid-tree.
+        target.add(child.fastDeepClone(shareGeometry))
         continue
       }
 
       const clonedChild = child.clone(false)
       if ('geometry' in clonedChild) {
-        clonedChild.geometry = (
-          clonedChild.geometry as THREE.BufferGeometry
-        ).clone()
+        if (shareGeometry) {
+          getSceneDrawableUserData(clonedChild).sharesTemplateGeometry = true
+        } else {
+          clonedChild.geometry = (
+            clonedChild.geometry as THREE.BufferGeometry
+          ).clone()
+        }
       }
       target.add(clonedChild)
     }

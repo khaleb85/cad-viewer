@@ -1,179 +1,119 @@
 import {
   AcGiShapeData,
   AcGiSubEntityTraits,
-  AcGiTextStyle,
-  log
+  AcGiTextStyle
 } from '@mlightcad/data-model'
-import {
-  ColorSettings,
-  MTextObject,
-  ShapeData
-} from '@mlightcad/mtext-renderer'
-import * as THREE from 'three'
+import { ShapeData } from '@mlightcad/mtext-renderer'
 
-import { AcTrMTextRenderer } from '../renderer'
-import { AcTrStyleManager } from '../style/AcTrStyleManager'
-import { AcTrMTextColorUtil } from '../util'
-import { AcTrBufferGeometryUtil } from '../util/AcTrBufferGeometryUtil'
-import { getSceneDrawableUserData } from '../util/AcTrObjectUserData'
-import { AcTrEntity } from './AcTrEntity'
+import { AcTrMTextRenderer } from '../renderer/AcTrMTextRenderer'
+import { AcTrRenderContext } from '../renderer/AcTrRenderContext'
+import { resolveShapeGlyphKey, resolveShapeTextStyle } from '../util'
+import { AcTrGlyphEntity } from './AcTrGlyphEntity'
 
-const _raycastBox = /*@__PURE__*/ new THREE.Box3()
-const _raycastPoint = /*@__PURE__*/ new THREE.Vector3()
-
-export class AcTrShape extends AcTrEntity {
-  private _rendered?: MTextObject
+/**
+ * Display object for a CAD SHAPE entity rendered through the mtext-renderer.
+ */
+export class AcTrShape extends AcTrGlyphEntity {
+  /** Source SHAPE data from the CAD database. */
   private _shape: AcGiShapeData
-  private _style: AcGiTextStyle
-  private _colorSettings: ColorSettings
 
+  /**
+   * Creates a SHAPE display object.
+   *
+   * @param shape SHAPE definition and placement from the CAD database.
+   * @param traits CAD sub-entity traits used to resolve color and layer behavior.
+   * @param style Optional text style override; resolved against shape and context when omitted.
+   * @param context Active renderer context that owns style and batching policy.
+   * @param delay When `true`, skips the initial draw so callers can finish setup first.
+   */
   constructor(
     shape: AcGiShapeData,
     traits: AcGiSubEntityTraits,
-    style: AcGiTextStyle,
-    styleManager: AcTrStyleManager,
-    delay: boolean = false
+    style: AcGiTextStyle | null | undefined,
+    context: AcTrRenderContext,
+    _delay: boolean = false
   ) {
-    super(styleManager)
+    super(context, traits, resolveShapeTextStyle(shape, style, context))
     this._shape = shape
-    this._style = { ...style }
-    this._colorSettings = {
-      layer: traits.layer,
-      color: AcTrMTextColorUtil.toMTextColor(traits.color),
-      byLayerColor: 0xffffff,
-      byBlockColor: 0xffffff
-    }
-    if (!delay) {
-      this.syncDraw()
-    }
+    // Geometry is built by syncDraw/asyncDraw in AcTrView2d / AcTrGroup so
+    // font-awaiting asyncDraw can run without blocking other entity converts.
   }
 
-  syncDraw() {
-    const mtextRenderer = AcTrMTextRenderer.getInstance()
-    if (!mtextRenderer) return
-
-    try {
-      this._rendered = mtextRenderer.syncRenderShape(
-        this._shape as ShapeData,
-        this._style,
-        this._colorSettings
-      )
-      this.attachRendered(this._rendered)
-    } catch (error) {
-      log.info(
-        `Failed to render shape '${this.describeShape()}' with the following error:\n`,
-        error
-      )
+  /**
+   * Builds renderer input with only the glyph key that should be resolved.
+   *
+   * Chooses either a non-numeric name or a shape code via
+   * {@link resolveShapeGlyphKey}, then clears the unused field so mtext-renderer
+   * does not incorrectly fall back between them.
+   *
+   * @returns SHAPE payload suitable for the mtext-renderer.
+   */
+  private toRenderableShapeData(): ShapeData {
+    const source = this._shape as ShapeData
+    const { byName, byCode } = resolveShapeGlyphKey(this._shape)
+    return {
+      ...source,
+      name: byName,
+      shapeNumber: byCode
     }
   }
 
-  async draw() {
-    const mtextRenderer = AcTrMTextRenderer.getInstance()
-    if (!mtextRenderer) return
-
-    try {
-      this._rendered = await mtextRenderer.asyncRenderShape(
-        this._shape as ShapeData,
-        this._style,
-        this._colorSettings
-      )
-      this.attachRendered(this._rendered)
-    } catch (error) {
-      log.info(
-        `Failed to render shape '${this.describeShape()}' with the following error:\n`,
-        error
-      )
-    }
+  /**
+   * @inheritdoc
+   */
+  protected override getDrawPosition() {
+    return this._shape.position
   }
 
-  raycast(raycaster: THREE.Raycaster, intersects: THREE.Intersection[]) {
-    const previousLength = intersects.length
-
-    this._rendered?.raycast(raycaster, intersects)
-    if (intersects.length > previousLength || this.box.isEmpty()) return
-
-    _raycastBox.copy(this.box).applyMatrix4(this.matrixWorld)
-    if (raycaster.ray.intersectBox(_raycastBox, _raycastPoint)) {
-      intersects.push({
-        distance: raycaster.ray.origin.distanceTo(_raycastPoint),
-        point: _raycastPoint.clone(),
-        object: this,
-        face: null,
-        faceIndex: undefined,
-        uv: undefined
-      })
-    }
-  }
-
-  private describeShape() {
-    return this._shape.name?.trim() || String(this._shape.shapeNumber ?? '')
-  }
-
-  private attachRendered(rendered: MTextObject) {
-    this.add(rendered)
-    this.flatten()
-    this.removeInvalidGeometryLeaves()
-    this.traverse(object => {
-      getSceneDrawableUserData(object).bboxIntersectionCheck = true
-    })
-    this.updateSelectionBox(rendered)
-  }
-
-  private updateSelectionBox(rendered: MTextObject) {
-    const geometryBox = this.computeGeometryBox()
-    if (geometryBox.isEmpty()) {
-      this.box = rendered.box
-      return
-    }
-    if (!rendered.box.isEmpty() && rendered.box.intersectsBox(geometryBox)) {
-      this.box = geometryBox.clone().union(rendered.box)
-      return
-    }
-    this.box = geometryBox
-  }
-
-  private computeGeometryBox() {
-    const box = new THREE.Box3()
-    const childBox = new THREE.Box3()
-
-    this.updateMatrixWorld(true)
-    this.traverse(object => {
-      if (!this.hasGeometry(object)) return
-
-      const geometry = object.geometry
-      const boundingBox =
-        AcTrBufferGeometryUtil.safeComputeBoundingBox(geometry)
-      if (boundingBox == null) return
-
-      object.updateMatrixWorld(true)
-      childBox.copy(boundingBox).applyMatrix4(object.matrixWorld)
-      box.union(childBox)
-    })
-
-    return box
-  }
-
-  private removeInvalidGeometryLeaves() {
-    const invalidObjects: THREE.Object3D[] = []
-    this.traverse(object => {
-      if (!this.hasGeometry(object)) return
-      if (AcTrBufferGeometryUtil.hasFinitePositions(object.geometry)) return
-      invalidObjects.push(object)
-    })
-
-    for (const object of invalidObjects) {
-      object.parent?.remove(object)
-      if (this.hasGeometry(object)) {
-        object.geometry.dispose()
-      }
-    }
-  }
-
-  private hasGeometry(
-    object: THREE.Object3D
-  ): object is THREE.Mesh | THREE.Line | THREE.Points {
-    return (
-      'geometry' in object && object.geometry instanceof THREE.BufferGeometry
+  /**
+   * @inheritdoc
+   */
+  protected override renderSync(renderer: AcTrMTextRenderer) {
+    return renderer.syncRenderShape(
+      this.toRenderableShapeData(),
+      this._style,
+      this._colorSettings
     )
+  }
+
+  /**
+   * @inheritdoc
+   */
+  protected override async renderAsync(renderer: AcTrMTextRenderer) {
+    return renderer.asyncRenderShape(
+      this.toRenderableShapeData(),
+      this._style,
+      this._colorSettings
+    )
+  }
+
+  /**
+   * @inheritdoc
+   */
+  protected override describeRenderFailure() {
+    const label =
+      this._shape.name?.trim() || String(this._shape.shapeNumber ?? '')
+    return `shape '${label}'`
+  }
+
+  /**
+   * Preserves SHAPE payload across INSERT template clones.
+   *
+   * {@link AcTrEntity.fastDeepClone} would otherwise create a plain
+   * {@link AcTrEntity} shell that can no longer {@link asyncDraw} glyphs.
+   */
+  override fastDeepClone(shareGeometry: boolean = false) {
+    const cloned = new AcTrShape(
+      {
+        ...this._shape,
+        position: { ...this._shape.position }
+      },
+      this.traitsForClone(),
+      { ...this._style },
+      this.renderContext
+    )
+    cloned.copyGlyphIdentity(this)
+    this.copyGeometry(this, cloned, shareGeometry)
+    return cloned
   }
 }

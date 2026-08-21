@@ -8,12 +8,15 @@ export default {
     exportHtml: 'Export to HTML',
     exportPdf: 'Export to PDF',
     exportSvg: 'Export to SVG',
-    exportImage: 'Export to Image'
+    exportImage: 'Export to Image',
+    about: 'About'
   },
   ribbon: {
     tab: {
       home: 'Home',
-      tools: 'Tools',
+      insert: 'Insert',
+      review: 'Review',
+      measurement: 'Measurement',
       hatchContext: 'Hatch',
       mtextEditorContext: 'Text Editor'
     },
@@ -211,7 +214,18 @@ export default {
       properties: 'Properties',
       utilities: 'Utilities',
       annotation: 'Annotation',
-      measurement: 'Measurement'
+      review: 'Review',
+      measurement: 'Measurement',
+      style: 'Style',
+      lengthUnits: 'Length Units',
+      angleUnits: 'Angle Units',
+      reference: 'Reference',
+      block: 'Block'
+    },
+    insertBlock: {
+      empty: 'No blocks available',
+      currentDrawing: 'Current Drawing',
+      previewMenu: 'Block preview gallery'
     },
     property: {
       color: 'Color',
@@ -260,6 +274,8 @@ export default {
       polyline:
         'Draw a connected series of line or arc segments as one object.',
       spline: 'Draw a smooth spline curve through fit or control points.',
+      sketch: 'Create a series of freehand line segments.',
+      revcloud: 'Create a revision cloud to highlight drawing areas.',
       circle: 'Draw a circle with multiple construction methods.',
       arc: 'Draw an arc with multiple construction methods.',
       mline: 'Draw multiple parallel lines as a single multiline object.',
@@ -275,11 +291,28 @@ export default {
       copy: 'Copy selected objects to a new location.',
       erase: 'Delete selected objects from the drawing.',
       offset: 'Create a parallel copy of an object at a specified distance.',
+      undo: 'Undo the last editing operation.',
+      redo: 'Redo the last undone editing operation.',
       properties: 'Open the Properties palette for the current selection.',
       quickSelect:
         'Open Quick Select to filter and select entities by criteria.',
+      countList: 'Open the Count palette to view and manage block counts.',
+      missingResources:
+        'Open the Missing / External Resources palette for fonts, images, and xrefs.',
       drawingUnits:
         'Open Drawing Units to set coordinate formats, precision, and insertion scale.',
+      attachDwg:
+        'Attach a DWG or DXF drawing as an external reference (XATTACH).',
+      attachImage:
+        'Attach a raster image as an external reference (IMAGEATTACH).',
+      insert:
+        'Open the Blocks palette to browse and insert block definitions (INSERT).',
+      editAttributes:
+        'Open the Enhanced Attribute Editor to edit block attribute values and display properties (ATTEDIT).',
+      defineAttribute:
+        'Create an attribute definition for use in a block (ATTDEF).',
+      agent:
+        'Open the CAD Agent palette tab to draw geometry using natural language.',
       propertyColor:
         'Set the color for newly created objects or selected entities.',
       propertyLineType:
@@ -359,6 +392,8 @@ export default {
       xline: 'XLine',
       ellipse: 'Ellipse',
       spline: 'Spline',
+      sketch: 'Sketch',
+      revcloud: 'Revcloud',
       rect: 'Rect',
       rectangle: 'Rectangle',
       polygon: 'Polygon',
@@ -372,9 +407,18 @@ export default {
       copy: 'Copy',
       erase: 'Erase',
       offset: 'Offset',
+      undo: 'Undo',
+      redo: 'Redo',
       properties: 'Properties',
-      quickSelect: 'Quick Select',
-      drawingUnits: 'Drawing Units'
+      quickSelect: 'Quick\nSelect',
+      countList: 'Count',
+      drawingUnits: 'Drawing\nUnits',
+      attachDwg: 'Attach\nDWG',
+      attachImage: 'Attach\nImage',
+      insert: 'Insert',
+      editAttributes: 'Edit\nAttributes',
+      defineAttribute: 'Define\nAttribute',
+      agent: 'CAD\nAgent'
     }
   },
   verticalToolbar: {
@@ -399,18 +443,25 @@ export default {
       text: 'Arc',
       description: 'Measures the length of an arc defined by three points'
     },
+    measurePoint: {
+      text: 'Point',
+      description: 'Measures the X/Y coordinates of a picked point'
+    },
     clearMeasurements: {
       text: 'Clear',
-      description: 'Removes all active measurements from the view'
+      description: 'Removes all measurements from the current layout'
+    },
+    measurementImport: {
+      text: 'Import',
+      description: 'Import measurements from a sidecar JSON file'
+    },
+    measurementExport: {
+      text: 'Export',
+      description: 'Export measurements to a sidecar JSON file'
     },
     annotation: {
       text: 'Annotation',
-      description:
-        'Creates text or graphic annotations to explain and mark up drawing content'
-    },
-    hideAnnotation: {
-      text: 'Hide',
-      description: 'Hides annotations'
+      description: 'Review tools'
     },
     layer: {
       text: 'Layer',
@@ -421,37 +472,96 @@ export default {
       description:
         'Shifts the view without changing the viewing direction or magnification'
     },
-    revCircle: {
-      text: 'Circle',
-      description: 'Uses circles to highlight and annotate areas in the drawing'
+    markupPanel: {
+      text: 'Review',
+      description: 'Open the markup palette'
     },
-    revLine: {
-      text: 'Line',
-      description:
-        'Uses straight lines to annotate and explain objects or areas in the drawing'
+    markupText: {
+      text: 'Text',
+      description: 'Place a text markup'
     },
-    revFreehand: {
-      text: 'Freehand',
-      description:
-        'Uses freehand strokes to freely annotate and emphasize drawing content'
+    markupCloud: {
+      text: 'Cloud',
+      description: 'Create a cloud markup'
     },
-    revRect: {
+    markupRect: {
       text: 'Rectangle',
-      description:
-        'Use rectangles to highlight and annotate objects or areas in the drawing'
+      description: 'Create a rectangle markup'
     },
-    revCloud: {
-      text: 'Rev Cloud',
+    markupCircle: {
+      text: 'Circle',
+      description: 'Create a circle markup'
+    },
+    markupArrow: {
+      text: 'Arrow',
+      description: 'Create an arrow markup'
+    },
+    markupCallout: {
+      text: 'Callout',
+      description: 'Create a callout'
+    },
+    markupStamp: {
+      text: 'Stamp',
+      description: 'Place a stamp'
+    },
+    markupImport: {
+      text: 'Import',
+      description: 'Import markups from a sidecar JSON file'
+    },
+    markupExport: {
+      text: 'Export',
+      description: 'Export markups to a sidecar JSON file'
+    },
+    markupColor: {
+      text: 'Color',
+      description: 'Set the color for new markup drawings'
+    },
+    markupLineWeight: {
+      text: 'Lineweight',
+      description: 'Set the lineweight for new markup drawings'
+    },
+    markupFontSize: {
+      text: 'Font size',
+      description: 'Set the font size for text and callout markups'
+    },
+    measurementColor: {
+      text: 'Color',
       description:
-        'Used to highlight areas in a drawing with a cloud-shaped outline'
+        'Set the color for the selected measurement, or for measurements you add next'
+    },
+    measurementLineWeight: {
+      text: 'Lineweight',
+      description:
+        'Set the lineweight for the selected measurement, or for measurements you add next'
+    },
+    measurementFontSize: {
+      text: 'Font size',
+      description:
+        'Set the font size for the selected measurement, or for measurements you add next'
+    },
+    showMarkup: {
+      text: 'Show',
+      description: 'Shows markups'
+    },
+    hideMarkup: {
+      text: 'Hide',
+      description: 'Hides markups'
+    },
+    showMeasurements: {
+      text: 'Show',
+      description: 'Shows measurements'
+    },
+    hideMeasurements: {
+      text: 'Hide',
+      description: 'Hides measurements'
+    },
+    clearMarkups: {
+      text: 'Clear',
+      description: 'Clears all markups on the current layout'
     },
     select: {
       text: 'Select',
       description: 'Selects entities'
-    },
-    showAnnotation: {
-      text: 'Show',
-      description: 'Shows annotations'
     },
     switchBg: {
       text: 'Switch',
@@ -474,7 +584,7 @@ export default {
       entityInfo: 'Entity Info',
       fileName: 'File Name',
       languageSelector: 'Language Selector',
-      mainMenu: 'Main Menu',
+      ribbon: 'Ribbon',
       toolbar: 'Toolbar',
       stats: 'Statistics'
     },
@@ -485,6 +595,7 @@ export default {
       center: 'Center',
       node: 'Node',
       quadrant: 'Quadrant',
+      intersection: 'Intersection',
       insertion: 'Insertion',
       nearest: 'Nearest'
     },
@@ -523,9 +634,11 @@ export default {
     },
     export: {
       tooltip: 'Export image as PNG'
-    }
+    },
+    moreLayouts: 'More layouts'
   },
   toolPalette: {
+    moreTabs: 'More tabs',
     entityProperties: {
       tab: 'Properties',
       title: 'Entity Properties',
@@ -539,12 +652,272 @@ export default {
     layerManager: {
       tab: 'Layers',
       title: 'Layer Manager',
+      currentLayerLabel: 'Current layer: {name}',
+      searchPlaceholder: 'Search layers',
+      filters: 'Filters',
+      collapseFilters: 'Collapse filters',
+      expandFilters: 'Expand filters',
+      filterAll: 'All',
+      filterAllUsed: 'All Used Layers',
+      toolbar: {
+        showFilters: 'Layer Filters',
+        newFilter: 'New Filter',
+        newFilterGroup: 'New Group Filter',
+        newLayer: 'New Layer',
+        deleteLayer: 'Delete Layer',
+        setCurrent: 'Set Current'
+      },
+      prompts: {
+        newFilterTitle: 'New Filter',
+        newFilterName: 'Enter filter name',
+        newFilterGroupTitle: 'New Group Filter',
+        newFilterGroupName: 'Enter group filter name',
+        newLayerTitle: 'New Layer',
+        newLayerName: 'Enter layer name',
+        confirm: 'OK',
+        cancel: 'Cancel'
+      },
+      messages: {
+        filterCreated: 'Filter "{name}" created',
+        filterExists: 'A filter named "{name}" already exists',
+        filterCreateFailed: 'Failed to create filter',
+        layerCreated: 'Layer "{name}" created',
+        layerExists: 'Layer "{name}" already exists',
+        layerCreateFailed: 'Failed to create layer',
+        layerDeleted: 'Layer "{name}" deleted',
+        layerDeleteFailed: 'Failed to delete layer "{name}"',
+        cannotDeleteLayer0: 'Layer "0" cannot be deleted',
+        cannotDeleteCurrent: 'The current layer cannot be deleted',
+        selectLayerFirst: 'Select a layer first',
+        setCurrentSuccess: 'Current layer set to "{name}"',
+        setCurrentFailed: 'Failed to set current layer'
+      },
       layerList: {
         name: 'Name',
         on: 'On',
+        freeze: 'Freeze',
+        lock: 'Lock',
+        plot: 'Plot',
         color: 'Color',
-        zoomToLayer: 'Zoomed to the clicked layer "{layer}"'
+        linetype: 'Linetype',
+        lineweight: 'Lineweight',
+        transparency: 'Transparency',
+        description: 'Description',
+        currentLayer: 'Current layer',
+        newLayerPlaceholder: 'Layer name',
+        zoomToLayer: 'Zoomed to the clicked layer "{layer}"',
+        lineWeightDefault: 'Default'
       }
+    },
+    countList: {
+      tab: 'Count',
+      title: 'Count',
+      searchPlaceholder: 'Search block name',
+      countInArea: 'Count in Area',
+      areaSet: 'Count area updated',
+      areaCleared: 'Counting entire model space',
+      blockName: 'Block',
+      count: 'Count',
+      empty: 'No visible blocks found',
+      prompt: {
+        firstCorner: 'Specify first corner of count area or [Entire]: ',
+        secondCorner: 'Specify opposite corner: '
+      }
+    },
+    designReview: {
+      tab: 'Review',
+      title: 'Review',
+      searchPlaceholder: 'Search markups',
+      empty: 'No markups yet',
+      type: 'Type',
+      status: 'Status',
+      author: 'Author',
+      summary: 'Summary',
+      details: 'Details',
+      closeDetails: 'Close details',
+      label: 'Label',
+      comment: 'Comment',
+      zoomTo: 'Zoom to',
+      delete: 'Delete',
+      clear: 'Clear all',
+      statusValues: {
+        open: 'Open',
+        question: 'Question',
+        answered: 'Answered',
+        closed: 'Closed'
+      }
+    },
+    missingResources: {
+      tab: 'Resources',
+      title: 'Missing / External Resources',
+      fontTab: 'Font',
+      imageTab: 'Image',
+      xrefTab: 'External References',
+      attach: 'Attach',
+      attachDwg: 'Attach DWG/DXF...',
+      attachImage: 'Attach Image...',
+      attachImageFailed: 'Failed to attach image "{name}"',
+      fileReferences: 'File References',
+      details: 'Details',
+      foundAt: 'Found at',
+      selectReference: 'Select a reference to view details',
+      expandDetails: 'Expand details',
+      collapseDetails: 'Collapse details',
+      apply: 'Apply',
+      applyDone: 'Replacements applied',
+      emptyFonts: 'No missing fonts',
+      emptyImages: 'No missing images',
+      matchFontType: 'Match font type (SHX / mesh)',
+      missedFont: 'Missed Font',
+      replacedFont: 'Replaced Font',
+      selectFont: 'Select font to replace',
+      selectLocalFont: 'Select local font file',
+      file: 'File',
+      replace: 'Replace',
+      name: 'Name',
+      path: 'Saved path',
+      type: 'Type',
+      typeAttach: 'Attach',
+      typeOverlay: 'Overlay',
+      typeImage: 'Image',
+      status: 'Status',
+      statusMissing: 'Missing',
+      statusLoaded: 'Loaded',
+      actions: 'Actions',
+      visible: 'Visible',
+      browse: 'Browse…',
+      fromUrl: 'URL…',
+      unload: 'Unload',
+      load: 'Load',
+      empty: 'No external references or images in this drawing',
+      urlPrompt: 'Enter a URL to a DWG or DXF file',
+      urlRequired: 'Please enter a URL',
+      loadFailed: 'Failed to load reference "{name}"'
+    },
+    memoryProfile: {
+      tab: 'Memory',
+      title: 'Memory Profile',
+      refresh: 'Refresh',
+      collecting: 'Analyzing memory ...',
+      showPie: 'Show summary chart',
+      hidePie: 'Hide summary chart',
+      collectedAt: 'Collected at {time}',
+      heapUsed: 'JS heap {used} / {total}',
+      estimateNote:
+        'Geometry sizes come from buffer byteLength. Other categories are estimated.',
+      estimated: 'est.',
+      pieTotal: 'Accounted',
+      pieAriaLabel: 'Memory breakdown by category',
+      empty: 'No data',
+      missedFonts: 'Missed fonts',
+      fontMemory: 'Font / mtext memory',
+      fontMemorySummary: 'Memory {live} (main {main} · workers {workers})',
+      fontStorage: 'IndexedDB storage (not memory)',
+      fontStorageSummary: '{count} cached fonts · {size}',
+      materialPoint: 'Point',
+      materialLine: 'Line',
+      materialFill: 'Fill',
+      materialTotal: 'Total',
+      dataModelCounts: '{entities} entities · {objects} objects · {total}',
+      dataModelCategories: 'By category',
+      dataModelEntityTypes: 'By entity type',
+      categories: {
+        heap: 'JS Heap',
+        geometry: 'Geometry',
+        mapping: 'Mapping',
+        spatial: 'Spatial Index',
+        dataModel: 'Data Model',
+        materials: 'Materials',
+        fonts: 'Fonts'
+      },
+      tabs: {
+        geometry: 'Geometry',
+        spatial: 'Spatial',
+        dataModel: 'Data Model',
+        materials: 'Materials',
+        fonts: 'Fonts'
+      },
+      columns: {
+        layout: 'Layout',
+        layer: 'Layer',
+        geometry: 'Geometry',
+        mapping: 'Mapping',
+        entities: 'Entities',
+        rootItems: 'Root',
+        childItems: 'Children',
+        estimated: 'Est. size',
+        type: 'Type',
+        count: 'Count',
+        category: 'Category',
+        font: 'Font'
+      }
+    },
+    openFileProfile: {
+      tab: 'Open Perf',
+      title: 'Open Performance',
+      refresh: 'Refresh',
+      copy: 'Copy',
+      copied: 'Performance data copied',
+      copyFailed: 'Failed to copy performance data',
+      collectedAt: 'Collected at {time}',
+      hint: 'Captured automatically on the last drawing open. Set OPENPROF=1 to also log to the console.',
+      noData: 'No open profile yet. Open a drawing first, then run OPENPERF.',
+      empty: 'No data',
+      timing: 'Wall-clock timing',
+      progressive: 'Progressive open',
+      progressiveMode: 'Mode',
+      progressiveOn: 'On',
+      progressiveOff: 'Off',
+      midOpenPaints: 'Mid-open paints',
+      yields: 'Yields',
+      cache: 'INSERT rendering cache (top-level)',
+      slowBlocks: 'Slowest block template misses',
+      total: 'Total open',
+      read: 'db.read',
+      parse: 'PARSE',
+      entity: 'ENTITY flush',
+      convert: 'Scene convert',
+      cacheHits: 'Cache hits',
+      cacheMisses: 'Cache misses',
+      cacheBuild: 'Miss build',
+      cacheCompact: 'Miss compact',
+      cacheHitPath: 'Hit path',
+      columns: {
+        stage: 'Stage',
+        duration: 'Duration',
+        share: 'Share',
+        metric: 'Metric',
+        value: 'Value',
+        block: 'Block',
+        build: 'Build',
+        compact: 'Compact'
+      }
+    },
+    blocks: {
+      tab: 'Blocks',
+      title: 'Blocks',
+      tabCurrentDrawing: 'Current Drawing',
+      tabRecent: 'Recent',
+      tabFavorites: 'Favorites',
+      tabLibraries: 'Libraries',
+      sectionCurrentDrawing: 'Current Drawing Blocks',
+      sectionRecent: 'Recent Blocks',
+      sectionFavorites: 'Favorite Blocks',
+      sectionLibraries: 'Block Libraries',
+      filterPlaceholder: 'Filter...',
+      empty: 'No blocks available',
+      emptyRecent: 'No recently inserted blocks',
+      emptyFavorites: 'No favorite blocks',
+      emptyLibraries: 'No libraries configured',
+      toggleFavorite: 'Toggle favorite',
+      options: 'Options',
+      insertionPoint: 'Insertion Point',
+      scale: 'Scale',
+      rotation: 'Rotation',
+      angle: 'Angle',
+      autoPlacement: 'Auto-Placement',
+      repeatPlacement: 'Repeat Placement',
+      explode: 'Explode'
     }
   },
   colorDropdown: {
@@ -597,8 +970,16 @@ export default {
     fontMissedInDrawing:
       'Font "{font}" is required by {count} text object(s) but is not available. Displaying with "{replacementFont}".',
     fontMissedReplacement: '"{font}" (displaying with "{replacement}")',
+    fontCached: 'Font "{font}" cached successfully.',
+    fontCacheFailed: 'Failed to cache font "{fileName}".',
     failedToGetAvaiableFonts: 'Failed to get avaiable fonts from "{url}"!',
     failedToOpenFile: 'Failed to open file "{fileName}"!',
+    failedToOpenFileWorkerOom:
+      'Failed to open "{fileName}". The drawing is too large for available memory.',
+    failedToOpenFileWorkerTimeout:
+      'Failed to open "{fileName}". The operation timed out while parsing the drawing.',
+    failedToOpenFileFontLoadFailed:
+      'Failed to open "{fileName}". Required fonts could not be loaded.',
     fetchingDrawingFile: 'Fetching file ...',
     unknownEntities:
       'This drawing contains {count} unknown or unsupported entities! Those entities will not be shown.'
@@ -617,6 +998,9 @@ export default {
     },
     title: {
       failedToOpenFile: 'Failed to Open File',
+      failedToOpenFileWorkerOom: 'Drawing Too Large',
+      failedToOpenFileWorkerTimeout: 'Open Timed Out',
+      failedToOpenFileFontLoadFailed: 'Font Load Failed',
       fontNotFound: 'Font Not Found',
       fontNotLoaded: 'Font Not Loaded',
       parsingWarning: 'Issues on Parsing Drawing'

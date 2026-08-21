@@ -21,6 +21,8 @@ class MockAcApFontLoader {
 const mockInitialize = jest.fn()
 const mockSetRenderMode = jest.fn()
 const mockSetDefaultFonts = jest.fn(() => Promise.resolve())
+const mockSetLazyFontLoading = jest.fn(() => Promise.resolve())
+const mockSetAwaitFontsBeforeDraw = jest.fn(() => Promise.resolve())
 
 jest.mock('../src/app/AcApFontLoader', () => ({
   AcApFontLoader: MockAcApFontLoader
@@ -31,8 +33,11 @@ jest.mock('@mlightcad/three-renderer', () => ({
     getInstance: jest.fn(() => ({
       initialize: mockInitialize,
       setRenderMode: mockSetRenderMode,
-      setDefaultFonts: mockSetDefaultFonts
-    }))
+      setDefaultFonts: mockSetDefaultFonts,
+      setLazyFontLoading: mockSetLazyFontLoading,
+      setAwaitFontsBeforeDraw: mockSetAwaitFontsBeforeDraw
+    })),
+    resetInstance: jest.fn()
   }
 }))
 
@@ -101,6 +106,10 @@ jest.mock('../src/plugin/AcApPluginManager', () => ({
   }))
 }))
 
+jest.mock('../src/ui/AcApDrawStyleToolbar', () => ({
+  AcApDrawStyleToolbar: jest.fn().mockImplementation(() => ({}))
+}))
+
 jest.mock('../src/editor', () => ({
   AcEdCommandStack: jest.fn().mockImplementation(() => ({
     addCommand: jest.fn(),
@@ -118,17 +127,23 @@ jest.mock('../src/editor', () => ({
 
 jest.mock('../src/command', () => {
   const commandNames = [
+    'AcApAboutCmd',
     'AcApArcCmd',
+    'AcApCacheFontCmd',
     'AcApCircleCmd',
+    'AcApClearMarkupsCmd',
     'AcApClearMeasurementsCmd',
     'AcApConvertToDxfCmd',
     'AcApConvertToPngCmd',
+    'AcApEntityPreviewCmd',
     'AcApCopyCmd',
     'AcApDimLinearCmd',
     'AcApEllipseCmd',
     'AcApEraseCmd',
     'AcApHideObjectsCmd',
     'AcApHatchCmd',
+    'AcApImageAttachCmd',
+    'AcApInsertCmd',
     'AcApLayerCloseCmd',
     'AcApLayerCmd',
     'AcApLayerCurCmd',
@@ -144,10 +159,26 @@ jest.mock('../src/command', () => {
     'AcApLayoffCmd',
     'AcApLineCmd',
     'AcApLogCmd',
+    'AcApMarkupArrowCmd',
+    'AcApMarkupCalloutCmd',
+    'AcApMarkupCircleCmd',
+    'AcApMarkupCloudCmd',
+    'AcApMarkupExportCmd',
+    'AcApMarkupHighlightCmd',
+    'AcApMarkupImportCmd',
+    'AcApMarkupLineCmd',
+    'AcApMarkupRectCmd',
+    'AcApMarkupStampCmd',
+    'AcApMarkupTextCmd',
+    'AcApMarkupVisibilityCmd',
     'AcApMeasureAngleCmd',
     'AcApMeasureArcCmd',
     'AcApMeasureAreaCmd',
     'AcApMeasureDistanceCmd',
+    'AcApMeasurementExportCmd',
+    'AcApMeasurementImportCmd',
+    'AcApMeasurementVisibilityCmd',
+    'AcApMeasurePointCmd',
     'AcApMLineCmd',
     'AcApMoveCmd',
     'AcApMTextCmd',
@@ -161,26 +192,30 @@ jest.mock('../src/command', () => {
     'AcApRayCmd',
     'AcApRectCmd',
     'AcApRegenCmd',
-    'AcApRevCircleCmd',
     'AcApRevCloudCmd',
-    'AcApRevRectCmd',
-    'AcApRevVisibilityCmd',
+    'AcApRedoCmd',
     'AcApRotateCmd',
     'AcApSelectCmd',
     'AcApSketchCmd',
     'AcApSplineCmd',
     'AcApSwitchBgCmd',
     'AcApSysVarCmd',
+    'AcApUndoCmd',
     'AcApUnisolateObjectsCmd',
+    'AcApXAttachCmd',
     'AcApXLineCmd',
     'AcApZoomCmd'
   ]
-  return Object.fromEntries(
-    commandNames.map(name => [
-      name,
-      jest.fn().mockImplementation(() => ({ trigger: jest.fn() }))
-    ])
-  )
+  return {
+    ...Object.fromEntries(
+      commandNames.map(name => [
+        name,
+        jest.fn().mockImplementation(() => ({ trigger: jest.fn() }))
+      ])
+    ),
+    resetMarkupSession: jest.fn(),
+    resetMeasurementSession: jest.fn()
+  }
 })
 
 jest.mock('@mlightcad/data-model', () => ({
@@ -194,7 +229,6 @@ jest.mock('@mlightcad/data-model', () => ({
       register: jest.fn()
     }
   },
-  AcDbDxfConverter: jest.fn(),
   AcDbFileType: {
     DXF: 'DXF',
     DWG: 'DWG'
@@ -213,10 +247,6 @@ jest.mock('@mlightcad/data-model', () => ({
   }
 }))
 
-jest.mock('@mlightcad/libredwg-converter', () => ({
-  AcDbLibreDwgConverter: jest.fn()
-}))
-
 import { AcApDocManager } from '../src/app/AcApDocManager'
 
 describe('AcApDocManager font URL configuration', () => {
@@ -226,14 +256,15 @@ describe('AcApDocManager font URL configuration', () => {
     mockInitialize.mockClear()
     mockSetRenderMode.mockClear()
     mockSetDefaultFonts.mockClear()
+    mockSetLazyFontLoading.mockClear()
+    mockSetAwaitFontsBeforeDraw.mockClear()
   })
 
   it('configures the font loader to download fonts from the custom base URL', async () => {
     const baseUrl = 'https://cdn.example.com/cad-data/'
 
     const manager = AcApDocManager.createInstance({
-      baseUrl,
-      notLoadDefaultFonts: true
+      baseUrl
     })
 
     await manager?.loadFonts(['simkai'])
@@ -243,12 +274,22 @@ describe('AcApDocManager font URL configuration', () => {
   })
 
   it('syncs the default fonts preset to the mtext renderer after worker init', () => {
-    AcApDocManager.createInstance({
-      notLoadDefaultFonts: true
-    })
+    AcApDocManager.createInstance({})
 
     expect(mockInitialize).toHaveBeenCalled()
     // Coordly uses the Latin-first `international` preset (see DEFAULT_FONTS_PRESET).
     expect(mockSetDefaultFonts).toHaveBeenCalledWith('international')
+  })
+
+  it('configures main-thread mtext rendering before initializing workers', () => {
+    AcApDocManager.createInstance({
+      useMainThreadDraw: true
+    })
+
+    expect(mockSetRenderMode).toHaveBeenCalledWith('main')
+    expect(mockInitialize).toHaveBeenCalled()
+    expect(mockSetRenderMode.mock.invocationCallOrder[0]).toBeLessThan(
+      mockInitialize.mock.invocationCallOrder[0]
+    )
   })
 })

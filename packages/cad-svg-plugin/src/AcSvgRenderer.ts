@@ -8,6 +8,7 @@ import {
   AcGeEllipseArc3d,
   AcGePoint3d,
   AcGePoint3dLike,
+  AcGiContext,
   AcGiFontMapping,
   AcGiImageStyle,
   AcGiLineWeight,
@@ -64,7 +65,6 @@ export class AcSvgRenderer implements AcGiRenderer<AcSvgEntity> {
     this._pendingImages = []
     this._subEntityTraits = {
       color: new AcCmColor(),
-      rgbColor: 0x000000,
       lineType: {
         type: 'ByLayer',
         name: 'Continuous',
@@ -91,6 +91,13 @@ export class AcSvgRenderer implements AcGiRenderer<AcSvgEntity> {
    */
   get subEntityTraits() {
     return this._subEntityTraits
+  }
+
+  /**
+   * @inheritdoc
+   */
+  get context(): AcGiContext {
+    return AcGiContext.fromBackgroundColor(this._currentBackgroundColor)
   }
 
   /**

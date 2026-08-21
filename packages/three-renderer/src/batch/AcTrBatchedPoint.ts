@@ -118,6 +118,11 @@ export class AcTrBatchedPoint extends AcTrBatchedPointBase {
     return this._maxVertexCount - this._nextVertexStart
   }
 
+  /** World-space origin used when rebasing packed vertex data, if established. */
+  get origin() {
+    return this._origin
+  }
+
   /**
    * Allocates packed attribute buffers on first geometry insertion.
    *
@@ -347,7 +352,13 @@ export class AcTrBatchedPoint extends AcTrBatchedPointBase {
     const batchGeometry = this.geometry
     const geometryInfo = this._geometryInfo[geometryId]
 
-    applyGeometryAt(geometryInfo, batchGeometry, geometry, 'AcTrBatchedPoint')
+    applyGeometryAt(
+      geometryInfo,
+      batchGeometry,
+      geometry,
+      'AcTrBatchedPoint',
+      geometryId
+    )
 
     return geometryId
   }

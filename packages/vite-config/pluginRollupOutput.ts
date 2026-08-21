@@ -4,7 +4,9 @@ import type { ManualChunksOption, OutputOptions } from 'rollup'
 export const PLUGIN_PACKAGE_IDS = [
   'cad-pdf-plugin',
   'cad-html-plugin',
-  'cad-svg-plugin'
+  'cad-svg-plugin',
+  'cad-simple-ui-plugin',
+  'cad-agent-plugin'
 ] as const
 
 /** Core viewer libraries shipped from this monorepo. */
@@ -12,6 +14,28 @@ export const VIEWER_PACKAGE_IDS = [
   'cad-simple-viewer',
   'cad-viewer',
   'three-renderer'
+] as const
+
+/**
+ * data-model and its tightly coupled packages — keep together to avoid
+ * cross-chunk "extends undefined" for class hierarchies.
+ */
+export const DATA_MODEL_PACKAGE_IDS = [
+  'data-model',
+  'geometry-engine',
+  'graphic-interface',
+  'common'
+] as const
+
+/**
+ * Packages that stay with the three-renderer chunk (text/rendering stack).
+ * three and data-model are split out separately for clearer caching.
+ */
+export const THREE_RENDERER_STACK_IDS = [
+  'three-renderer',
+  'mtext-renderer',
+  'mtext-parser',
+  'shx-parser'
 ] as const
 
 function isPluginRegisterModule(id: string, pluginId: string): boolean {
@@ -34,6 +58,22 @@ function matchMonorepoPackage(id: string, packageId: string): boolean {
   )
 }
 
+/** Match the `three` package without catching `three-renderer` / `@types/three`. */
+function matchThreePackage(id: string): boolean {
+  const normalized = id.replace(/\\/g, '/')
+  if (
+    normalized.includes('three-renderer') ||
+    normalized.includes('@types/three')
+  ) {
+    return false
+  }
+  return (
+    normalized.includes('/node_modules/three/') ||
+    normalized.includes('/node_modules/.pnpm/three@') ||
+    /(?:^|\/)three\/(?:build|examples)\//.test(normalized)
+  )
+}
+
 /**
  * Groups monorepo packages into predictable Rollup chunks for example app builds.
  */
@@ -50,7 +90,26 @@ export const exampleManualChunks: ManualChunksOption = (id: string) => {
     return pluginId
   }
 
+  if (matchThreePackage(id)) {
+    return 'three'
+  }
+
+  for (const packageId of DATA_MODEL_PACKAGE_IDS) {
+    if (matchMonorepoPackage(id, packageId)) {
+      return 'data-model'
+    }
+  }
+
+  for (const packageId of THREE_RENDERER_STACK_IDS) {
+    if (matchMonorepoPackage(id, packageId)) {
+      return 'three-renderer'
+    }
+  }
+
   for (const packageId of VIEWER_PACKAGE_IDS) {
+    if (packageId === 'three-renderer') {
+      continue
+    }
     if (matchMonorepoPackage(id, packageId)) {
       return packageId
     }
@@ -65,31 +124,18 @@ export const exampleRollupOutput: OutputOptions = {
   assetFileNames: 'assets/[name]-[hash][extname]'
 }
 
-/** @deprecated Use {@link exampleRollupOutput}. */
-export const examplePluginRollupOutput = exampleRollupOutput
-
-/** @deprecated Use {@link exampleManualChunks}. */
-export const pluginManualChunks = exampleManualChunks
-
 export function createLibEntryFileName(
   packageId: string,
   format: string,
   entryName = 'index'
 ): string {
-  const base =
-    entryName === 'register' ? `${packageId}-register` : packageId
+  const base = entryName === 'register' ? `${packageId}-register` : packageId
   return format === 'es' ? `${base}.js` : `${base}.umd.cjs`
 }
-
-/** @deprecated Use {@link createLibEntryFileName}. */
-export const createPluginEntryFileName = createLibEntryFileName
 
 export function createLibChunkFileName(packageId: string): string {
   return `${packageId}-[name]-[hash].js`
 }
-
-/** @deprecated Use {@link createLibChunkFileName}. */
-export const createPluginChunkFileName = createLibChunkFileName
 
 /**
  * Merges all code for a library entry into a single `{packageId}` chunk
@@ -104,15 +150,9 @@ export function createLibManualChunks(packageId: string): ManualChunksOption {
   }
 }
 
-/** @deprecated Use {@link createLibManualChunks}. */
-export const createPluginLibManualChunks = createLibManualChunks
-
 export function createLibRollupOutput(packageId: string): OutputOptions {
   return {
     manualChunks: createLibManualChunks(packageId),
     chunkFileNames: createLibChunkFileName(packageId)
   }
 }
-
-/** @deprecated Use {@link createLibRollupOutput}. */
-export const createPluginLibRollupOutput = createLibRollupOutput

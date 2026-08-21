@@ -2,7 +2,19 @@ import { AcDbObjectId } from '@mlightcad/data-model'
 import RBush from 'rbush'
 
 import { AcEdSpatialQueryResultItem } from '../editor/view'
-import { AcTrSpatialIndex, AcTrSpatialIndexBBox } from './AcTrSpatialIndex'
+import {
+  AcTrSpatialIndex,
+  AcTrSpatialIndexBBox,
+  AcTrSpatialIndexStats,
+  AcTrSpatialSearchOptions,
+  estimateSpatialItemsBytes,
+  isSpatialBoxFullyInside
+} from './AcTrSpatialIndex'
+
+/** Approx. Map entry overhead (key pointer + value pointer + slot). */
+const ID_MAP_ENTRY_BYTES = 40
+/** Rough R-tree node overhead relative to leaf item payload. */
+const RBUSH_TREE_OVERHEAD_FACTOR = 1.4
 
 export class AcTrRBushSpatialIndex implements AcTrSpatialIndex {
   private readonly tree: RBush<AcEdSpatialQueryResultItem>
@@ -14,14 +26,37 @@ export class AcTrRBushSpatialIndex implements AcTrSpatialIndex {
   }
 
   insert(item: AcEdSpatialQueryResultItem) {
-    if (!this.idMap.has(item.id)) {
-      this.tree.insert(item)
+    const hasId = typeof item.id === 'string' && item.id.length > 0
+    // Empty ids (hatch fill islands) must not share one Map slot — otherwise
+    // later inserts overwrite earlier islands and only the last stays pickable.
+    if (hasId) {
+      const existing = this.idMap.get(item.id)
+      if (existing) {
+        if (
+          existing.minX === item.minX &&
+          existing.minY === item.minY &&
+          existing.maxX === item.maxX &&
+          existing.maxY === item.maxY
+        ) {
+          return
+        }
+        this.remove(existing, (a, b) => a.id === b.id)
+        this.idMap.delete(item.id)
+      }
+    }
+    this.tree.insert(item)
+    if (hasId) {
       this.idMap.set(item.id, item)
     }
   }
 
   load(items: readonly AcEdSpatialQueryResultItem[]) {
     this.tree.load(items)
+    for (const item of items) {
+      if (typeof item.id === 'string' && item.id.length > 0) {
+        this.idMap.set(item.id, item)
+      }
+    }
   }
 
   remove(
@@ -31,11 +66,26 @@ export class AcTrRBushSpatialIndex implements AcTrSpatialIndex {
       b: AcEdSpatialQueryResultItem
     ) => boolean
   ): void {
-    this.tree.remove(item, equals)
-    this.idMap.delete(item.id)
+    this.tree.remove(
+      item,
+      equals ??
+        ((a, b) =>
+          a === b ||
+          (a.id === b.id &&
+            a.minX === b.minX &&
+            a.minY === b.minY &&
+            a.maxX === b.maxX &&
+            a.maxY === b.maxY))
+    )
+    if (typeof item.id === 'string' && item.id.length > 0) {
+      this.idMap.delete(item.id)
+    }
   }
 
   removeById(id: AcDbObjectId): void {
+    if (!(typeof id === 'string' && id.length > 0)) {
+      return
+    }
     // Set minX, minY, maxX, and maxY to 0 in order to pass build
     this.tree.remove(
       {
@@ -55,8 +105,15 @@ export class AcTrRBushSpatialIndex implements AcTrSpatialIndex {
     this.idMap.clear()
   }
 
-  search(bbox: AcTrSpatialIndexBBox): AcEdSpatialQueryResultItem[] {
-    return this.tree.search(bbox)
+  search(
+    bbox: AcTrSpatialIndexBBox,
+    options?: AcTrSpatialSearchOptions
+  ): AcEdSpatialQueryResultItem[] {
+    const hits = this.tree.search(bbox)
+    if (options?.selectionMode !== 'window') {
+      return hits
+    }
+    return hits.filter(item => isSpatialBoxFullyInside(item, bbox))
   }
 
   collides(bbox: AcTrSpatialIndexBBox): boolean {
@@ -65,5 +122,19 @@ export class AcTrRBushSpatialIndex implements AcTrSpatialIndex {
 
   all(): AcEdSpatialQueryResultItem[] {
     return this.tree.all()
+  }
+
+  getStats(): AcTrSpatialIndexStats {
+    const items = this.tree.all()
+    const itemCount = items.length
+    const itemBytes = estimateSpatialItemsBytes(items)
+    const idMapBytes = this.idMap.size * ID_MAP_ENTRY_BYTES
+    return {
+      kind: 'rbush',
+      itemCount,
+      estimatedBytes: Math.round(
+        itemBytes * RBUSH_TREE_OVERHEAD_FACTOR + idMapBytes
+      )
+    }
   }
 }

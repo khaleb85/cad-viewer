@@ -1,29 +1,42 @@
 <script setup lang="ts">
-import { ChatDotRound, Hide, View } from '@element-plus/icons-vue'
-import { AcApDocManager, AcEdOpenMode } from '@mlightcad/cad-simple-viewer'
+import {
+  ChatLineSquare,
+  Delete,
+  Hide,
+  Right,
+  Stamp,
+  View
+} from '@element-plus/icons-vue'
+import {
+  AcApDocManager,
+  AcEdOpenMode,
+  isMarkupVisible,
+  isMeasurementVisible
+} from '@mlightcad/cad-simple-viewer'
 import { MlButtonData, MlToolBar } from '@mlightcad/ui-components'
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import {
-  useDocOpenMode,
-  useDocumentOpening,
-  useSettings
-} from '../../composable'
+import { useDocument, useSettings } from '../../composable'
 import { markComponentConfigRaw } from '../../composable/markComponentConfigRaw'
 import {
   clearMeasurements,
+  exportIcon,
+  importIcon,
   layer,
+  markupPanel,
+  markupTools,
   measure,
   measureAngle,
   measureArc,
   measureArea,
   measureDistance,
+  measurePoint,
   pan,
   revCircle,
   revCloud,
-  revFreeDraw,
   revRect,
+  revText,
   select,
   switchBg,
   zoomToBox,
@@ -32,9 +45,60 @@ import {
 
 const { t } = useI18n()
 const features = useSettings()
-const docOpenMode = useDocOpenMode()
-const { isDocumentOpening } = useDocumentOpening()
+const { isDocumentOpening, openMode: docOpenMode } = useDocument()
 const isToolbarDisabled = computed(() => isDocumentOpening.value)
+const markupVisible = ref(isMarkupVisible())
+const measurementVisible = ref(isMeasurementVisible())
+
+const syncMarkupVisibility = () => {
+  markupVisible.value = isMarkupVisible()
+}
+
+const syncMeasurementVisibility = () => {
+  measurementVisible.value = isMeasurementVisible()
+}
+
+onMounted(() => {
+  const docs = AcApDocManager.instance
+  docs.editor.events.commandEnded.addEventListener(syncMarkupVisibility)
+  docs.editor.events.commandEnded.addEventListener(syncMeasurementVisibility)
+  docs.events.documentActivated.addEventListener(syncMarkupVisibility)
+  docs.events.documentActivated.addEventListener(syncMeasurementVisibility)
+  syncMarkupVisibility()
+  syncMeasurementVisibility()
+})
+
+onUnmounted(() => {
+  const docs = AcApDocManager.instance
+  docs.editor.events.commandEnded.removeEventListener(syncMarkupVisibility)
+  docs.editor.events.commandEnded.removeEventListener(syncMeasurementVisibility)
+  docs.events.documentActivated.removeEventListener(syncMarkupVisibility)
+  docs.events.documentActivated.removeEventListener(syncMeasurementVisibility)
+})
+
+const toolbarSeparator = { type: 'separator' } as MlButtonData
+
+const visibilityToggle = (
+  command: string,
+  visible: boolean,
+  show: { text: string; description: string },
+  hide: { text: string; description: string }
+): MlButtonData => ({
+  command,
+  toggle: {
+    value: visible,
+    on: {
+      icon: View,
+      text: show.text,
+      description: show.description
+    },
+    off: {
+      icon: Hide,
+      text: hide.text,
+      description: hide.description
+    }
+  }
+})
 
 const verticalToolbarData = computed(() => {
   const items: MlButtonData[] = [
@@ -69,10 +133,17 @@ const verticalToolbarData = computed(() => {
       description: t('main.verticalToolbar.layer.description')
     },
     {
+      icon: switchBg,
+      text: t('main.verticalToolbar.switchBg.text'),
+      command: 'switchbg',
+      description: t('main.verticalToolbar.switchBg.description')
+    },
+    {
       icon: measure,
       text: t('main.verticalToolbar.measure.text'),
       command: '',
       description: t('main.verticalToolbar.measure.description'),
+      childrenType: 'sticky',
       children: [
         {
           icon: measureDistance,
@@ -99,85 +170,147 @@ const verticalToolbarData = computed(() => {
           description: t('main.verticalToolbar.measureArc.description')
         },
         {
+          icon: measurePoint,
+          text: t('main.verticalToolbar.measurePoint.text'),
+          command: 'measurepoint',
+          description: t('main.verticalToolbar.measurePoint.description')
+        },
+        visibilityToggle(
+          'measurementvis',
+          measurementVisible.value,
+          {
+            text: t('main.verticalToolbar.showMeasurements.text'),
+            description: t('main.verticalToolbar.showMeasurements.description')
+          },
+          {
+            text: t('main.verticalToolbar.hideMeasurements.text'),
+            description: t('main.verticalToolbar.hideMeasurements.description')
+          }
+        ),
+        {
           icon: clearMeasurements,
           text: t('main.verticalToolbar.clearMeasurements.text'),
           command: 'clearmeasurements',
           description: t('main.verticalToolbar.clearMeasurements.description')
+        },
+        toolbarSeparator,
+        {
+          icon: importIcon,
+          text: t('main.verticalToolbar.measurementImport.text'),
+          command: 'measurementimport',
+          description: t('main.verticalToolbar.measurementImport.description')
+        },
+        {
+          icon: exportIcon,
+          text: t('main.verticalToolbar.measurementExport.text'),
+          command: 'measurementexport',
+          description: t('main.verticalToolbar.measurementExport.description')
         }
       ]
     }
   ]
 
-  // Only show Comment tools in Review mode or higher
+  // Only show review markup tools in Review mode or higher
   if (docOpenMode.value >= AcEdOpenMode.Review) {
-    items.push(
-      {
-        icon: switchBg,
-        text: t('main.verticalToolbar.switchBg.text'),
-        command: 'switchbg',
-        description: t('main.verticalToolbar.switchBg.description')
-      },
-      {
-        icon: ChatDotRound,
-        text: t('main.verticalToolbar.annotation.text'),
-        command: '',
-        description: t('main.verticalToolbar.annotation.description'),
-        children: [
+    items.push({
+      icon: markupTools,
+      text: t('main.verticalToolbar.annotation.text'),
+      command: '',
+      description: t('main.verticalToolbar.annotation.description'),
+      childrenType: 'sticky',
+      children: [
+        {
+          icon: revCloud,
+          text: t('main.verticalToolbar.markupCloud.text'),
+          command: 'markupcloud',
+          description: t('main.verticalToolbar.markupCloud.description')
+        },
+        {
+          icon: ChatLineSquare,
+          text: t('main.verticalToolbar.markupCallout.text'),
+          command: 'markupcallout',
+          description: t('main.verticalToolbar.markupCallout.description')
+        },
+        {
+          icon: revText,
+          text: t('main.verticalToolbar.markupText.text'),
+          command: 'markuptext',
+          description: t('main.verticalToolbar.markupText.description')
+        },
+        {
+          icon: revRect,
+          text: t('main.verticalToolbar.markupRect.text'),
+          command: 'markuprect',
+          description: t('main.verticalToolbar.markupRect.description')
+        },
+        {
+          icon: revCircle,
+          text: t('main.verticalToolbar.markupCircle.text'),
+          command: 'markupcircle',
+          description: t('main.verticalToolbar.markupCircle.description')
+        },
+        {
+          icon: Right,
+          text: t('main.verticalToolbar.markupArrow.text'),
+          command: 'markuparrow',
+          description: t('main.verticalToolbar.markupArrow.description')
+        },
+        {
+          icon: Stamp,
+          text: t('main.verticalToolbar.markupStamp.text'),
+          command: 'markupstamp',
+          description: t('main.verticalToolbar.markupStamp.description')
+        },
+        {
+          icon: markupPanel,
+          text: t('main.verticalToolbar.markupPanel.text'),
+          command: 'markuppanel',
+          description: t('main.verticalToolbar.markupPanel.description')
+        },
+        visibilityToggle(
+          'markupvis',
+          markupVisible.value,
           {
-            icon: revFreeDraw,
-            text: t('main.verticalToolbar.revFreehand.text'),
-            command: 'sketch',
-            description: t('main.verticalToolbar.revFreehand.description')
+            text: t('main.verticalToolbar.showMarkup.text'),
+            description: t('main.verticalToolbar.showMarkup.description')
           },
           {
-            icon: revRect,
-            text: t('main.verticalToolbar.revRect.text'),
-            command: 'revrect',
-            description: t('main.verticalToolbar.revRect.description')
-          },
-          {
-            icon: revCloud,
-            text: t('main.verticalToolbar.revCloud.text'),
-            command: 'revcloud',
-            description: t('main.verticalToolbar.revCloud.description')
-          },
-          {
-            icon: revCircle,
-            text: t('main.verticalToolbar.revCircle.text'),
-            command: 'revcircle',
-            description: t('main.verticalToolbar.revCircle.description')
+            text: t('main.verticalToolbar.hideMarkup.text'),
+            description: t('main.verticalToolbar.hideMarkup.description')
           }
-        ]
-      },
-      {
-        command: 'revvis',
-        toggle: {
-          value: true,
-          on: {
-            icon: View,
-            text: t('main.verticalToolbar.showAnnotation.text'),
-            description: t('main.verticalToolbar.showAnnotation.description')
-          },
-          off: {
-            icon: Hide,
-            text: t('main.verticalToolbar.hideAnnotation.text'),
-            description: t('main.verticalToolbar.showAnnotation.description')
-          }
+        ),
+        {
+          icon: Delete,
+          text: t('main.verticalToolbar.clearMarkups.text'),
+          command: 'clearmarkups',
+          description: t('main.verticalToolbar.clearMarkups.description')
+        },
+        toolbarSeparator,
+        {
+          icon: importIcon,
+          text: t('main.verticalToolbar.markupImport.text'),
+          command: 'markupimport',
+          description: t('main.verticalToolbar.markupImport.description')
+        },
+        {
+          icon: exportIcon,
+          text: t('main.verticalToolbar.markupExport.text'),
+          command: 'markupexport',
+          description: t('main.verticalToolbar.markupExport.description')
         }
-      }
-    )
+      ]
+    })
   }
   return markComponentConfigRaw(items)
 })
 
-const handleCommand = (command: string) => {
-  if (isToolbarDisabled.value) return
+const handleCommand = (command?: string) => {
+  if (isToolbarDisabled.value || !command) return
   AcApDocManager.instance.sendStringToExecute(command)
 }
 
-const handleToggle = (command: string, _value: boolean) => {
-  if (isToolbarDisabled.value) return
-  AcApDocManager.instance.sendStringToExecute(command)
+const handleToggle = (command: string) => {
+  handleCommand(command)
 }
 </script>
 

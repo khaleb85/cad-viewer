@@ -1,5 +1,16 @@
-import { AcApContext } from '../../app'
-import { AcEdOpenMode } from '../view'
+// Type-only / direct-file imports keep the command layer free of the app and
+// view barrels (which transitively pull DOM-heavy input UI). That lets command
+// stack unit tests run in the Node Jest environment.
+//
+// App runtime services (busy indicator, command-line messages) are reached via
+// {@link acapCommandServices} instead of importing AcApDocManager, which would
+// create a circular init cycle with concrete command classes.
+import { acapCommandServices } from '../../app/AcApCommandServices'
+import type { AcApContext } from '../../app/AcApContext'
+import { acapNotifyUndoStackChanged } from '../../util/AcApDatabaseEdit'
+import { eventBus } from '../global/eventBus'
+import { AcEdMessageType } from '../input/ui/AcEdMessageType'
+import { AcEdOpenMode } from '../view/AcEdOpenMode'
 
 /**
  * Abstract base class for all CAD commands.
@@ -163,6 +174,11 @@ export abstract class AcEdCommand<TUserData extends object = {}> {
   }
 
   /**
+   * When false, this command does not create its own undo record.
+   */
+  recordsUndoStack = true
+
+  /**
    * Called right before the command starts executing.
    *
    * This lifecycle hook is intended for subclasses that need to perform
@@ -216,14 +232,54 @@ export abstract class AcEdCommand<TUserData extends object = {}> {
    * ```
    */
   async trigger(context: AcApContext) {
+    const db = context.doc.database
+    const tm = db.transactionManager
+    const recordUndo = this.shouldRecordUndoStack(context)
+    let undoTransactionActive = false
+
+    if (recordUndo) {
+      tm.startUndoMark(this.globalName || this.localName)
+      tm.startTransaction()
+      undoTransactionActive = true
+    }
+
     try {
       this.onCommandWillStart(context)
       context.view.editor.events.commandWillStart.dispatch({ command: this })
       await this.execute(context)
+    } catch (error) {
+      if (undoTransactionActive && tm.hasTransaction()) {
+        tm.abortTransaction()
+      }
+      if (undoTransactionActive) {
+        tm.cancelUndoMark()
+        undoTransactionActive = false
+      }
+      throw error
     } finally {
+      if (undoTransactionActive && tm.hasTransaction()) {
+        tm.commitTransaction()
+        tm.endUndoMark()
+        undoTransactionActive = false
+        eventBus.emit('session-db-edit-committed', {})
+        acapNotifyUndoStackChanged()
+      }
       context.view.editor.events.commandEnded.dispatch({ command: this })
       this.onCommandEnded(context)
     }
+  }
+
+  /**
+   * Returns true when this command should be wrapped in an undo mark.
+   */
+  protected shouldRecordUndoStack(context: AcApContext): boolean {
+    if (!this.recordsUndoStack) {
+      return false
+    }
+    return (
+      context.doc.openMode >= AcEdOpenMode.Review &&
+      this.mode >= AcEdOpenMode.Review
+    )
   }
 
   /**
@@ -252,5 +308,59 @@ export abstract class AcEdCommand<TUserData extends object = {}> {
    */
   async execute(_context: AcApContext) {
     // Do nothing - subclasses should override this method
+  }
+
+  /**
+   * Displays a message in the command-line output.
+   *
+   * @param message - Message text to render
+   * @param type - Message severity controlling the rendered style
+   * @param msgKey - Optional localization key associated with the message
+   */
+  protected showMessage(
+    message: string,
+    type: AcEdMessageType = 'info',
+    msgKey?: string
+  ): void {
+    acapCommandServices().showMessage(message, type, msgKey)
+  }
+
+  /**
+   * Sends a message to the UI module through the global event bus.
+   *
+   * @param message - Message text to display
+   * @param type - Message severity controlling the rendered style
+   */
+  protected notify(message: string, type: AcEdMessageType = 'info'): void {
+    eventBus.emit('message', { message, type })
+  }
+
+  /**
+   * Shows the application busy overlay while a long-running operation executes.
+   *
+   * @param message - Optional message displayed under the spinner
+   */
+  protected showBusyIndicator(message?: string): void {
+    acapCommandServices().showBusyIndicator(message)
+  }
+
+  /**
+   * Hides the application busy overlay started by {@link showBusyIndicator}.
+   */
+  protected hideBusyIndicator(): void {
+    acapCommandServices().hideBusyIndicator()
+  }
+
+  /**
+   * Runs {@link work} while the application busy overlay is visible.
+   *
+   * @param work - Synchronous or asynchronous operation to execute
+   * @param message - Optional message displayed under the spinner
+   */
+  protected async withBusyIndicator<T>(
+    work: () => T | Promise<T>,
+    message?: string
+  ): Promise<T> {
+    return acapCommandServices().withBusyIndicator(work, message)
   }
 }
