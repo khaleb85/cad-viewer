@@ -1,13 +1,22 @@
 import { AcGeBox2d } from '@mlightcad/data-model'
 
-import { getMarkupStore } from '../src/command/markup/AcApMarkupStore'
+import { acapSetMarkupBagFactory } from '../src/command/markup/AcApMarkupSession'
+import { AcApMarkupStore, getMarkupStore } from '../src/command/markup/AcApMarkupStore'
 import type { AcApMarkupRecord } from '../src/command/markup/AcApMarkupTypes'
 import {
   collectReviewOverlayIdsByBox,
+  pickAttachableShapeMarkupAt,
   trySelectReviewOverlay,
   trySelectReviewOverlaysByBox
 } from '../src/view/AcEdReviewOverlayPick'
 import type { AcTrView2d } from '../src/view/AcTrView2d'
+
+acapSetMarkupBagFactory(() => ({
+  store: new AcApMarkupStore(),
+  presenter: {} as never,
+  history: {} as never,
+  sessionUndo: {} as never
+}))
 
 function lineRecord(id = 'line-1'): AcApMarkupRecord {
   return {
@@ -117,9 +126,7 @@ describe('trySelectReviewOverlaysByBox', () => {
   beforeEach(() => {
     getMarkupStore().reset()
     getMarkupStore().upsert(lineRecord())
-    getMarkupStore().upsert(
-      lineRecord('line-2')
-    )
+    getMarkupStore().upsert(lineRecord('line-2'))
     // Move line-2 far away
     getMarkupStore().updateGeometry('line-2', {
       type: 'line',
@@ -184,11 +191,68 @@ describe('trySelectReviewOverlaysByBox', () => {
       .expandByPoint({ x: 1000, y: 1000 })
       .expandByPoint({ x: 1100, y: 1100 })
 
-    expect(
-      trySelectReviewOverlaysByBox(view, box, 'window', 'replace')
-    ).toBe(true)
+    expect(trySelectReviewOverlaysByBox(view, box, 'window', 'replace')).toBe(
+      true
+    )
     expect(deselectAll).toHaveBeenCalled()
     expect(selectGroup).not.toHaveBeenCalled()
     expect(view.isHtmlDirty).toBe(true)
+  })
+})
+
+describe('pickAttachableShapeMarkupAt', () => {
+  function rectRecord(id = 'rect-1'): AcApMarkupRecord {
+    return {
+      id,
+      type: 'rect',
+      layoutId: 'layout-a',
+      style: { color: '#ff0000' },
+      comment: '',
+      status: 'open',
+      author: 'alice',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      geometry: {
+        type: 'rect',
+        corner1: { x: 0, y: 0 },
+        corner2: { x: 40, y: 20 }
+      }
+    }
+  }
+
+  beforeEach(() => {
+    getMarkupStore().reset()
+  })
+
+  afterEach(() => {
+    getMarkupStore().reset()
+  })
+
+  it('picks a rectangle outline that has no attached callout', () => {
+    getMarkupStore().upsert(rectRecord())
+    const view = mockView({
+      selectGroup: jest.fn(),
+      deselectGroup: jest.fn()
+    })
+    expect(pickAttachableShapeMarkupAt(view, { x: 20, y: 0 })?.id).toBe(
+      'rect-1'
+    )
+    expect(pickAttachableShapeMarkupAt(view, { x: 20, y: 10 })).toBeUndefined()
+  })
+
+  it('ignores a shape that already has a callout', () => {
+    const record = rectRecord()
+    record.geometry = {
+      type: 'rect',
+      corner1: { x: 0, y: 0 },
+      corner2: { x: 40, y: 20 },
+      callout: { tip: { x: 40, y: 10 }, anchor: { x: 80, y: 10 } }
+    }
+    getMarkupStore().upsert(record)
+    const view = mockView({
+      selectGroup: jest.fn(),
+      deselectGroup: jest.fn()
+    })
+    expect(pickAttachableShapeMarkupAt(view, { x: 20, y: 0 })).toBeUndefined()
   })
 })

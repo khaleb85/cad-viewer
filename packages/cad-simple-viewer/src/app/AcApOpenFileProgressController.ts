@@ -19,9 +19,13 @@ import { isOpenFileProgressComplete } from './openFileProgress'
  * `setMessage` only when the localized stage text changes. Progress events
  * still emit on every callback so listeners see fine-grained percentages.
  *
- * When progressive scene convert is still draining after CONVERSION `END`,
- * the overlay stays up (see-through) until {@link setSceneBusyGate} reports
- * idle so geometry can appear under the spinner.
+ * When scene convert is still draining after CONVERSION `END`, the overlay
+ * stays up (see-through during progressive open) with "Rendering drawing ..."
+ * until {@link setSceneBusyGate} reports idle. The gate is driven by
+ * {@link AcApOpenDatabaseOptions.progressiveRendering}: when progressive
+ * rendering is on it tracks entity convert only; when off it also waits for
+ * deferred glyph jobs so pan/zoom stay blocked while text catches up.
+ * Deprecated `waitForTextGeometry` is ignored.
  */
 export class AcApOpenFileProgressController {
   private readonly _progress: AcApProgress
@@ -31,10 +35,17 @@ export class AcApOpenFileProgressController {
   private _lastMessage = ''
   private _seeThrough = false
   private _sceneBusyGate?: () => boolean
+  /** Callback invoked after the overlay is hidden. */
+  private _onHidden?: () => void
   private _holdPollId?: ReturnType<typeof setTimeout>
+  /** Consecutive idle polls while holding the overlay after CONVERSION END. */
+  private _holdIdleStreak = 0
 
   private static readonly OVERLAY_DEFAULT = 'rgba(0,0,0,0.45)'
   private static readonly OVERLAY_SEE_THROUGH = 'rgba(0,0,0,0.16)'
+  /** Match {@link AcTrView2d.waitUntilIdle}: require two idle samples. */
+  private static readonly HOLD_IDLE_STREAK = 2
+  private static readonly HOLD_POLL_MS = 50
 
   /**
    * @param host - Canvas container that receives the progress overlay
@@ -45,6 +56,15 @@ export class AcApOpenFileProgressController {
       overlayColor: AcApOpenFileProgressController.OVERLAY_DEFAULT
     })
     this._progress.hide()
+  }
+
+  /**
+   * Moves the overlay onto another host (e.g. the canvas being opened).
+   *
+   * @param host - New parent element for the overlay.
+   */
+  setHost(host: HTMLElement): void {
+    this._progress.setHost(host)
   }
 
   /**
@@ -62,10 +82,19 @@ export class AcApOpenFileProgressController {
 
   /**
    * Gate that returns true while the view still has entities to convert.
-   * Used to keep the overlay until progressive scene convert finishes.
+   * Used to keep the overlay until scene convert finishes (not deferred text).
    */
   setSceneBusyGate(gate: (() => boolean) | undefined): void {
     this._sceneBusyGate = gate
+  }
+
+  /**
+   * Called after the overlay is hidden (open finished or cancelled).
+   *
+   * @param callback - Handler, or `undefined` to clear.
+   */
+  setOnHidden(callback: (() => void) | undefined): void {
+    this._onHidden = callback
   }
 
   /**
@@ -77,6 +106,7 @@ export class AcApOpenFileProgressController {
     this._stage = undefined
     this._overlayVisible = false
     this._lastMessage = ''
+    this._holdIdleStreak = 0
   }
 
   /**
@@ -187,21 +217,41 @@ export class AcApOpenFileProgressController {
       return
     }
 
+    this._holdIdleStreak = 0
     const poll = () => {
       if (this._sceneBusyGate?.()) {
-        this._holdPollId = setTimeout(poll, 50)
+        this._holdIdleStreak = 0
+        this._holdPollId = setTimeout(
+          poll,
+          AcApOpenFileProgressController.HOLD_POLL_MS
+        )
+        return
+      }
+      this._holdIdleStreak++
+      if (
+        this._holdIdleStreak < AcApOpenFileProgressController.HOLD_IDLE_STREAK
+      ) {
+        this._holdPollId = setTimeout(
+          poll,
+          AcApOpenFileProgressController.HOLD_POLL_MS
+        )
         return
       }
       this._holdPollId = undefined
+      this._holdIdleStreak = 0
       this.hideAndReset()
     }
-    this._holdPollId = setTimeout(poll, 50)
+    this._holdPollId = setTimeout(
+      poll,
+      AcApOpenFileProgressController.HOLD_POLL_MS
+    )
   }
 
   private hideAndReset(): void {
     this.clearHoldPoll()
     this._progress.hide()
     this.reset()
+    this._onHidden?.()
   }
 
   private clearHoldPoll(): void {
@@ -209,5 +259,6 @@ export class AcApOpenFileProgressController {
       clearTimeout(this._holdPollId)
       this._holdPollId = undefined
     }
+    this._holdIdleStreak = 0
   }
 }

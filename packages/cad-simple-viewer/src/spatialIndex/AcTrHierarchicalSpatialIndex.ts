@@ -285,6 +285,18 @@ export class AcTrHierarchicalSpatialIndex implements AcTrSpatialIndex {
   }
 
   /**
+   * Returns the first-level (root) item for {@link id}, when present.
+   *
+   * Does not clear or inspect child indexes.
+   */
+  getRootById(id: AcDbObjectId): AcEdSpatialQueryResultItem | undefined {
+    const root = this.rootIndex as AcTrSpatialIndex & {
+      getById?: (id: AcDbObjectId) => AcEdSpatialQueryResultItem | undefined
+    }
+    return root.getById?.(id)
+  }
+
+  /**
    * Aggregates memory / cardinality stats from the root index and all children.
    */
   getStats(): AcTrSpatialIndexStats {
@@ -337,9 +349,12 @@ export class AcTrHierarchicalSpatialIndex implements AcTrSpatialIndex {
     id: AcDbObjectId,
     items: readonly AcEdSpatialQueryResultItem[]
   ) {
+    // Copy each item: callers may pass live `wcsChildBoxes` that later mutate
+    // via Object.assign. RBush parent bounds would go stale if we stored those
+    // references; the previous insert({ ...item }) path copied for the same reason.
     const finiteItems = uniquifySpatialItemIds(
       items.filter(isFiniteSpatialBBox)
-    )
+    ).map(item => ({ ...item }))
     if (finiteItems.length === 0) {
       return undefined
     }
@@ -352,14 +367,14 @@ export class AcTrHierarchicalSpatialIndex implements AcTrSpatialIndex {
     const existing = this.childIndexes.get(id)
     if (existing) {
       existing.clear()
-      finiteItems.forEach(item => existing.insert({ ...item }))
+      existing.load(finiteItems)
       return existing
     }
 
     const spatialIndex = this.createIndexBySize(finiteItems.length)
     if (!spatialIndex) return undefined
 
-    finiteItems.forEach(item => spatialIndex.insert({ ...item }))
+    spatialIndex.load(finiteItems)
     this.setChildIndex(id, spatialIndex)
     return spatialIndex
   }

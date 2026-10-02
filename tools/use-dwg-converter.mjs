@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Switch example apps / CLI from @mlightcad/libredwg-converter (GPL)
- * to the proprietary @mlight-cad/dwg-converter (local realdwg-web path).
+ * to the proprietary @mlightcad/dwg-converter (local realdwg-web path).
  * Also repoints the @mlightcad/data-model pnpm override to the local
  * realdwg-web checkout.
  *
@@ -46,16 +46,16 @@ function replaceLibreDwgParserWorkerFile(content) {
 
 function replacePackageDep(content) {
   if (
-    content.includes('"@mlight-cad/dwg-converter"') &&
+    content.includes('"@mlightcad/dwg-converter"') &&
     !content.includes('"@mlightcad/libredwg-converter"')
   ) {
-    console.log('  already using @mlight-cad/dwg-converter')
+    console.log('  already using @mlightcad/dwg-converter')
     return null
   }
 
   const next = content.replace(
     /"@mlightcad\/libredwg-converter"\s*:\s*"[^"]*"/,
-    `"@mlight-cad/dwg-converter": "${DWG_CONVERTER_VERSION}"`
+    `"@mlightcad/dwg-converter": "${DWG_CONVERTER_VERSION}"`
   )
 
   if (next === content) {
@@ -98,14 +98,14 @@ function replaceRegisterModule(content) {
   let next = content
   next = next.replaceAll(
     "from '@mlightcad/libredwg-converter'",
-    "from '@mlight-cad/dwg-converter'"
+    "from '@mlightcad/dwg-converter'"
   )
   next = next.replaceAll('AcDbLibreDwgConverter', 'AcDbDwgConverter')
   next = next.replaceAll('registerLibreDwgConverter', 'registerDwgConverter')
   next = next.replaceAll('LIBREDWG_PARSER_WORKER_FILE', 'DWG_PARSER_WORKER_FILE')
   next = next.replaceAll(
     '`@mlightcad/libredwg-converter`',
-    '`@mlight-cad/dwg-converter`'
+    '`@mlightcad/dwg-converter`'
   )
 
   if (next === content) {
@@ -117,6 +117,16 @@ function replaceRegisterModule(content) {
 }
 
 const targets = [
+  {
+    path: join(
+      rootDir,
+      'packages',
+      'cad-diff-viewer-example',
+      'package.json'
+    ),
+    label: 'cad-diff-viewer-example/package.json',
+    transform: replacePackageDep
+  },
   {
     path: join(
       rootDir,
@@ -136,6 +146,16 @@ const targets = [
     path: join(rootDir, 'packages', 'cad-simple-viewer-cli', 'package.json'),
     label: 'cad-simple-viewer-cli/package.json',
     transform: replacePackageDep
+  },
+  {
+    path: join(
+      rootDir,
+      'packages',
+      'cad-diff-viewer-example',
+      'vite.config.ts'
+    ),
+    label: 'cad-diff-viewer-example/vite.config.ts',
+    transform: replaceViteLibreDwg
   },
   {
     path: join(
@@ -167,6 +187,17 @@ const targets = [
     path: join(
       rootDir,
       'packages',
+      'cad-diff-viewer-example',
+      'src',
+      'registerLibreDwg.ts'
+    ),
+    label: 'cad-diff-viewer-example/src/registerLibreDwg.ts',
+    transform: replaceRegisterModule
+  },
+  {
+    path: join(
+      rootDir,
+      'packages',
       'cad-simple-viewer-example',
       'src',
       'registerLibreDwg.ts'
@@ -189,6 +220,31 @@ const targets = [
     path: join(
       rootDir,
       'packages',
+      'cad-diff-viewer-example',
+      'src',
+      'main.ts'
+    ),
+    label: 'cad-diff-viewer-example/src/main.ts',
+    transform(content) {
+      let next = replaceLibreDwgParserWorkerFile(content)
+      if (next == null) {
+        next = content
+      }
+      const replaced = next.replaceAll(
+        'registerLibreDwgConverter',
+        'registerDwgConverter'
+      )
+      if (replaced === content && next === content) {
+        console.log('  already switched')
+        return null
+      }
+      return replaced
+    }
+  },
+  {
+    path: join(
+      rootDir,
+      'packages',
       'cad-simple-viewer-example',
       'src',
       'main.ts'
@@ -199,9 +255,35 @@ const targets = [
       if (next == null) {
         next = content
       }
-      const replaced = next
-        .replaceAll('registerLibreDwgConverter', 'registerDwgConverter')
-        .replaceAll('./registerLibreDwg', './registerLibreDwg')
+      const replaced = next.replaceAll(
+        'registerLibreDwgConverter',
+        'registerDwgConverter'
+      )
+      if (replaced === content && next === content) {
+        console.log('  already switched')
+        return null
+      }
+      return replaced
+    }
+  },
+  {
+    path: join(
+      rootDir,
+      'packages',
+      'cad-simple-viewer-example',
+      'src',
+      'htmlConverter.ts'
+    ),
+    label: 'cad-simple-viewer-example/src/htmlConverter.ts',
+    transform(content) {
+      let next = replaceLibreDwgParserWorkerFile(content)
+      if (next == null) {
+        next = content
+      }
+      const replaced = next.replaceAll(
+        'registerLibreDwgConverter',
+        'registerDwgConverter'
+      )
       if (replaced === content && next === content) {
         console.log('  already switched')
         return null
@@ -249,7 +331,7 @@ const targets = [
       let next = content
       next = next.replaceAll(
         "from '@mlightcad/libredwg-converter'",
-        "from '@mlight-cad/dwg-converter'"
+        "from '@mlightcad/dwg-converter'"
       )
       next = next.replaceAll('AcDbLibreDwgConverter', 'AcDbDwgConverter')
       next = next.replaceAll(
@@ -289,7 +371,7 @@ const targets = [
 
 function main() {
   console.log(
-    'Switching example/CLI DWG path to @mlight-cad/dwg-converter…'
+    'Switching example/CLI DWG path to @mlightcad/dwg-converter…'
   )
 
   let changed = 0

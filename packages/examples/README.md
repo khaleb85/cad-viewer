@@ -4,7 +4,9 @@ This package serves as a central hub for all CAD viewer examples, providing easy
 
 ## Overview
 
-This package consolidates the built examples from both `@mlightcad/cad-viewer-example` and `@mlightcad/cad-simple-viewer-example` into a single, easily accessible location. It's designed for showcasing the capabilities of the CAD viewer libraries and providing reference implementations.
+This package consolidates the built examples from `@mlightcad/cad-viewer-example`,
+`@mlightcad/cad-simple-viewer-example`, and `@mlightcad/cad-diff-viewer-example`
+into a single, easily accessible location. It's designed for showcasing the capabilities of the CAD viewer libraries and providing reference implementations.
 
 ## Available Examples
 
@@ -40,7 +42,20 @@ A minimal, lightweight CAD viewer focusing on core functionality.
 - LibreDWG WebAssembly
 - Modern ES2020+ features
 
-### 3. Zero-build CDN Bootstrap (`/cdn-bootstrap/cad-viewer.html`)
+### 3. CAD Diff Viewer (`/cad-diff-viewer/`)
+Experimental reusable side-by-side / overlay comparison widget (`@mlightcad/cad-diff-viewer`).
+The host supplies one parent container; the component creates both canvases.
+
+**Features:**
+- Drop a DWG/DXF onto a pane, or click the pane / open-file icon
+- Side-by-side or overlay view modes with compare coloring (gray / red / green)
+- Results panel grouped by change kind or entity type, with prev/next navigation
+- Markup tools and a markups tab listing annotations from both drawings
+- Click a loaded pane to pan, zoom, and send commands to that drawing
+- Loading overlay stays on the pane that is opening
+- UI strings use `@mlightcad/cad-simple-viewer` i18n (`en` / `zh` / `tr` / `cs`)
+
+### 4. Zero-build CDN Bootstrap (`/cdn-bootstrap/cad-viewer.html`)
 
 A single HTML file that loads `@mlightcad/cad-viewer` from jsDelivr — no Node, Vite, or local `node_modules`. The landing page is a plain file picker; Vue is only used to mount the viewer.
 
@@ -52,7 +67,7 @@ A single HTML file that loads `@mlightcad/cad-viewer` from jsDelivr — no Node,
 
 Serve over HTTP(S); `file://` will not work for ES module CDN imports.
 
-### 4. Self-Contained Offline HTML
+### 5. Self-Contained Offline HTML
 
 Two complementary demos of the HTML export pipeline.
 
@@ -84,9 +99,13 @@ A single-file HTML export of the sample **canteen.dwg** drawing, produced by `ca
 
 View mode uses about **83% less memory than AutoCAD 2020** and **77% less than GstarCAD Viewer**.
 
-**How it is built:**
-- CI on `main` downloads `canteen.dwg` from cad-data and runs `exportDemoHtml.js`
-- Locally: `pnpm export:demo-html` from this package after `pnpm build`
+#### Progressive multi-file package (`/self-contained-html/canteen-progressive/viewer.html`)
+
+The same sample as a multi-file ACEX package: shell HTML + manifest + per-chunk geometry. Chunks load and paint progressively so first content appears sooner than a single monolithic payload.
+
+**How both demos are built:**
+- CI on `main` downloads `canteen.dwg` from cad-data, runs `exportDemoHtml.js` (single HTML + multi zip), then extracts the zip to `canteen-progressive/` for GitHub Pages
+- Locally: `pnpm export:demo-html` from this package after `pnpm build` (also writes `canteen.zip` and extracts it)
 
 ## Getting Started
 
@@ -119,15 +138,17 @@ The examples will be available at:
 - Main index: `http://localhost:3000`
 - CAD Viewer Demo: `http://localhost:3000/cad-viewer/`
 - CAD Simple Viewer Demo: `http://localhost:3000/cad-simple-viewer/`
+- CAD Diff Viewer Demo: `http://localhost:3000/cad-diff-viewer/`
 - CDN bootstrap (zero-build): `http://localhost:3000/cdn-bootstrap/cad-viewer.html`
 - HTML converter (upload DWG/DXF in the browser): `http://localhost:3000/cad-simple-viewer/html-converter.html`
 - Self-contained HTML demo: `http://localhost:3000/self-contained-html/canteen.html` (generate first with `pnpm export:demo-html`)
+- Progressive multi-file demo: `http://localhost:3000/self-contained-html/canteen-progressive/viewer.html` (same export step)
 
 ### Self-Contained HTML Demo
 
 The landing page includes an **in-browser converter** at `/cad-simple-viewer/html-converter.html` (copied from `@mlightcad/cad-simple-viewer-example` by `pnpm pre-serve`). Upload a DWG/DXF, adjust options, and download HTML without a backend.
 
-The **canteen sample** offline HTML file is built from [`canteen.dwg`](https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/data/canteen.dwg) using [`@mlightcad/cad-simple-viewer-cli`](../cad-simple-viewer-cli). GitHub Actions on the `main` branch runs this step automatically before deploying to GitHub Pages.
+The **canteen sample** offline HTML file is built from [`canteen.dwg`](https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/data/canteen.dwg) using [`@mlightcad/cad-simple-viewer-cli`](../cad-simple-viewer-cli). The same script also exports a multi-file progressive package (`canteen.zip`) and extracts it to `canteen-progressive/` for static hosting. GitHub Actions on the `main` branch runs this step automatically before deploying to GitHub Pages.
 
 To generate the file locally (requires a built workspace and Playwright Chromium or system Chrome via `PLAYWRIGHT_BROWSER_CHANNEL=chrome`):
 
@@ -149,6 +170,7 @@ pnpm build
 # Or build individual examples
 cd packages/cad-viewer-example && pnpm build
 cd packages/cad-simple-viewer-example && pnpm build
+cd packages/cad-diff-viewer-example && pnpm build
 ```
 
 ### Updating Examples
@@ -169,10 +191,11 @@ packages/examples/
 │   ├── llms.txt                # LLM-friendly project summary
 │   ├── cad-viewer/             # Full CAD viewer demo
 │   ├── cad-simple-viewer/      # Simple CAD viewer demo + in-browser HTML converter
+│   ├── cad-diff-viewer/        # Side-by-side diff viewer demo
 │   ├── cdn-bootstrap/          # Zero-build CDN single-HTML bootstrap
-│   └── self-contained-html/    # Offline HTML export demo (CI / export:demo-html)
+│   └── self-contained-html/    # Offline HTML demos (CI / export:demo-html)
 ├── copyDist.js                 # Script to copy built examples
-├── exportDemoHtml.js           # Build offline HTML demo via cad-simple-viewer-cli
+├── exportDemoHtml.js           # Build single HTML + multi-file progressive package demos
 ├── package.json                # Package configuration
 └── README.md                   # This file
 ```

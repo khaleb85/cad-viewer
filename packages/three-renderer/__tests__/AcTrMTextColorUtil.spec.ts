@@ -9,7 +9,7 @@ import { setMaterialMetadata, getMaterialMetadata } from '../src/style/AcTrMater
 import { AcTrStyleManager } from '../src/style/AcTrStyleManager'
 import { AcTrSubEntityTraitsUtil } from '../src/util/AcTrEntityTraitsUtil'
 import { AcTrMTextColorUtil } from '../src/util/AcTrMTextColorUtil'
-import { MTextColor } from '@mlightcad/mtext-renderer'
+import { MTextColor } from '@mlightcad/mtext-parser'
 
 describe('AcTrMTextColorUtil', () => {
   it('uses resolved traits rgb for ByLayer instead of hard-coded white', () => {
@@ -471,6 +471,27 @@ describe('AcTrMTextColorUtil', () => {
     const material = mesh.material as THREE.MeshBasicMaterial
     expect(material).not.toBe(staleMaterial)
     expect(material.color.getHex()).toBe(0xffff00)
+  })
+
+  it('resolves inline ByLayer from the layer colour when the entity colour is explicit', () => {
+    const entity = new AcCmColor()
+    entity.colorIndex = 4
+    const layer = new AcCmColor()
+    layer.colorIndex = 7
+
+    const traits = AcTrSubEntityTraitsUtil.createDefaultTraits()
+    traits.color = entity
+    traits.layer = 'TEXT'
+
+    const settings = AcTrMTextColorUtil.buildColorSettingsFromTraits(
+      traits,
+      0x000000,
+      layer
+    )
+
+    expect(settings.color.aci).toBe(4)
+    expect(settings.byLayerColor).toBe(0xffffff)
+    expect(settings.byBlockColor).toBe(0xffffff)
   })
 
   it('normalizes numeric trait colours when snapshotting entity traits', () => {

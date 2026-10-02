@@ -2,9 +2,13 @@ import { AcCmColor, type AcDbDatabase } from '@mlightcad/data-model'
 import type { AcTrHtmlGroup } from '@mlightcad/three-renderer'
 
 import {
+  AcApMarkupHistory,
+  AcApSessionUndo,
   getMarkupHistory,
   getSessionUndo
 } from '../src/command/markup/AcApMarkupHistory'
+import { acapSetMarkupBagFactory } from '../src/command/markup/AcApMarkupSession'
+import { AcApMarkupStore } from '../src/command/markup/AcApMarkupStore'
 import {
   bindMeasurementOverlayHistory,
   resetMeasurementSession,
@@ -15,13 +19,23 @@ import {
   commitMeasurementGroup,
   getMeasurementStyle,
   MEASUREMENT_LAYER,
-  refreshMeasurementValueLabels
+  refreshMeasurementValueLabels,
+  subscribeMeasurements
 } from '../src/command/measure/AcApMeasurementStore'
 import {
   MEASUREMENT_FONT_SIZE,
   MEASUREMENT_LINE_WEIGHT
 } from '../src/util/AcApMeasurementUtil'
 import type { AcTrView2d } from '../src/view'
+
+acapSetMarkupBagFactory(() => ({
+  store: new AcApMarkupStore(),
+  presenter: {
+    forgetPublished() {}
+  } as never,
+  history: new AcApMarkupHistory(),
+  sessionUndo: new AcApSessionUndo()
+}))
 
 function mockDb(): AcDbDatabase {
   return {
@@ -76,6 +90,7 @@ function makeGroup(id: string): AcTrHtmlGroup {
     id,
     layer: MEASUREMENT_LAYER,
     children: [],
+    canvases: [],
     dispose: jest.fn()
   } as unknown as AcTrHtmlGroup
 }
@@ -188,14 +203,16 @@ describe('AcApMeasurementHistory', () => {
       },
       formatter: {
         formatLength(value: number) {
-          return Number(value).toFixed(
-            (db as { _luprec: number })._luprec
-          )
+          return Number(value).toFixed((db as { _luprec: number })._luprec)
         }
       }
     }
 
+    const listener = jest.fn()
+    const unsubscribe = subscribeMeasurements(listener)
     refreshMeasurementValueLabels(view, db as unknown as AcDbDatabase)
+    unsubscribe()
     expect(setText).toHaveBeenCalledWith('12.3')
+    expect(listener).toHaveBeenCalled()
   })
 })
