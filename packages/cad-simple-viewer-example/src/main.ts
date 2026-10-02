@@ -94,6 +94,7 @@ class CadViewerApp {
         AcApSettingManager.instance.isShowToolbar = true
         AcApSettingManager.instance.isShowCommandLine = false
         AcApSettingManager.instance.isShowCoordinate = true
+        AcApSettingManager.instance.isShowShortCutToolbar = false
 
         // cad-simple-viewer no longer registers a DWG converter by default
         // (LibreDWG is GPL), so the host has to opt in explicitly.
