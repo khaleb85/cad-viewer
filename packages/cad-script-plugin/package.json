@@ -1,0 +1,72 @@
+{
+  "name": "@mlightcad/cad-script-plugin",
+  "version": "1.7.6",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mlightcad/cad-viewer.git"
+  },
+  "files": [
+    "dist",
+    "lib",
+    "typings",
+    "README.md",
+    "package.json"
+  ],
+  "main": "./dist/cad-script-plugin.umd.cjs",
+  "module": "./dist/cad-script-plugin.js",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "types": "./typings/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "register": [
+        "typings/register.d.ts"
+      ]
+    }
+  },
+  "exports": {
+    ".": {
+      "types": "./typings/index.d.ts",
+      "import": "./dist/cad-script-plugin.js",
+      "require": "./dist/cad-script-plugin.umd.cjs"
+    },
+    "./register": {
+      "types": "./typings/register.d.ts",
+      "import": "./dist/cad-script-plugin-register.js",
+      "require": "./dist/cad-script-plugin-register.umd.cjs"
+    },
+    "./style.css": "./dist/style.css"
+  },
+  "scripts": {
+    "clean": "rimraf dist lib tsconfig.tsbuildinfo",
+    "build:types": "node scripts/copy-typings.mjs",
+    "build": "pnpm build:types && vite build",
+    "lint": "eslint src/",
+    "lint:fix": "eslint --fix --quiet src/"
+  },
+  "devDependencies": {
+    "@mlightcad/cad-agent-core": "workspace:*",
+    "@mlightcad/cad-simple-viewer": "workspace:*",
+    "@mlightcad/data-model": "^1.15.12",
+    "vite": "^6.4.3"
+  },
+  "peerDependencies": {
+    "@mlightcad/cad-agent-core": "workspace:*",
+    "@mlightcad/cad-simple-viewer": "workspace:*",
+    "@mlightcad/data-model": "^1.15.12"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/theme-one-dark": "^6.1.3",
+    "@codemirror/view": "^6.43.14",
+    "codemirror": "^6.0.2",
+    "json-formatter-js": "^2.5.23"
+  }
+}

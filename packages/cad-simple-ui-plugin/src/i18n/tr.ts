@@ -6,14 +6,16 @@
  */
 export const tr: Record<string, string> = {
   'toolbar.select': 'Seç',
+  'toolbar.open': 'Aç',
   'toolbar.pan': 'Kaydır',
   'toolbar.zoom': 'Yakınlaştır',
   'toolbar.zoomExtent': 'Sınırlar',
-  'toolbar.zoomSmartExtents': 'Akıllı sınırlar',
+  'toolbar.zoomSmartExtents': 'Akıllı',
   'toolbar.zoomWindow': 'Pencere',
   'toolbar.zoomSaved': 'Kayıtlı',
   'toolbar.zoomOriginal': 'Kayıtlı',
   'toolbar.layer': 'Katman Yöneticisi',
+  'toolbar.find': 'Bul',
   'toolbar.layerShort': 'Katman',
   'toolbar.layout': 'Düzen',
   'toolbar.settings': 'Ayarlar',
@@ -94,6 +96,7 @@ export const tr: Record<string, string> = {
   'dockPanel.moreTabs': 'Diğer sekmeler',
   'dockPanel.tab.layers': 'Katmanlar',
   'dockPanel.tab.review': 'İnceleme',
+  'dockPanel.tab.find': 'Bul',
   'dockPanel.tab.measurements': 'Ölçümler',
   'dockPanel.resize': 'Panel boyutunu ayarla',
   'reviewPalette.searchPlaceholder': 'İşaretlerde ara',
@@ -133,5 +136,29 @@ export const tr: Record<string, string> = {
   'measurePalette.typeValues.angle': 'Açı',
   'measurePalette.typeValues.area': 'Alan',
   'measurePalette.typeValues.arc': 'Yay',
-  'measurePalette.typeValues.point': 'XY'
+  'measurePalette.typeValues.point': 'XY',
+  'findPalette.placeholder': 'Metin ara',
+  'findPalette.input': 'Aranacak metin',
+  'findPalette.find': 'Bul',
+  'findPalette.matchCase': 'Büyük/küçük harf duyarlı',
+  'findPalette.currentLayoutOnly': 'Yalnızca geçerli yerleşim',
+  'findPalette.hint':
+    'Tüm çizimde (tüm yerleşimler) metin, çok satırlı metin, öznitelikler ile blok, ölçü, kılavuz ve tablolardaki metni aramak için Enter tuşuna basın.',
+  'findPalette.hintLayout':
+    'Geçerli yerleşimde metin, çok satırlı metin, öznitelikler ile blok, ölçü, kılavuz ve tablolardaki metni aramak için Enter tuşuna basın.',
+  'findPalette.noResults': 'Metin bulunamadı',
+  'findPalette.count': '{count} sonuç',
+  'findPalette.countLayouts': '{layouts} yerleşimde {count} sonuç',
+  'findPalette.countTruncated':
+    'İlk {count} sonuç gösteriliyor — aramayı daraltın',
+  'findPalette.noDocument': 'Aramak için bir çizim açın',
+  'findPalette.layoutUnavailable': '"{layout}" yerleşimi açılamadı',
+  'findPalette.kind.text': 'Metin',
+  'findPalette.kind.mtext': 'Çok satırlı metin',
+  'findPalette.kind.attribute': 'Öznitelik',
+  'findPalette.kind.block': 'Blok metni',
+  'findPalette.kind.dimension': 'Ölçü',
+  'findPalette.kind.leader': 'Kılavuz',
+  'findPalette.kind.table': 'Tablo',
+  'findPalette.unnamedLayout': '(adsız yerleşim)'
 }

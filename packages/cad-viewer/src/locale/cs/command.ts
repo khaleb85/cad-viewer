@@ -17,6 +17,10 @@ export default {
     properties: {
       description: 'Paleta vlastností objektu'
     },
+    find: {
+      description:
+        'Otevře paletu Hledat pro hledání textu, víceřádkového textu, atributů a textu v blocích, kótách, odkazech a tabulkách napříč layouty'
+    },
     countlist: {
       description: 'Otevře paletu Počet pro zobrazení a správu počítaných bloků'
     },

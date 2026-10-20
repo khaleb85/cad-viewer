@@ -14,6 +14,8 @@ export default {
     fileUpload: {
       title: 'Select CAD File to View',
       subtitle: 'Import DWG or DXF drawings into the viewer',
+      fontCdnNotice:
+        'If you are in a country or region with network access restrictions, please turn on a VPN. Default font files are hosted on GitHub; when access is limited they load very slowly, which can make opening drawings slow or cause text not to display correctly.',
       newDrawing: 'New Drawing',
       or: 'or',
       dropFile: 'Drop file or',
@@ -47,7 +49,7 @@ export default {
       progressiveRendering: 'Progressive rendering',
       on: 'On',
       progressiveOnHint:
-        'Show geometry while loading; progress hides when entities finish',
+        'Lock UI until parse/convert finish; then pan/zoom while scene loads',
       off: 'Off',
       progressiveOffHint: 'Wait until entities and text are fully converted',
 

@@ -56,12 +56,15 @@ describe('acuiResolveToolbarItems', () => {
     const items = acuiResolveToolbarItems({ items: 'default' })
     expect(items.length).toBeGreaterThan(0)
     expect(items[0].id).toBe('select')
+    expect(items[1].id).toBe('pan')
+    expect(items.some(item => item.id === 'open')).toBe(false)
   })
 
   it('returns phone default items when layout is phone', () => {
     const items = acuiResolveToolbarItems({ items: 'default' }, undefined, 'phone')
     expect(items.map(item => item.id)).toEqual([
       'zoom',
+      'find',
       'measure',
       'annotation',
       'layer',
@@ -74,6 +77,21 @@ describe('acuiResolveToolbarItems', () => {
     expect(
       items[0].children?.some(child => child.id === 'zoom-smart-extents')
     ).toBe(true)
+  })
+
+  it('binds the find button to the find command on desktop and phone', () => {
+    const desktop = acuiCreateDefaultToolbarItems().find(
+      item => item.id === 'find'
+    )
+    expect(desktop?.command).toBe('find')
+    expect(desktop?.label).toBe('toolbar.find')
+    expect(desktop?.icon).toContain('<svg')
+    const phone = acuiResolveToolbarItems(
+      { items: 'default' },
+      undefined,
+      'phone'
+    ).find(item => item.id === 'find')
+    expect(phone?.command).toBe('find')
   })
 
   it('omits excluded root item ids', () => {
@@ -101,6 +119,15 @@ describe('acuiResolveToolbarItems', () => {
     expect(items.some(item => item.id === 'select')).toBe(false)
     expect(items.some(item => item.id === 'pan')).toBe(false)
     expect(items[0].id).toBe('zoom')
+  })
+
+  it('resolves the open preset without placing it on the default toolbar', () => {
+    const items = acuiResolveToolbarItems({
+      items: [{ preset: 'open' }, { preset: 'select' }]
+    })
+    expect(items.map(item => item.id)).toEqual(['open', 'select'])
+    expect(items[0].requiresDocument).toBe(false)
+    expect(String(items[0].icon)).toContain('viewBox="0 0 24 24"')
   })
 
   it('appends custom items after defaults', () => {

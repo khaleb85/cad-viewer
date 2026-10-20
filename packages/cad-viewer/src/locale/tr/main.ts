@@ -301,6 +301,7 @@ export default {
       properties: 'Geçerli seçim için Özellikler panelini açın.',
       quickSelect:
         'Ölçütlere göre varlıkları filtrelemek ve seçmek için Hızlı Seçimi açın.',
+      find: 'Tüm çizimde veya geçerli yerleşimde metin aramak için Bul paletini açın.',
       countList:
         'Blok sayılarını görüntülemek ve yönetmek için Sayım paletini açın.',
       missingResources:
@@ -415,6 +416,7 @@ export default {
       redo: 'Yinele',
       properties: 'Özellikler',
       quickSelect: 'Hızlı\nSeçim',
+      find: 'Bul',
       countList: 'Sayım',
       drawingUnits: 'Çizim\nBirimleri',
       attachDwg: 'DWG\nEkle',
@@ -596,7 +598,7 @@ export default {
         'Tüm varlıkların maksimum sınırlarını görüntülemek için yakınlaştırır'
     },
     zoomSmartExtents: {
-      text: 'Akıllı sınırlar',
+      text: 'Akıllı',
       description:
         'Uzak aykırı varlıkları yok sayarak baskın geometri kümesine yakınlaştırır'
     },
@@ -735,6 +737,34 @@ export default {
         newLayerPlaceholder: 'Katman adı',
         zoomToLayer: 'Tıklanan "{layer}" katmanına yakınlaştırıldı',
         lineWeightDefault: 'Varsayılan'
+      }
+    },
+    find: {
+      tab: 'Bul',
+      title: 'Bul',
+      placeholder: 'Metin ara',
+      input: 'Aranacak metin',
+      find: 'Bul',
+      matchCase: 'Büyük/küçük harf duyarlı',
+      currentLayoutOnly: 'Yalnızca geçerli yerleşim',
+      hint: 'Tüm çizimde (tüm yerleşimler) metin, çok satırlı metin, öznitelikler ile blok, ölçü, kılavuz ve tablolardaki metni aramak için Enter tuşuna basın.',
+      hintLayout:
+        'Geçerli yerleşimde metin, çok satırlı metin, öznitelikler ile blok, ölçü, kılavuz ve tablolardaki metni aramak için Enter tuşuna basın.',
+      noResults: 'Metin bulunamadı',
+      count: '{count} sonuç',
+      countLayouts: '{layouts} yerleşimde {count} sonuç',
+      countTruncated: 'İlk {count} sonuç gösteriliyor — aramayı daraltın',
+      noDocument: 'Aramak için bir çizim açın',
+      layoutUnavailable: '"{layout}" yerleşimi açılamadı',
+      unnamedLayout: '(adsız yerleşim)',
+      kind: {
+        text: 'Metin',
+        mtext: 'Çok satırlı metin',
+        attribute: 'Öznitelik',
+        block: 'Blok metni',
+        dimension: 'Ölçü',
+        leader: 'Kılavuz',
+        table: 'Tablo'
       }
     },
     countList: {

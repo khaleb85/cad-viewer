@@ -84,11 +84,16 @@ const pendingPreviewUrls = ref<string[]>([])
 const modelSelection = ref(
   resolveModelSelection(settings.value.provider, settings.value.model)
 )
-const agentMode = ref<AgentMode>('high-inference')
+const agentMode = ref<AgentMode>('simple')
 
 watch(
   () => settings.value.provider,
-  (provider: LlmProviderId) => {
+  (provider: LlmProviderId, previous: LlmProviderId | undefined) => {
+    // Skip hydration / same-value updates so a saved custom baseUrl is not
+    // overwritten by provider defaults after loadLlmSettings().
+    if (!settingsReady.value || previous === undefined || previous === provider) {
+      return
+    }
     const defaults = getProviderDefaults(provider)
     settings.value.baseUrl = defaults.baseUrl
     settings.value.model = defaults.model
@@ -102,6 +107,10 @@ watch(modelSelection, selection => {
   }
 })
 
+/** Recently copied tool row keys for brief “copied” feedback. */
+const copiedToolKeys = ref(new Set<string>())
+const copyFeedbackTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
 watch(
   pendingImages,
   files => {
@@ -113,6 +122,8 @@ watch(
 
 onUnmounted(() => {
   pendingPreviewUrls.value.forEach(url => URL.revokeObjectURL(url))
+  for (const timer of copyFeedbackTimers.values()) clearTimeout(timer)
+  copyFeedbackTimers.clear()
 })
 
 const { chat, resetChat } = useAgentChatRef(() => ({
@@ -126,8 +137,9 @@ onMounted(async () => {
   activeSettings.value = { ...loaded }
   agentMode.value = loadAgentMode()
   modelSelection.value = resolveModelSelection(loaded.provider, loaded.model)
+  // Do not resetChat() here: getConfig() is live, and replacing the Chat while
+  // a first Enter send is in flight orphans that request (no UI response).
   settingsReady.value = true
-  resetChat()
 })
 
 const settingsDirty = computed(
@@ -268,15 +280,64 @@ function openFilePicker() {
   fileInputRef.value?.click()
 }
 
+/** Appends image files to the pending attachment list when vision is available. */
+function appendPendingImages(files: Iterable<File>) {
+  if (!supportsVision.value || isBusy.value) return
+  const images = [...files].filter(file => file.type.startsWith('image/'))
+  if (!images.length) return
+  pendingImages.value = [...pendingImages.value, ...images]
+}
+
 /** Appends selected image files to the pending attachment list. */
 function onFilesSelected(event: Event) {
   const target = event.target as HTMLInputElement
   if (!target.files?.length) return
-  pendingImages.value = [
-    ...pendingImages.value,
-    ...Array.from(target.files).filter(file => file.type.startsWith('image/'))
-  ]
+  appendPendingImages(target.files)
   target.value = ''
+}
+
+/**
+ * Accepts image paste from the clipboard (e.g. screenshot).
+ * Text paste is left alone; image-only paste is prevented from inserting junk.
+ */
+function onPaste(event: ClipboardEvent) {
+  if (!supportsVision.value || isBusy.value) return
+
+  const clipboard = event.clipboardData
+  if (!clipboard) return
+
+  const images: File[] = []
+  if (clipboard.items?.length) {
+    for (const item of Array.from(clipboard.items)) {
+      if (!item.type.startsWith('image/')) continue
+      const blob = item.getAsFile()
+      if (!blob) continue
+      if (blob instanceof File && blob.name) {
+        images.push(blob)
+        continue
+      }
+      const ext = blob.type.split('/')[1]?.split('+')[0] || 'png'
+      images.push(
+        new File([blob], `paste-${Date.now()}-${images.length}.${ext}`, {
+          type: blob.type || 'image/png'
+        })
+      )
+    }
+  } else if (clipboard.files?.length) {
+    images.push(
+      ...Array.from(clipboard.files).filter(file =>
+        file.type.startsWith('image/')
+      )
+    )
+  }
+
+  if (!images.length) return
+
+  appendPendingImages(images)
+  const text = clipboard.getData('text/plain')?.trim() ?? ''
+  if (!text) {
+    event.preventDefault()
+  }
 }
 
 /** Removes one pending image attachment by index. */
@@ -300,9 +361,11 @@ function toFileList(files: File[]): FileList {
 
 /** Sends the current text and optional images to the CAD agent. */
 async function sendMessage() {
+  // Align with the send button: Enter must not bypass settingsReady / canSend.
+  if (!canSend.value) return
+
   const text = input.value.trim()
   const files = supportsVision.value ? pendingImages.value : []
-  if ((!text && files.length === 0) || isBusy.value) return
 
   input.value = ''
   clearPendingImages()
@@ -330,6 +393,10 @@ async function stopAgent() {
 
 /** Discards the conversation and starts a fresh agent session. */
 function clearChat() {
+  input.value = ''
+  clearPendingImages()
+  dismissError()
+  showSettings.value = false
   resetChat()
 }
 
@@ -351,15 +418,163 @@ function imageParts(message: UIMessage): FilePart[] {
   )
 }
 
-/** Returns tool names invoked in an assistant message (without the `tool-` prefix). */
-function toolParts(message: UIMessage): string[] {
+interface ToolCallSummary {
+  name: string
+  detail?: string
+  input?: unknown
+  output?: unknown
+  state?: string
+}
+
+/** Returns tool names and, for scripts, a short result preview. */
+function toolParts(message: UIMessage): ToolCallSummary[] {
   if (!message.parts?.length) return []
-  return message.parts
-    .filter(
-      (part): part is { type: string } =>
-        typeof part?.type === 'string' && part.type.startsWith('tool-')
-    )
-    .map(part => part.type.replace(/^tool-/, ''))
+  return message.parts.flatMap(part => {
+    if (typeof part?.type !== 'string' || !part.type.startsWith('tool-')) {
+      return []
+    }
+    const name = part.type.replace(/^tool-/, '')
+    const toolPart = part as {
+      input?: unknown
+      output?: unknown
+      state?: string
+    }
+    const input = toolPart.input
+    const output = toolPart.output
+    const state = toolPart.state
+    return [
+      {
+        name,
+        input,
+        output,
+        state,
+        detail:
+          name === 'execute_cad_script' ? scriptToolDetail(output) : undefined
+      }
+    ]
+  })
+}
+
+function scriptToolDetail(output: unknown): string | undefined {
+  if (!output || typeof output !== 'object') return undefined
+  const record = output as {
+    message?: unknown
+    error?: unknown
+    data?: unknown
+  }
+  const bits: string[] = []
+  if (typeof record.message === 'string' && record.message) bits.push(record.message)
+  if (typeof record.error === 'string' && record.error) bits.push(record.error)
+  if (record.data !== undefined) {
+    try {
+      let preview = JSON.stringify(record.data)
+      if (preview.length > 240) preview = `${preview.slice(0, 240)}…`
+      bits.push(preview)
+    } catch {
+      // Non-serializable tool output is omitted from the panel preview.
+    }
+  }
+  return bits.length ? bits.join(' — ') : undefined
+}
+
+/** Stable JSON for clipboard debugging; strips bulky image payloads. */
+function serializeToolValue(value: unknown): string {
+  if (value === undefined) return '(none)'
+  try {
+    return JSON.stringify(sanitizeToolValue(value), null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+/** Removes data-URL images so copied tool dumps stay readable. */
+function sanitizeToolValue(value: unknown): unknown {
+  if (!value || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map(sanitizeToolValue)
+
+  const record = value as Record<string, unknown>
+  const next: Record<string, unknown> = {}
+  for (const [key, entry] of Object.entries(record)) {
+    if (key === 'images' && Array.isArray(entry)) {
+      next.images = entry.map(image => {
+        if (!image || typeof image !== 'object') return image
+        const img = image as Record<string, unknown>
+        if (typeof img.dataUrl === 'string') {
+          return {
+            ...img,
+            dataUrl: `[omitted data URL, length=${img.dataUrl.length}]`
+          }
+        }
+        return image
+      })
+      continue
+    }
+    next[key] = sanitizeToolValue(entry)
+  }
+  return next
+}
+
+/** Builds a debug dump of a tool call for clipboard copy. */
+function formatToolCallCopyText(toolCall: ToolCallSummary): string {
+  const lines = [
+    `${labels.value.toolPrefix}: ${toolCall.name}`,
+    toolCall.state ? `state: ${toolCall.state}` : undefined,
+    '',
+    'input:',
+    serializeToolValue(toolCall.input),
+    '',
+    'output:',
+    serializeToolValue(toolCall.output)
+  ]
+  return lines.filter(line => line !== undefined).join('\n')
+}
+
+/** Copies tool tip / input / output to the clipboard for debugging. */
+async function copyToolCall(
+  messageId: string,
+  toolIndex: number,
+  toolCall: ToolCallSummary
+) {
+  const text = formatToolCallCopyText(toolCall)
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.setAttribute('readonly', '')
+      textarea.style.position = 'fixed'
+      textarea.style.left = '-9999px'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
+  } catch {
+    return
+  }
+
+  const key = `${messageId}-${toolIndex}`
+  const next = new Set(copiedToolKeys.value)
+  next.add(key)
+  copiedToolKeys.value = next
+
+  const previous = copyFeedbackTimers.get(key)
+  if (previous) clearTimeout(previous)
+  copyFeedbackTimers.set(
+    key,
+    setTimeout(() => {
+      const cleared = new Set(copiedToolKeys.value)
+      cleared.delete(key)
+      copiedToolKeys.value = cleared
+      copyFeedbackTimers.delete(key)
+    }, 1500)
+  )
+}
+
+/** Whether the copy button for a tool row should show the “copied” state. */
+function isToolCopied(messageId: string, toolIndex: number): boolean {
+  return copiedToolKeys.value.has(`${messageId}-${toolIndex}`)
 }
 
 /** True when the message contains a high-inference verification review block. */
@@ -408,7 +623,7 @@ function isVerificationMessage(message: UIMessage): boolean {
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
               fill="currentColor"
-              d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+              d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"
             />
           </svg>
         </button>
@@ -447,7 +662,7 @@ function isVerificationMessage(message: UIMessage): boolean {
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path
             fill="currentColor"
-            d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+            d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"
           />
         </svg>
       </button>
@@ -470,6 +685,7 @@ function isVerificationMessage(message: UIMessage): boolean {
         {{ labels.baseUrl }}
         <input v-model="settings.baseUrl" type="text" />
       </label>
+      <p class="cad-agent-model-hint">{{ labels.baseUrlHint }}</p>
       <p
         v-if="settings.provider === 'deepseek-vl'"
         class="cad-agent-model-hint"
@@ -553,11 +769,55 @@ function isVerificationMessage(message: UIMessage): boolean {
           </figure>
         </div>
         <div
-          v-for="toolName in toolParts(message)"
-          :key="toolName"
+          v-for="(toolCall, toolIndex) in toolParts(message)"
+          :key="`${message.id}-tool-${toolIndex}`"
           class="cad-agent-tool"
         >
-          {{ labels.toolPrefix }}: {{ toolName }}
+          <div class="cad-agent-tool-body">
+            {{ `${labels.toolPrefix}: ${toolCall.name}` }}
+            <span
+              v-if="toolCall.state && toolCall.state !== 'output-available'"
+              class="cad-agent-tool-detail"
+            >
+              {{ toolCall.state }}
+            </span>
+            <span v-if="toolCall.detail" class="cad-agent-tool-detail">
+              {{ toolCall.detail }}
+            </span>
+          </div>
+          <button
+            type="button"
+            class="cad-agent-tool-copy"
+            :class="{ 'is-copied': isToolCopied(message.id, toolIndex) }"
+            :title="
+              isToolCopied(message.id, toolIndex)
+                ? labels.toolCopied
+                : labels.copyTool
+            "
+            :aria-label="
+              isToolCopied(message.id, toolIndex)
+                ? labels.toolCopied
+                : labels.copyTool
+            "
+            @click="copyToolCall(message.id, toolIndex, toolCall)"
+          >
+            <svg
+              v-if="isToolCopied(message.id, toolIndex)"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                fill="currentColor"
+                d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
+              />
+            </svg>
+            <svg v-else viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"
+              />
+            </svg>
+          </button>
         </div>
       </div>
       <div v-if="error" class="cad-agent-msg error">
@@ -621,7 +881,9 @@ function isVerificationMessage(message: UIMessage): boolean {
       <textarea
         v-model="input"
         :placeholder="labels.inputPlaceholder"
+        :disabled="!settingsReady"
         @keydown.enter.exact.prevent="sendMessage"
+        @paste="onPaste"
       />
       <input
         ref="fileInputRef"

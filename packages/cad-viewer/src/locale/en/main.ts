@@ -296,6 +296,7 @@ export default {
       properties: 'Open the Properties palette for the current selection.',
       quickSelect:
         'Open Quick Select to filter and select entities by criteria.',
+      find: 'Open the Find palette to search text in the whole drawing or the current layout.',
       countList: 'Open the Count palette to view and manage block counts.',
       missingResources:
         'Open the Missing / External Resources palette for fonts, images, and xrefs.',
@@ -411,6 +412,7 @@ export default {
       redo: 'Redo',
       properties: 'Properties',
       quickSelect: 'Quick\nSelect',
+      find: 'Find',
       countList: 'Count',
       drawingUnits: 'Drawing\nUnits',
       attachDwg: 'Attach\nDWG',
@@ -597,7 +599,7 @@ export default {
       description: 'Zooms to display the maximum extents of all entities'
     },
     zoomSmartExtents: {
-      text: 'Smart extents',
+      text: 'Smart',
       description:
         'Zooms to the dominant geometry cluster, ignoring far outlier entities'
     },
@@ -735,6 +737,34 @@ export default {
         newLayerPlaceholder: 'Layer name',
         zoomToLayer: 'Zoomed to the clicked layer "{layer}"',
         lineWeightDefault: 'Default'
+      }
+    },
+    find: {
+      tab: 'Find',
+      title: 'Find',
+      placeholder: 'Find text',
+      input: 'Search text',
+      find: 'Find',
+      matchCase: 'Match case',
+      currentLayoutOnly: 'Current layout only',
+      hint: 'Press Enter to search text, multiline text, attributes and the text in blocks, dimensions, leaders and tables in the whole drawing (all layouts).',
+      hintLayout:
+        'Press Enter to search text, multiline text, attributes and the text in blocks, dimensions, leaders and tables in the current layout.',
+      noResults: 'No text found',
+      count: '{count} found',
+      countLayouts: '{count} found in {layouts} layouts',
+      countTruncated: 'First {count} results shown — refine the search',
+      noDocument: 'Open a drawing to search',
+      layoutUnavailable: 'Could not open layout "{layout}"',
+      unnamedLayout: '(unnamed layout)',
+      kind: {
+        text: 'Text',
+        mtext: 'MText',
+        attribute: 'Attribute',
+        block: 'Block text',
+        dimension: 'Dimension',
+        leader: 'Leader',
+        table: 'Table'
       }
     },
     countList: {

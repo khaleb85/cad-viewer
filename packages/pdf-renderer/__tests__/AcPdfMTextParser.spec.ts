@@ -59,11 +59,11 @@ describe('parseMText', () => {
     expect(paragraphs[1].segments[0].text).toBe('（2:1）')
   })
 
-  it('resets paragraph justification after \\P', () => {
+  it('keeps paragraph justification after \\P until the next \\p command', () => {
     const paragraphs = parseMText('\\pxqc;a\\Pb', { size: 4, hScale: 1 })
     expect(paragraphs).toHaveLength(2)
     expect(paragraphs[0].justify).toBe('center')
-    expect(paragraphs[1].justify).toBeUndefined()
+    expect(paragraphs[1].justify).toBe('center')
   })
 
   it('restores every style property at the closing brace', () => {
@@ -104,6 +104,21 @@ describe('parseMText', () => {
     expect(segments[1].style.underline).toBe(true)
     expect(segments[2].text).toBe('c')
     expect(segments[2].style.underline).toBe(false)
+  })
+
+  it('resolves \\\\C256 to byLayerColor and \\\\C0 to byBlockColor', () => {
+    const paragraphs = parseMText(
+      '{\\C256;green}{\\C0;block}{\\C3;aci}',
+      { size: 4, hScale: 1 },
+      { byLayerColor: 0x00ff00, byBlockColor: 0xffffff }
+    )
+    const segments = paragraphs[0].segments
+    expect(segments[0].text).toBe('green')
+    expect(segments[0].style.rgb).toEqual({ r: 0, g: 1, b: 0 })
+    expect(segments[1].text).toBe('block')
+    expect(segments[1].style.rgb).toEqual({ r: 1, g: 1, b: 1 })
+    expect(segments[2].text).toBe('aci')
+    expect(segments[2].style.rgb).toEqual({ r: 0, g: 1, b: 0 })
   })
 
   it('expands %% control codes during layout', () => {
@@ -192,6 +207,58 @@ describe('layoutMText', () => {
     expect(runs[1].dy).toBeCloseTo(-1.3 * 4 + 1.3 * 4)
   })
 
+  it('keeps a short Latin run after CJK on the same line with overhang', () => {
+    // Mirrors mtext-renderer processWord: `秘密-FJP-898E-G` may overshoot the
+    // column by up to 2×height×hScale without whole-word wrapping.
+    // Units: 秘,密, -FJP-898E-G → 4+4+22 = 30. Cap 24 → overflow 6 ≤ 8.
+    const layout = layoutMText({
+      data: makeData({
+        text: '秘密-FJP-898E-G',
+        height: 4,
+        width: 24,
+        widthFactor: 1
+      }),
+      measure
+    })
+    expect(layout.lines).toHaveLength(1)
+    expect(layout.lines[0].text).toBe('秘密-FJP-898E-G')
+  })
+
+  it('whole-word wraps Latin when overhang exceeds the AutoCAD allowance', () => {
+    // Units: 秘,密, -FJP-898E-G-EXTRA → 4+4+34 = 42. Cap 24 → overflow 18 > 8.
+    const layout = layoutMText({
+      data: makeData({
+        text: '秘密-FJP-898E-G-EXTRA',
+        height: 4,
+        width: 24,
+        widthFactor: 1
+      }),
+      measure
+    })
+    expect(layout.lines.length).toBeGreaterThan(1)
+    expect(layout.lines[0].text).toBe('秘密')
+    expect(layout.lines[1].text.startsWith('-FJP')).toBe(true)
+  })
+
+  it('falls back to the text-style width factor when the entity omits it', () => {
+    const layout = layoutMText({
+      data: makeData({ text: '技', height: 4, widthFactor: undefined }),
+      styleWidthFactor: 0.667,
+      measure
+    })
+    expect(layout.lines[0].runs[0].hScale).toBeCloseTo(0.667)
+    expect(layout.lines[0].runs[0].width).toBeCloseTo(4 * 0.667)
+  })
+
+  it('adds tracking per glyph like mtext-renderer instead of multiplying advance', () => {
+    // Latin 'ab': raw = 4; add → 4 + 2×0.1×4 = 4.8 (multiply would be 4.4).
+    const layout = layoutMText({
+      data: makeData({ text: '\\T1.1;ab', height: 4 }),
+      measure
+    })
+    expect(layout.lines[0].width).toBeCloseTo(4 + 2 * 0.1 * 4)
+  })
+
   it('honors the line space factor on baseline advances', () => {
     const layout = layoutMText({
       data: makeData({ text: 'a\\Pb', height: 4, lineSpaceFactor: 1.5 }),
@@ -214,6 +281,21 @@ describe('layoutMText', () => {
     // left-aligns the line inside the frame, so it starts at the frame
     // origin -50 rather than the anchor.
     expect(layout.lines[0].dx).toBeCloseTo(-50)
+  })
+
+  it('keeps \\pxql across \\P inside a TopCenter attachment frame', () => {
+    const layout = layoutMText({
+      data: makeData({
+        text: '\\pxql;ab\\Pcd',
+        height: 4,
+        width: 100,
+        attachmentPoint: 2
+      }),
+      measure
+    })
+    expect(layout.lines).toHaveLength(2)
+    expect(layout.lines[0].dx).toBeCloseTo(-50)
+    expect(layout.lines[1].dx).toBeCloseTo(-50)
   })
 
   it('draws decoration rules with run text and width', () => {

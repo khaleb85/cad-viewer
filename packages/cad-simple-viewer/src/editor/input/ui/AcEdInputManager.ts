@@ -10,6 +10,7 @@ import {
 
 import { AcApDocManager, AcApSettingManager } from '../../../app'
 import { AcApI18n } from '../../../i18n'
+import { isEntityOnLockedLayer as entityIsOnLockedLayer } from '../../../service/AcApLockedLayer'
 import { AcUiTouchPointTutorialDialog } from '../../../ui/AcUiTouchPointTutorialDialog'
 import type {
   AcEdSessionAccessory,
@@ -158,6 +159,22 @@ export class AcEdInputManager {
   private _entityPickCancel: AcEdEntityPickCancelChrome | null = null
   /** Desktop/mobile session accessory host resolution and selection mounts. */
   private readonly _sessionAccessoryController: AcEdSessionAccessoryController
+  /** Unsubscribes layout media-query listeners. */
+  private _unsubscribeUiLayout?: () => void
+  /** Setting-manager listener for command-line visibility. */
+  private readonly _onSettingsModified = () => {
+    this.syncDesktopCommandLineVisibility()
+  }
+  /** Clears leftover mobile chrome when a command ends. */
+  private readonly _onCommandEnded = () => {
+    this.clearConfirmedPointMarks()
+    if (this._mobileChrome.isOpen) {
+      this.endMobilePrompt()
+    }
+  }
+  private _disposed = false
+  /** Editor event bus used to unregister dispose-time listeners. */
+  private readonly _editorEvents: AcEditor['events']
   /** Buffered command-line style inputs (each item is one Enter-confirmed value). */
   private _scriptInputs: string[] = []
   /** Current modifier key state during input sessions. */
@@ -199,6 +216,7 @@ export class AcEdInputManager {
    */
   constructor(view: AcEdBaseView, editorEvents: AcEditor['events']) {
     this.view = view
+    this._editorEvents = editorEvents
     this._boundRepositionConfirmedPointMarks = () =>
       this.repositionConfirmedPointMarks()
     this.injectCSS()
@@ -219,10 +237,10 @@ export class AcEdInputManager {
     })
     this._sessionAccessoryController.bindEditorEvents()
     this.syncDesktopCommandLineVisibility()
-    AcApSettingManager.instance.events.modified.addEventListener(() => {
-      this.syncDesktopCommandLineVisibility()
-    })
-    acedSubscribeUiLayout(() => {
+    AcApSettingManager.instance.events.modified.addEventListener(
+      this._onSettingsModified
+    )
+    this._unsubscribeUiLayout = acedSubscribeUiLayout(() => {
       this.syncDesktopCommandLineVisibility()
       if (
         !acedInteractionStrategy().point.usesSessionChrome &&
@@ -241,12 +259,37 @@ export class AcEdInputManager {
     // Safety net: if a prompt failed to clean up, close the mobile session
     // panel when the command finishes so the bottom chrome cannot linger.
     // Also clear confirmed-point plus marks for the finished command.
-    editorEvents.commandEnded.addEventListener(() => {
-      this.clearConfirmedPointMarks()
-      if (this._mobileChrome.isOpen) {
-        this.endMobilePrompt()
-      }
-    })
+    editorEvents.commandEnded.addEventListener(this._onCommandEnded)
+  }
+
+  /**
+   * Releases command-line / mobile chrome DOM and global listeners.
+   *
+   * Safe to call more than once.
+   */
+  dispose(): void {
+    if (this._disposed) return
+    this._disposed = true
+    this.cancelActiveInput()
+    this.clearConfirmedPointMarks()
+    this.hideEntityPickCancel()
+    this._entityPickCancel?.dispose()
+    this._entityPickCancel = null
+    AcApSettingManager.instance.events.modified.removeEventListener(
+      this._onSettingsModified
+    )
+    this._unsubscribeUiLayout?.()
+    this._unsubscribeUiLayout = undefined
+    this.view.events.viewChanged.removeEventListener(
+      this._boundRepositionConfirmedPointMarks
+    )
+    this.view.events.viewResize.removeEventListener(
+      this._boundRepositionConfirmedPointMarks
+    )
+    this._editorEvents.commandEnded.removeEventListener(this._onCommandEnded)
+    this._sessionAccessoryController.dispose()
+    this._mobileChrome.dispose()
+    this._commandLine.dispose()
   }
 
   /**
@@ -699,14 +742,10 @@ export class AcEdInputManager {
    * @returns `true` if the entity's layer exists and is locked; otherwise `false`
    */
   private isEntityOnLockedLayer(entity: AcDbEntity): boolean {
-    const layerName = entity.layer
-    if (!layerName) {
-      return false
-    }
-
-    return !!AcApDocManager.instance.curDocument.database.tables.layerTable.getAt(
-      layerName
-    )?.isLocked
+    return entityIsOnLockedLayer(
+      AcApDocManager.tryGetInstance()?.curDocument?.database,
+      entity
+    )
   }
 
   /**
@@ -1429,6 +1468,8 @@ export class AcEdInputManager {
         new Promise<string[]>((resolve, reject) => {
           this.active = true
           this.entitySelectionActive = true
+          const previousAllowLocked = this.view.allowSelectOnLockedLayer
+          this.view.allowSelectOnLockedLayer = options.allowObjectOnLockedLayer
           const keywordSession = this.startKeywordSession(options, true)
           if (!keywordSession) {
             this._commandLine.setPrompt(options.message)
@@ -1510,6 +1551,7 @@ export class AcEdInputManager {
             disposeGesture?.()
             disposeGesture = null
             this.view.setNavigationEnabled(true)
+            this.view.allowSelectOnLockedLayer = previousAllowLocked
 
             document.removeEventListener('keydown', keyHandler)
             this.view.canvas.removeEventListener('mousedown', mouseDown)

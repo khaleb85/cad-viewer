@@ -1,7 +1,7 @@
 {
   "name": "@mlightcad/cad-simple-viewer-example",
   "private": true,
-  "version": "1.7.3",
+  "version": "1.7.6",
   "type": "module",
   "repository": {
     "type": "git",
@@ -19,23 +19,29 @@
     "preview:html-converter": "vite preview --open /html-converter.html"
   },
   "dependencies": {
+    "@mlightcad/cad-agent-core": "workspace:*",
     "@mlightcad/cad-agent-plugin": "workspace:*",
+    "@mlightcad/cad-script-plugin": "workspace:*",
     "@mlightcad/cad-html-plugin": "workspace:*",
+    "@mlightcad/cad-onedrive-plugin": "workspace:*",
+    "@mlightcad/cad-google-drive-plugin": "workspace:*",
     "@mlightcad/cad-pdf-plugin": "workspace:*",
     "@mlightcad/pdf-renderer": "workspace:*",
     "@mlightcad/cad-simple-ui-plugin": "workspace:*",
     "@mlightcad/cad-svg-plugin": "workspace:*",
     "@mlightcad/cad-simple-viewer": "workspace:*",
-    "@mlightcad/data-model": "^1.15.1",
-    "@mlightcad/libredwg-converter": "^3.15.1",
-    "@mlightcad/mtext-parser": "^1.5.3",
-    "@mlightcad/mtext-renderer": "^0.13.1",
+    "@mlightcad/data-model": "^1.15.12",
+    "@mlightcad/libredwg-converter": "^3.15.12",
+    "@mlightcad/mtext-parser": "^1.5.5",
+    "@mlightcad/mtext-renderer": "^0.13.5",
     "@mlightcad/three-renderer": "workspace:*",
     "lodash-es": "4.17.21",
-    "three": "^0.172.0",
+    "three": "^0.186.1",
     "vue": "^3.4.21"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^6.0.8"
+    "@vitejs/plugin-vue": "^6.0.8",
+    "vite": "^6.4.3",
+    "vite-plugin-static-copy": "^4.1.1"
   }
 }

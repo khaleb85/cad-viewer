@@ -1,3 +1,16 @@
+import type { AcExSnapshot } from '@mlightcad/cad-html-core'
+import {
+  protectAcExHtmlEncodedSnapshot,
+  resolveAcApHtmlExpiresAt
+} from '@mlightcad/cad-html-core'
+import {
+  packHtmlEmbeddedPackage,
+  shouldEmbedAcExChunks
+} from '@mlightcad/cad-html-core'
+import { packHtml } from '@mlightcad/cad-html-core'
+import { buildAcExPackageAsync } from '@mlightcad/cad-html-core'
+import { zipAcExPackageFiles } from '@mlightcad/cad-html-core'
+import { encodeSnapshot } from '@mlightcad/cad-html-core'
 import {
   AcApDocManager,
   AcEdBaseView,
@@ -10,26 +23,18 @@ import { accmYieldForPaint } from '@mlightcad/data-model'
 import {
   type AcApHtmlExportOptions,
   captureAcApHtmlViewState,
-  resolveAcApHtmlExportOptions
+  resolveAcApHtmlExportOptions,
+  resolveAcApHtmlPackageBuildOptions
 } from './AcApHtmlExportOptions'
 import {
   type AcApHtmlPluginOptions,
   resolveViewerRuntimeUrl
 } from './AcApHtmlPluginOptions'
 import { AcApHtmlSnapshotBuilder } from './AcApHtmlSnapshotBuilder'
-import {
-  protectAcExHtmlEncodedSnapshot,
-  resolveAcApHtmlExpiresAt
-} from './AcExHtmlAccess'
-import {
-  packHtmlEmbeddedPackage,
-  shouldEmbedAcExChunks
-} from './AcExHtmlEmbeddedPackage'
-import { packHtml } from './AcExHtmlPackager'
-import { buildAcExPackage } from './AcExPackageBuilder'
-import { zipAcExPackageFiles } from './AcExPackageZip'
-import { encodeSnapshot } from './AcExSnapshotCodec'
-import type { AcExSnapshot } from './AcExSnapshotTypes'
+
+function logExportTiming(label: string, ms: number) {
+  console.log(`[chtml] ${label}: ${ms.toFixed(0)} ms`)
+}
 
 /**
  * Orchestrates export of the active drawing to a downloadable HTML file
@@ -107,18 +112,22 @@ export class AcApHtmlConvertor {
   ) {
     const docManager = AcApDocManager.instance
     const resolved = resolveAcApHtmlExportOptions(options)
+    const totalT0 = performance.now()
 
     await docManager.withBusyIndicator(async () => {
       await accmYieldForPaint()
 
       const document = docManager.curDocument
+      let t0 = performance.now()
       const exportView = await this.prepareAcTrView2dForHtmlExport(
         view ?? docManager.curView,
         resolved
       )
+      logExportTiming('prepare (missing entities)', performance.now() - t0)
 
       const sourceName = fileName || document.fileName || document.docTitle
       const baseName = getDrawingExportBaseName(sourceName)
+      t0 = performance.now()
       const snapshot = await this._snapshotBuilder.buildAsync(
         exportView.cadScene,
         document.database,
@@ -139,25 +148,40 @@ export class AcApHtmlConvertor {
             exportView.width / Math.max(exportView.height, 1)
         }
       )
+      logExportTiming('snapshot build', performance.now() - t0)
 
       await accmYieldForPaint()
 
+      t0 = performance.now()
       const viewerRuntime = await this.loadViewerRuntime()
+      logExportTiming('load viewer runtime', performance.now() - t0)
 
       await accmYieldForPaint()
 
       if (resolved.exportFormat === 'multi') {
-        const pkg = buildAcExPackage(snapshot, {
+        t0 = performance.now()
+        const packageBuild = resolveAcApHtmlPackageBuildOptions(resolved)
+        const pkg = await buildAcExPackageAsync(snapshot, {
           viewerRuntime,
-          baseName
+          baseName,
+          ...packageBuild
         })
+        logExportTiming(
+          packageBuild.compressChunks
+            ? 'package + gzip chunks'
+            : 'package chunks',
+          performance.now() - t0
+        )
+        t0 = performance.now()
         const zipBytes = zipAcExPackageFiles(pkg)
+        logExportTiming('zip package', performance.now() - t0)
         await accmYieldForPaint()
         this.downloadBytes(
           zipBytes,
           resolveExportDownloadName(sourceName, 'zip'),
           'application/zip'
         )
+        logExportTiming('chtml total', performance.now() - totalT0)
         return
       }
 
@@ -166,14 +190,17 @@ export class AcApHtmlConvertor {
         Date.now(),
         resolved.expiresAt
       )
+      t0 = performance.now()
       const html = await this.packSelfContainedHtml(snapshot, viewerRuntime, {
         expiresAt,
         password: resolved.password || undefined
       })
+      logExportTiming('pack self-contained html', performance.now() - t0)
 
       await accmYieldForPaint()
 
       this.downloadHtml(html, resolveExportDownloadName(sourceName, 'html'))
+      logExportTiming('chtml total', performance.now() - totalT0)
     })
   }
 

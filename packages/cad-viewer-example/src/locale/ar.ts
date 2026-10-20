@@ -14,6 +14,8 @@ export default {
     fileUpload: {
       title: 'اختر ملف CAD لعرضه',
       subtitle: 'استورد رسومات DWG أو DXF إلى العارض',
+      fontCdnNotice:
+        'If you are in a country or region with network access restrictions, please turn on a VPN. Default font files are hosted on GitHub; when access is limited they load very slowly, which can make opening drawings slow or cause text not to display correctly.',
       newDrawing: 'رسم جديد',
       or: 'أو',
       dropFile: 'أسقط الملف هنا أو',
@@ -47,7 +49,7 @@ export default {
       progressiveRendering: 'العرض التدريجي',
       on: 'تشغيل',
       progressiveOnHint:
-        'إظهار عناصر الرسم أثناء التحميل؛ يُخفى التقدم عند انتهاء تحويل الكيانات',
+        'قفل الواجهة حتى انتهاء التحليل/التحويل؛ ثم التحريك/التكبير أثناء تحميل المشهد',
       off: 'إيقاف',
       progressiveOffHint: 'الانتظار حتى اكتمال تحويل الكيانات والنص',
 

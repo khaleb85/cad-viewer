@@ -19,6 +19,14 @@ function resolvePackageEntry(
         return esm
       }
     }
+    // three 0.186's require export is build/three.cjs. That file calls
+    // process.emitWarning when loaded, which throws in the browser.
+    if (resolved.endsWith('.cjs')) {
+      const esm = resolved.slice(0, -'.cjs'.length) + '.module.js'
+      if (existsSync(esm)) {
+        return esm
+      }
+    }
     return resolved
   } catch {
     return undefined
@@ -66,7 +74,10 @@ export const PLUGIN_PACKAGE_IDS = [
   'cad-html-plugin',
   'cad-svg-plugin',
   'cad-simple-ui-plugin',
-  'cad-agent-plugin'
+  'cad-agent-plugin',
+  'cad-script-plugin',
+  'cad-onedrive-plugin',
+  'cad-google-drive-plugin'
 ] as const
 
 /** Core viewer libraries shipped from this monorepo. */
@@ -74,7 +85,9 @@ export const VIEWER_PACKAGE_IDS = [
   'cad-simple-viewer',
   'cad-diff-viewer',
   'cad-viewer',
-  'three-renderer'
+  'three-renderer',
+  'cad-html-core',
+  'cad-agent-core'
 ] as const
 
 /**
@@ -144,6 +157,11 @@ export const exampleManualChunks: ManualChunksOption = (id: string) => {
     /(?:^|\/)pdf-lib(?:\/|$)/.test(id.replace(/\\/g, '/'))
   ) {
     return 'cad-pdf-plugin'
+  }
+
+  // Shared ACEX codecs / packagers ship with the HTML plugin chunk.
+  if (matchMonorepoPackage(id, 'cad-html-core')) {
+    return 'cad-html-plugin'
   }
 
   for (const pluginId of PLUGIN_PACKAGE_IDS) {

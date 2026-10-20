@@ -105,6 +105,47 @@
                 </div>
               </ml-fieldset-group>
             </div>
+
+            <ml-fieldset-group
+              v-if="form.exportFormat === 'multi'"
+              :title="t('dialog.exportHtmlDlg.packageSection')"
+              class="ml-export-html-dlg__section"
+            >
+              <div class="ml-export-html-dlg__package-row">
+                <div class="ml-export-html-dlg__toggle-copy">
+                  <span class="ml-export-html-dlg__toggle-label">{{
+                    t('dialog.exportHtmlDlg.chunkSizeMiB')
+                  }}</span>
+                  <span class="ml-export-html-dlg__toggle-hint">{{
+                    t('dialog.exportHtmlDlg.chunkSizeMiBHint')
+                  }}</span>
+                </div>
+                <el-input-number
+                  v-model="form.chunkSizeMiB"
+                  :min="chunkSizeMiBMin"
+                  :max="chunkSizeMiBMax"
+                  :step="1"
+                  controls-position="right"
+                  class="ml-export-html-dlg__chunk-size"
+                />
+              </div>
+              <div class="ml-export-html-dlg__toggle-row">
+                <div class="ml-export-html-dlg__toggle-copy">
+                  <span class="ml-export-html-dlg__toggle-label">{{
+                    t('dialog.exportHtmlDlg.compressChunks')
+                  }}</span>
+                  <span class="ml-export-html-dlg__toggle-hint">{{
+                    t('dialog.exportHtmlDlg.compressChunksHint')
+                  }}</span>
+                </div>
+                <el-switch
+                  v-model="form.compressChunks"
+                  :active-text="t('dialog.exportHtmlDlg.yes')"
+                  :inactive-text="t('dialog.exportHtmlDlg.no')"
+                  inline-prompt
+                />
+              </div>
+            </ml-fieldset-group>
           </div>
         </el-tab-pane>
 
@@ -202,6 +243,7 @@
         <el-tab-pane
           :label="t('dialog.exportHtmlDlg.tabSecurity')"
           name="security"
+          lazy
           :disabled="form.exportFormat === 'multi'"
         >
           <div class="ml-export-html-dlg__tab-body">
@@ -259,13 +301,23 @@
               class="ml-export-html-dlg__section"
             >
               <div class="ml-export-html-dlg__password-row">
+                <!--
+                  Optional field: block password-manager autofill/auto-generate.
+                  Lazy security tab keeps the input out of the DOM until opened;
+                  readonly-until-focus stops fill on mount; new-password matches
+                  the HTML converter example.
+                -->
                 <el-input
                   v-model="form.password"
                   type="password"
+                  autocomplete="new-password"
+                  name="mlcad-html-export-password"
                   show-password
                   clearable
+                  :readonly="passwordFieldLocked"
                   :placeholder="t('dialog.exportHtmlDlg.passwordPlaceholder')"
                   class="ml-export-html-dlg__password-input"
+                  @focus="unlockPasswordField"
                 />
                 <div class="ml-export-html-dlg__password-actions">
                   <el-button @click="generatePassword">
@@ -304,11 +356,19 @@ import type {
   AcExInitialViewMode,
   AcExViewerMode
 } from '@mlightcad/cad-html-plugin'
+import {
+  ACEX_DEFAULT_CHUNK_SIZE_MIB,
+  ACEX_MAX_CHUNK_SIZE_MIB,
+  ACEX_MIN_CHUNK_SIZE_MIB,
+  acexChunkSizeMiBToBytes,
+  clampAcApHtmlChunkSizeMiB
+} from '@mlightcad/cad-html-plugin'
 import { AcApDocManager } from '@mlightcad/cad-simple-viewer'
 import {
   ElButton,
   ElDatePicker,
   ElInput,
+  ElInputNumber,
   ElMessage,
   ElRadio,
   ElRadioGroup,
@@ -316,7 +376,7 @@ import {
   ElTabPane,
   ElTabs
 } from 'element-plus'
-import { computed, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import MlBaseDialog from '../common/MlBaseDialog.vue'
@@ -364,6 +424,14 @@ export interface MlExportHtmlDlgForm {
    * Offline viewer capability profile (`view` omits measurement tools and OSNAP data).
    */
   viewerMode: AcExViewerMode
+  /**
+   * Max uncompressed geometry chunk size in MiB (multi-file package only).
+   */
+  chunkSizeMiB: number
+  /**
+   * When `true`, multi-file package chunks are gzip-compressed before zipping.
+   */
+  compressChunks: boolean
   /** How long the exported HTML remains valid. */
   expiryDays: AcApHtmlExpiryDays
   /** Absolute expiry used when {@link MlExportHtmlDlgForm.expiryDays} is `'custom'`. */
@@ -390,6 +458,15 @@ const { t } = useI18n()
 
 const activeTab = ref<'data' | 'display' | 'security'>('data')
 
+const chunkSizeMiBMin = ACEX_MIN_CHUNK_SIZE_MIB
+const chunkSizeMiBMax = ACEX_MAX_CHUNK_SIZE_MIB
+
+/**
+ * When `true`, the password input is read-only so managers cannot autofill or
+ * auto-generate into the empty optional field before the user focuses it.
+ */
+const passwordFieldLocked = ref(true)
+
 /** Bridges `v-model` on the base dialog to `modelValue` / `update:modelValue`. */
 const visible = computed({
   get: () => props.modelValue,
@@ -406,6 +483,8 @@ const form = reactive<MlExportHtmlDlgForm>({
   exportLayouts: true,
   initialView: 'fit',
   viewerMode: 'measure',
+  chunkSizeMiB: ACEX_DEFAULT_CHUNK_SIZE_MIB,
+  compressChunks: true,
   expiryDays: 'never',
   customExpiresAt: null,
   password: ''
@@ -420,10 +499,18 @@ function resetForm() {
   form.exportLayouts = true
   form.initialView = 'fit'
   form.viewerMode = 'measure'
+  form.chunkSizeMiB = ACEX_DEFAULT_CHUNK_SIZE_MIB
+  form.compressChunks = true
   form.expiryDays = 'never'
   form.customExpiresAt = defaultCustomExpiresAt()
   form.password = ''
+  passwordFieldLocked.value = true
   activeTab.value = 'data'
+}
+
+/** Allows typing or Generate after the user intentionally focuses the field. */
+function unlockPasswordField() {
+  passwordFieldLocked.value = false
 }
 
 /**
@@ -458,6 +545,7 @@ function isPastExpiryDate(date: Date): boolean {
  * Fills {@link form.password} with a random alphanumeric string.
  */
 function generatePassword() {
+  unlockPasswordField()
   const bytes = new Uint8Array(12)
   crypto.getRandomValues(bytes)
   form.password = Array.from(
@@ -492,9 +580,14 @@ async function copyPassword() {
 
 /**
  * Invoked when the dialog opens; resets the form so each export starts from defaults.
+ * Clears the password again after mount in case a manager fills asynchronously.
  */
 function handleOpen() {
   resetForm()
+  void nextTick(() => {
+    form.password = ''
+    passwordFieldLocked.value = true
+  })
 }
 
 /**
@@ -544,7 +637,15 @@ async function handleOk() {
     password:
       form.exportFormat === 'single'
         ? form.password.trim() || undefined
-        : undefined
+        : undefined,
+    ...(form.exportFormat === 'multi'
+      ? {
+          maxChunkBytes: acexChunkSizeMiBToBytes(
+            clampAcApHtmlChunkSizeMiB(form.chunkSizeMiB)
+          ),
+          compressChunks: form.compressChunks
+        }
+      : {})
   }
 
   try {
@@ -601,11 +702,21 @@ async function handleOk() {
   min-width: 0;
 }
 
-.ml-export-html-dlg__toggle-row {
+.ml-export-html-dlg__toggle-row,
+.ml-export-html-dlg__package-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.ml-export-html-dlg__package-row + .ml-export-html-dlg__toggle-row {
+  margin-top: 10px;
+}
+
+.ml-export-html-dlg__chunk-size {
+  flex: 0 0 auto;
+  width: 120px;
 }
 
 .ml-export-html-dlg__toggle-row :deep(.el-switch) {

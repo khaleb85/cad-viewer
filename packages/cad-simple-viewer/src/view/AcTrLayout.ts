@@ -10,7 +10,10 @@ import * as THREE from 'three'
 
 import { AcEdLayerInfo, AcEdSpatialQueryResultItem } from '../editor'
 import { unionSpatialQueryItems } from '../editor/view/AcEdSpatialQueryResult'
-import { AcTrHierarchicalSpatialIndex } from '../spatialIndex'
+import {
+  AcTrHierarchicalSpatialIndex,
+  type AcTrLazySpatialChildren
+} from '../spatialIndex'
 import type { AcTrSpatialSearchOptions } from '../spatialIndex/AcTrSpatialIndex'
 import { isFiniteSpatialBBox } from './AcTrGroupWcsBboxAssert'
 import { AcTrLayer, AcTrLayerStats } from './AcTrLayer'
@@ -97,6 +100,13 @@ export class AcTrLayout {
   private _spatialIndex: AcTrHierarchicalSpatialIndex
   /** Cached layout bounds derived from packed batch vertex buffers */
   private _cachedBox: THREE.Box3
+  /** Cached smart-extents box; cleared whenever layout geometry extents change */
+  private _cachedSmartExtents: AcGeBox2d | undefined
+  /**
+   * Bumped whenever {@link _cachedSmartExtents} is cleared so in-flight async
+   * smart-extents work can detect stale results and skip writing the cache.
+   */
+  private _smartExtentsGeneration = 0
   /** When true, {@link box} is recomputed from batch geometry on next read */
   private _boxDirty: boolean
   /** Entity ids excluded from layout bounds (e.g. RAY/XLINE) */
@@ -110,6 +120,11 @@ export class AcTrLayout {
   private _insertLayerByObjectId: Map<AcDbObjectId, string>
   /** The flag indicating whether the layout is loaded/activated */
   private _isLoaded: boolean
+  /**
+   * When true, {@link addEntity} / {@link addDirectEntity} skip spatial-index
+   * registration. Used by headless HTML/JPEG export where pick queries are unused.
+   */
+  skipSpatialIndex = false
   /**
    * True when this layout renders a read-only reference/overlay drawing.
    * Reference layouts are not registered in {@link AcTrScene}'s layout map
@@ -133,6 +148,7 @@ export class AcTrLayout {
     this._group = new THREE.Group()
     this._spatialIndex = new AcTrHierarchicalSpatialIndex()
     this._cachedBox = new THREE.Box3()
+    this._cachedSmartExtents = undefined
     this._boxDirty = true
     this._extentExcludedObjectIds = new Set()
     this._layers = new Map()
@@ -196,6 +212,12 @@ export class AcTrLayout {
 
   private invalidateBox() {
     this._boxDirty = true
+    this.clearSmartExtentsCache()
+  }
+
+  private clearSmartExtentsCache() {
+    this._cachedSmartExtents = undefined
+    this._smartExtentsGeneration++
   }
 
   /**
@@ -311,6 +333,7 @@ export class AcTrLayout {
     })
     this._layers.clear()
     this._cachedBox.makeEmpty()
+    this.clearSmartExtentsCache()
     this._boxDirty = true
     this._extentExcludedObjectIds.clear()
     this._insertLayerByObjectId.clear()
@@ -363,6 +386,8 @@ export class AcTrLayout {
       }
       this.registerSpatialIndexBox(objectId, box)
     })
+    // Point symbol AABBs feed smart extents; discard any cached fit.
+    this.clearSmartExtentsCache()
   }
 
   /**
@@ -939,6 +964,53 @@ export class AcTrLayout {
   }
 
   /**
+   * Async variant of {@link collectSpatialExtentBoxes} that yields while
+   * flattening large spatial indexes.
+   *
+   * @param work - Cooperative yield helper.
+   */
+  async collectSpatialExtentBoxesAsync(work: {
+    maybeYield(): Promise<void>
+  }): Promise<AcEdSpatialQueryResultItem[]> {
+    const all = await this._spatialIndex.allAsync(work)
+    const result: AcEdSpatialQueryResultItem[] = []
+    for (let i = 0; i < all.length; i++) {
+      const item = all[i]!
+      if (isFiniteSpatialBBox(item)) {
+        result.push(item)
+      }
+      if ((i & 0x7ff) === 0x7ff) {
+        await work.maybeYield()
+      }
+    }
+    return result
+  }
+
+  /**
+   * Returns the cached smart-extents box when still valid for this layout.
+   */
+  get cachedSmartExtents(): AcGeBox2d | undefined {
+    return this._cachedSmartExtents
+  }
+
+  /**
+   * Generation counter for smart-extents cache invalidation. Capture before
+   * async work and compare after; mismatch means geometry changed mid-flight.
+   */
+  get smartExtentsGeneration(): number {
+    return this._smartExtentsGeneration
+  }
+
+  /**
+   * Stores the last computed smart-extents box until geometry extents change.
+   * Only write when {@link smartExtentsGeneration} still matches the value
+   * captured before the async computation started.
+   */
+  set cachedSmartExtents(box: AcGeBox2d | undefined) {
+    this._cachedSmartExtents = box
+  }
+
+  /**
    * Returns all layers that contain renderable entities associated with
    * the specified AutoCAD object ID.
    *
@@ -1014,6 +1086,26 @@ export class AcTrLayout {
    *                 membership is updated.
    */
   private registerEntitySpatialIndex(entity: AcTrEntity) {
+    if (this.skipSpatialIndex) {
+      return
+    }
+    const lazyChildren = (
+      entity.userData as { lazySpatialChildren?: AcTrLazySpatialChildren }
+    ).lazySpatialChildren
+    if (lazyChildren && lazyChildren.boxes.length > 0) {
+      const rootBox = {
+        minX: entity.wcsBbox.min.x,
+        minY: entity.wcsBbox.min.y,
+        maxX: entity.wcsBbox.max.x,
+        maxY: entity.wcsBbox.max.y,
+        id: entity.objectId
+      }
+      if (isFiniteSpatialBBox(rootBox)) {
+        this._spatialIndex.insert(rootBox)
+      }
+      this._spatialIndex.setLazyChildSource(entity.objectId, lazyChildren)
+      return
+    }
     const spatialIndexChildBoxes = this.getSpatialIndexChildBoxes(entity)
 
     let rootBox: {
@@ -1097,6 +1189,9 @@ export class AcTrLayout {
    * Registers a simple axis-aligned WCS box in the spatial index by object id.
    */
   private registerSpatialIndexBox(objectId: AcDbObjectId, wcsBbox: THREE.Box3) {
+    if (this.skipSpatialIndex) {
+      return
+    }
     const box = {
       minX: wcsBbox.min.x,
       minY: wcsBbox.min.y,

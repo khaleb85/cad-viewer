@@ -33,9 +33,12 @@ export default {
     secondCorner: 'Zadejte druhý roh nebo'
   },
   message: {
+    onLockedLayer: 'na uzamčené hladině.',
     fetchingDrawingFile: 'Načítám soubor…',
     exportingDxf: 'Exportuji DXF…',
     exportingPdf: 'Exportuji PDF…',
+    exportingSvg: 'Exportuji SVG…',
+    calculatingSmartExtents: 'Počítám chytrý rozsah…',
     importingPdf: 'Importuji PDF…',
     exportingEntityPreview: 'Exportuji obrázek…',
     collectingMemoryProfile: 'Analyzuji paměť…',
@@ -174,5 +177,30 @@ export default {
     snoozeToday: 'Dnes už nepřipomínat',
     hideForever: 'Už nepřipomínat',
     ok: 'Rozumím'
+  },
+  dataSource: {
+    open: 'Otevřít',
+    local: 'Místní soubor',
+    url: 'Z URL',
+    openFrom: 'Otevřít z {name}',
+    signInTo: 'Přihlásit se k {name}',
+    signOutOf: 'Odhlásit se z {name}',
+    signOutOfAccount: 'Odhlásit se z {name} ({account})',
+    urlDialogTitle: 'Otevřít z URL',
+    urlDialogHint: 'Zadejte URL souboru .dwg nebo .dxf.',
+    urlPlaceholder: 'https://example.com/drawing.dwg',
+    cancel: 'Zrušit',
+    onedrive: 'OneDrive',
+    googledrive: 'Google Drive',
+    or: 'nebo',
+    dropFile: 'Přetáhněte soubor sem nebo',
+    browse: 'procházet',
+    dropOrBrowse: 'Přetáhněte soubor DWG nebo DXF sem, nebo procházejte',
+    newDrawing: 'Nový výkres',
+    source: 'Zdroj',
+    unavailable: 'Tento zdroj zatím není k dispozici.',
+    selectFile: 'Vybrat soubor',
+    signInRequired: 'Nejprve se přihlaste a pak vyberte soubor.',
+    downloading: 'Stahuji soubor ...'
   }
 }

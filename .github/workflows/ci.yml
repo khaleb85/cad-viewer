@@ -49,8 +49,35 @@ jobs:
         run: pnpm lint
 
       - name: Build projects
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          # SPA client ids / API keys are public at runtime; this repo stores them
+          # as Actions secrets. `vars.*` and `secrets.*` are different stores —
+          # using the wrong one injects an empty string, which Vite will not
+          # override from .env files. Do not export empty VITE_* for that reason.
+          MSAL_CLIENT_ID: ${{ secrets.VITE_MSAL_CLIENT_ID || vars.VITE_MSAL_CLIENT_ID }}
+          MSAL_TENANT_ID: ${{ secrets.VITE_MSAL_TENANT_ID || vars.VITE_MSAL_TENANT_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID || vars.VITE_GOOGLE_CLIENT_ID }}
+          GOOGLE_API_KEY: ${{ secrets.VITE_GOOGLE_API_KEY || vars.VITE_GOOGLE_API_KEY }}
+          GOOGLE_APP_ID: ${{ secrets.VITE_GOOGLE_APP_ID || vars.VITE_GOOGLE_APP_ID }}
         run: |
-          export NODE_OPTIONS="--max-old-space-size=4096"
+          if [ -n "${MSAL_CLIENT_ID:-}" ]; then
+            export VITE_MSAL_CLIENT_ID="$MSAL_CLIENT_ID"
+          fi
+          if [ -n "${MSAL_TENANT_ID:-}" ]; then
+            export VITE_MSAL_TENANT_ID="$MSAL_TENANT_ID"
+          fi
+          # Do not set VITE_MSAL_REDIRECT_URI here — production uses the current
+          # page URL (e.g. https://mlightcad.com/cad-viewer/cad-viewer/).
+          if [ -n "${GOOGLE_CLIENT_ID:-}" ]; then
+            export VITE_GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID"
+          fi
+          if [ -n "${GOOGLE_API_KEY:-}" ]; then
+            export VITE_GOOGLE_API_KEY="$GOOGLE_API_KEY"
+          fi
+          if [ -n "${GOOGLE_APP_ID:-}" ]; then
+            export VITE_GOOGLE_APP_ID="$GOOGLE_APP_ID"
+          fi
           pnpm run build
 
       - name: Run tests
@@ -158,7 +185,12 @@ jobs:
           if [ -f "$HOME/.npmrc" ]; then
             sed -i '/_authToken/d' "$HOME/.npmrc"
           fi
-          pnpm publish:viewer
+          # Preview tags (vX.Y.Z-preview.N) must not become npm "latest"
+          if [[ "${{ github.ref_name }}" == *-preview.* ]]; then
+            pnpm publish:viewer:preview
+          else
+            pnpm publish:viewer
+          fi
 
       - name: Create github release
         uses: softprops/action-gh-release@v3
@@ -166,6 +198,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-preview.') }}
 
   upload-pages:
     needs: build

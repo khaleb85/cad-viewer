@@ -82,6 +82,13 @@ export default {
       'Bir zip indirir; açıp barındırınca aşamalı yükleme yapılır. Parola ve süre yalnızca tek dosyalı HTML için geçerlidir',
     securitySingleOnlyHint:
       'Parola ve geçerlilik yalnızca tek dosyalı HTML dışa aktarımında kullanılabilir.',
+    packageSection: 'Paket parçaları',
+    chunkSizeMiB: 'Parça boyutu (MiB)',
+    chunkSizeMiBHint:
+      'Her geometri veya OSNAP parçasının sıkıştırılmamış üst boyutu. Küçük parçalar daha erken boyanır; büyük parçalar daha az indirme demektir',
+    compressChunks: 'Parçaları sıkıştır',
+    compressChunksHint:
+      'Zip öncesi her parçayı gzip ile sıkıştır. Kapatırsanız ham ACEC/ACEO yazılır',
     layersSection: 'Katmanlar',
     exportInvisibleLayers: 'Görünmez katmanları dışa aktar',
     exportInvisibleLayersHint:
@@ -159,6 +166,8 @@ export default {
     value: 'Değer',
     howToApply: 'Uygulama şekli',
     propObjectType: 'Nesne türü',
+    propHandle: 'Handle',
+    handleValuePlaceholder: 'Varlık handle değerini girin',
     propLayer: 'Katman',
     propColor: 'Renk',
     propLineType: 'Çizgi tipi',

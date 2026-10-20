@@ -33,9 +33,12 @@ export default {
     secondCorner: 'حدد الركن الثاني أو'
   },
   message: {
+    onLockedLayer: 'على طبقة مقفلة.',
     fetchingDrawingFile: 'جارٍ جلب ملف الرسم ...',
     exportingDxf: 'جارٍ تصدير DXF ...',
     exportingPdf: 'جارٍ تصدير PDF ...',
+    exportingSvg: 'جارٍ تصدير SVG ...',
+    calculatingSmartExtents: 'جارٍ حساب الملاءمة الذكية ...',
     importingPdf: 'جارٍ استيراد PDF ...',
     exportingEntityPreview: 'جارٍ تصدير الصورة ...',
     collectingMemoryProfile: 'جارٍ تحليل الذاكرة ...',
@@ -173,5 +176,30 @@ export default {
     snoozeToday: 'لا تذكرني اليوم',
     hideForever: 'لا تذكرني مرة أخرى',
     ok: 'فهمت'
+  },
+  dataSource: {
+    open: 'فتح',
+    local: 'ملف محلي',
+    url: 'من عنوان URL',
+    openFrom: 'فتح من {name}',
+    signInTo: 'تسجيل الدخول إلى {name}',
+    signOutOf: 'تسجيل الخروج من {name}',
+    signOutOfAccount: 'تسجيل الخروج من {name} ({account})',
+    urlDialogTitle: 'فتح من عنوان URL',
+    urlDialogHint: 'أدخل عنوان URL لملف .dwg أو .dxf.',
+    urlPlaceholder: 'https://example.com/drawing.dwg',
+    cancel: 'إلغاء',
+    onedrive: 'OneDrive',
+    googledrive: 'Google Drive',
+    or: 'أو',
+    dropFile: 'أسقط ملفًا هنا أو',
+    browse: 'تصفح',
+    dropOrBrowse: 'أسقط ملف DWG أو DXF هنا، أو تصفح',
+    newDrawing: 'رسم جديد',
+    source: 'المصدر',
+    unavailable: 'هذا المصدر غير متاح حاليًا.',
+    selectFile: 'اختيار ملف',
+    signInRequired: 'سجّل الدخول أولاً لاختيار ملف.',
+    downloading: 'جارٍ تنزيل الملف ...'
   }
 }

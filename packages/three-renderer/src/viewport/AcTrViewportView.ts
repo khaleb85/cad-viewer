@@ -7,6 +7,7 @@ import {
 import * as THREE from 'three'
 
 import { AcTrRenderer } from '../renderer/AcTrRenderer'
+import { applyAnnotationScalePass } from './AcTrAnnotationScale'
 import { AcTrBaseView } from './AcTrBaseView'
 import {
   type AcTrCssRect,
@@ -66,7 +67,14 @@ export class AcTrViewportView extends AcTrBaseView {
    *    `centerPoint` (paper WCS) coincides with its `viewCenter` (model DCS).
    *    The genuine template default is the `(0,0)-(12,9)` viewport with
    *    `centerPoint == viewCenter == (6,4.5)`.
-   * 2. Some LibreDWG parses leave the default's paper `centerPoint` at the
+   * 2. The user panned/zoomed paper space, so `centerPoint` and `viewCenter`
+   *    diverge and `viewHeight` may differ from paper `height`, but the view
+   *    still looks at paper coordinates (centers remain close relative to the
+   *    paper rectangle) at a paper-like scale with a zero `viewTarget`.
+   *    Without this check, the default is treated as a model viewport and
+   *    model-space annotations whose WCS happens to overlap the sheet render
+   *    huge on top of the layout (e.g. WJL-540-300-035.1.1 layout A3).
+   * 3. Some LibreDWG parses leave the default's paper `centerPoint` at the
    *    origin `(0,0)` while still storing a sheet-local `viewCenter` and a
    *    1:1 `viewHeight == height` with a zero `viewTarget`. That broken
    *    default must also be filtered: otherwise it draws a large empty
@@ -75,7 +83,7 @@ export class AcTrViewportView extends AcTrBaseView {
    *
    * Real user viewports pan/zoom the model (`viewCenter`/`viewTarget` away
    * from the paper rectangle, `viewHeight` unrelated to paper `height`), so
-   * they do not match either fingerprint.
+   * they do not match these fingerprints.
    *
    * @param viewport the viewport read from `AcDbViewport.toGiViewport()`
    *                 (or the database entity, which exposes the same
@@ -85,6 +93,7 @@ export class AcTrViewportView extends AcTrBaseView {
     number: number
     centerPoint: { x: number; y: number }
     viewCenter: { x: number; y: number }
+    width?: number
     height?: number
     viewHeight?: number
     viewTarget?: { x: number; y: number }
@@ -98,6 +107,11 @@ export class AcTrViewportView extends AcTrBaseView {
       Math.abs(viewport.centerPoint.x - viewport.viewCenter.x) < eps &&
       Math.abs(viewport.centerPoint.y - viewport.viewCenter.y) < eps
     if (looksAtItself) return true
+
+    // Panned/zoomed paper default (see fingerprint #2 above).
+    if (AcTrViewportView.isPannedPaperSpaceDefault(viewport, eps)) {
+      return true
+    }
 
     // Broken LibreDWG default: paper center collapsed to origin, but the
     // viewport still "looks at paper" (1:1 height, zero view target).
@@ -124,6 +138,65 @@ export class AcTrViewportView extends AcTrBaseView {
     const target = viewport.viewTarget
     if (!target) return true
     return Math.abs(target.x) < eps && Math.abs(target.y) < eps
+  }
+
+  /**
+   * Detects a paper-space default viewport whose view was panned or zoomed
+   * so `centerPoint` no longer equals `viewCenter` (and `viewHeight` may
+   * differ from paper `height`), while the view still looks at paper.
+   */
+  private static isPannedPaperSpaceDefault(
+    viewport: {
+      centerPoint: { x: number; y: number }
+      viewCenter: { x: number; y: number }
+      width?: number
+      height?: number
+      viewHeight?: number
+      viewTarget?: { x: number; y: number }
+    },
+    eps: number
+  ): boolean {
+    const width = viewport.width
+    const height = viewport.height
+    const viewHeight = viewport.viewHeight
+    if (
+      width == null ||
+      height == null ||
+      viewHeight == null ||
+      !Number.isFinite(width) ||
+      !Number.isFinite(height) ||
+      !Number.isFinite(viewHeight) ||
+      width <= eps ||
+      height <= eps ||
+      viewHeight <= eps
+    ) {
+      return false
+    }
+
+    // Paper defaults keep a zero (or omitted) viewTarget. A real model
+    // viewport that happens to pan near paper WCS usually aims via a
+    // non-zero target; requiring target≈0 avoids sweeping those in.
+    const target = viewport.viewTarget
+    if (
+      target &&
+      (Math.abs(target.x) >= eps || Math.abs(target.y) >= eps)
+    ) {
+      return false
+    }
+
+    const dx = Math.abs(viewport.centerPoint.x - viewport.viewCenter.x)
+    const dy = Math.abs(viewport.centerPoint.y - viewport.viewCenter.y)
+    // Centers still near the paper rectangle. Tighter than "anywhere inside
+    // the box" so a model viewport whose viewCenter merely lands on the
+    // sheet is not swept in; looser than 1e-6 so a mildly panned paper view
+    // still matches.
+    const rel = 0.25
+    if (dx >= width * rel || dy >= height * rel) return false
+
+    // Paper zoom stays near 1:1. Model viewports that fit large models into
+    // small paper boxes have viewHeight/height ≫ 1 (often 10–100+).
+    const scale = viewHeight / height
+    return scale >= 0.1 && scale <= 5
   }
 
   /**
@@ -239,6 +312,41 @@ export class AcTrViewportView extends AcTrBaseView {
   }
 
   /**
+   * Transforms a point from the model-space WCS visible through this
+   * viewport back into paper-space WCS. Inverse of {@link paperPointToModel}.
+   */
+  modelPointToPaper(modelPt: AcGePoint2dLike): AcGePoint2d {
+    const paperBox = this._viewport.box
+    const modelBox = this._viewport.viewBox
+    const paperW = paperBox.max.x - paperBox.min.x
+    const paperH = paperBox.max.y - paperBox.min.y
+    const modelW = modelBox.max.x - modelBox.min.x
+    const modelH = modelBox.max.y - modelBox.min.y
+    const paperCenterX = (paperBox.min.x + paperBox.max.x) / 2
+    const paperCenterY = (paperBox.min.y + paperBox.max.y) / 2
+    if (modelW <= 0 || modelH <= 0) {
+      return new AcGePoint2d(paperCenterX, paperCenterY)
+    }
+    const centerX = (modelBox.min.x + modelBox.max.x) / 2
+    const centerY = (modelBox.min.y + modelBox.max.y) / 2
+    let localX = modelPt.x - centerX
+    let localY = modelPt.y - centerY
+    const twist = this._viewport.viewTwistAngle
+    if (Number.isFinite(twist) && twist !== 0) {
+      const cos = Math.cos(-twist)
+      const sin = Math.sin(-twist)
+      const rotatedX = localX * cos - localY * sin
+      const rotatedY = localX * sin + localY * cos
+      localX = rotatedX
+      localY = rotatedY
+    }
+    return new AcGePoint2d(
+      paperCenterX + (localX / modelW) * paperW,
+      paperCenterY + (localY / modelH) * paperH
+    )
+  }
+
+  /**
    * Rotates this viewport's camera by {@link AcGiViewport.viewTwistAngle}
    * after {@link zoomTo}, which otherwise resets rotation to identity.
    */
@@ -327,7 +435,82 @@ export class AcTrViewportView extends AcTrBaseView {
     this._renderer.setViewport(gl.x, gl.y, gl.width, gl.height)
     this._renderer.setScissor(gl.x, gl.y, gl.width, gl.height)
     this._renderer.setScissorTest(true)
-    this._renderer.render(scene, this._camera)
-    this._renderer.setScissorTest(false)
+
+    try {
+      this.withFrozenLayersHidden(scene, () => {
+        this.withAnnotationScaleApplied(scene, () => {
+          this._renderer.render(scene, this._camera)
+        })
+      })
+    } finally {
+      this._renderer.setScissorTest(false)
+    }
+  }
+
+  /**
+   * Runs `draw` while annotative model-space drawables are rescaled (or hidden)
+   * for this viewport's annotation scale, then restores prior transforms.
+   */
+  withAnnotationScaleApplied(scene: THREE.Object3D, draw: () => void): void {
+    const factor = this._viewport.annotationScaleFactor
+    if (!(factor > 0)) {
+      draw()
+      return
+    }
+    const restore = applyAnnotationScalePass(scene, {
+      annotationScaleFactor: factor,
+      // AutoCAD ANNOALLVISIBLE initial value is 1 (show unsupported).
+      annoAllVisible:
+        this._renderer.context?.database?.annoallvisible !== false
+    })
+    try {
+      draw()
+    } finally {
+      restore()
+    }
+  }
+
+  /**
+   * Runs `draw` while model-space layers frozen in this viewport (VPLAYER /
+   * DXF group 331) stay hidden, then restores their previous visibility.
+   *
+   * The snap loupe uses this around its nested model pass so frozen layers
+   * stay hidden there as well. Restoration runs even when `draw` throws.
+   *
+   * @param scene - Model-space scene whose direct children are layer groups.
+   * @param draw - Render callback that must observe the frozen-layer state.
+   */
+  withFrozenLayersHidden(scene: THREE.Object3D, draw: () => void): void {
+    const restored = this.hideFrozenLayers(scene)
+    try {
+      draw()
+    } finally {
+      for (const [object, visible] of restored) {
+        object.visible = visible
+      }
+    }
+  }
+
+  /**
+   * Temporarily hides model-space layer groups listed in
+   * {@link AcGiViewport.frozenLayers}. Layer groups are expected to use the
+   * AutoCAD layer name as {@link THREE.Object3D.name}.
+   *
+   * @returns Entries whose `visible` flag was changed, for restoration.
+   */
+  private hideFrozenLayers(
+    scene: THREE.Object3D
+  ): Array<[THREE.Object3D, boolean]> {
+    const frozen = this._viewport.frozenLayers
+    if (!frozen || frozen.length === 0) return []
+
+    const frozenNames = new Set(frozen)
+    const restored: Array<[THREE.Object3D, boolean]> = []
+    for (const child of scene.children) {
+      if (!frozenNames.has(child.name) || !child.visible) continue
+      restored.push([child, child.visible])
+      child.visible = false
+    }
+    return restored
   }
 }

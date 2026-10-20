@@ -15,6 +15,7 @@ export * from './AcApProgress'
 export * from './openFileProgress'
 export * from './AcApSettingManager'
 export * from './AcApLayerSessionState'
+export * from './dataSource'
 export type {
   AcApOpenDatabaseOptions,
   AcApOpenSysVars

@@ -22,9 +22,11 @@ import {
   acapGetMeasurementCustomTextHeightWcs,
   acapGetMeasurementFontSize,
   acapGetMeasurementTextHeightMode,
+  AcApLayerService,
   AcApOpenCmd,
   AcApQNewCmd,
   acapRunDatabaseEdit,
+  acapRunDataSourceMenuAction,
   acapScreenPxToWcs,
   acapSetMeasurementDrawColor,
   acapSetMeasurementTextHeight,
@@ -83,6 +85,7 @@ import { store } from '../../app'
 import type { LayerStateSnapshot, LayerStateToggleKey } from '../../composable'
 import {
   LAYER_FILTER_ALL,
+  useDataSources,
   useDocument,
   useLayerFilters,
   useLayers,
@@ -115,6 +118,7 @@ import {
   editAttribute,
   ellipseArc,
   ellipseCenter,
+  find,
   hatch,
   layerCurrent,
   layerFreeze,
@@ -205,6 +209,7 @@ const features = useSettings()
 const ribbonContainerRef = ref<HTMLElement>()
 const { isDocumentOpening, openMode: docOpenMode } = useDocument()
 const { canUndo, canRedo } = useUndoRedo()
+const { menuItems: dataSourceMenuItems, isSingleLocalOpen } = useDataSources()
 const { t, locale } = useI18n()
 const isMarkupOverlayVisible = ref(true)
 const isMeasurementOverlayVisible = ref(true)
@@ -570,8 +575,12 @@ const applyToSelectedEntities = (mutator: (entity: AcDbEntity) => void) => {
   if (!db || !ids?.length) return
 
   ids.forEach(id => {
+    const existing = db.tables.blockTable.getEntityById(id)
+    if (existing && AcApLayerService.isEntityOnLockedLayer(db, existing)) {
+      return
+    }
     const entity = db.openEntityForWrite(id)
-    if (!entity) return
+    if (!entity || AcApLayerService.isEntityOnLockedLayer(db, entity)) return
     mutator(entity)
   })
 }
@@ -1191,6 +1200,7 @@ const buildBaseTabs = (
     properties: t('main.ribbon.tooltip.properties'),
     quickSelect: t('main.ribbon.tooltip.quickSelect'),
     countList: t('main.ribbon.tooltip.countList'),
+    find: t('main.ribbon.tooltip.find'),
     drawingUnits: t('main.ribbon.tooltip.drawingUnits'),
     attachDwg: t('main.ribbon.tooltip.attachDwg'),
     attachImage: t('main.ribbon.tooltip.attachImage'),
@@ -2342,6 +2352,18 @@ const buildBaseTabs = (
                   }
                 },
                 {
+                  id: 'cmd-find',
+                  type: 'button',
+                  label: t('main.ribbon.command.find'),
+                  tooltip: ribbonTooltips.find,
+                  size: 'large',
+                  props: {
+                    icon: find,
+                    labelWrapLines: 2,
+                    labelWrapWidth: 'max-content'
+                  }
+                },
+                {
                   id: 'cmd-countlist',
                   type: 'button',
                   label: t('main.ribbon.command.countList'),
@@ -2571,6 +2593,7 @@ const ribbonData = computed(() => {
   commandByItemId.set('cmd-layer', 'layer')
   commandByItemId.set('cmd-properties', 'properties')
   commandByItemId.set('cmd-qselect', 'qselect')
+  commandByItemId.set('cmd-find', 'find')
   commandByItemId.set('cmd-countlist', 'countlist')
   commandByItemId.set('cmd-drawing-units', 'units')
   commandByItemId.set('cmd-xattach', 'xattach')
@@ -2643,15 +2666,27 @@ watch(
 
 const fileMenuItems = computed<FileMenuItemModel[]>(() => {
   locale.value
+  dataSourceMenuItems.value
+  isSingleLocalOpen.value
+  const openItem: FileMenuItemModel = isSingleLocalOpen.value
+    ? {
+        id: 'Open',
+        label: t('main.mainMenu.open')
+      }
+    : {
+        id: 'Open',
+        label: t('main.mainMenu.open'),
+        children: dataSourceMenuItems.value.map(item => ({
+          id: `ds:${item.id}`,
+          label: item.label
+        }))
+      }
   const items: FileMenuItemModel[] = [
     {
       id: 'QNew',
       label: t('main.mainMenu.new')
     },
-    {
-      id: 'Open',
-      label: t('main.mainMenu.open')
-    },
+    openItem,
     {
       id: 'DrawingUnits',
       label: t('main.mainMenu.drawingUnits')
@@ -2776,6 +2811,12 @@ const handleFileMenuSelect = async (command: string) => {
   } else if (command === 'Open') {
     const cmd = new AcApOpenCmd()
     cmd.trigger(AcApDocManager.instance.context)
+  } else if (command.startsWith('ds:')) {
+    const itemId = command.slice(3)
+    const item = dataSourceMenuItems.value.find(i => i.id === itemId)
+    if (item) {
+      void acapRunDataSourceMenuAction(item)
+    }
   } else if (command === 'DrawingUnits') {
     AcApDocManager.instance.sendStringToExecute('units')
   } else if (command === 'About') {

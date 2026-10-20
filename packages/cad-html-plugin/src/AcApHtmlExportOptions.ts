@@ -1,16 +1,25 @@
-import type { AcTrView2d } from '@mlightcad/cad-simple-viewer'
-
-import type { AcApHtmlExpiryDays } from './AcExHtmlAccess'
+import type { AcApHtmlExpiryDays } from '@mlightcad/cad-html-core'
 import type {
   AcExInitialViewMode,
   AcExViewerMode,
   AcExViewState
-} from './AcExSnapshotTypes'
+} from '@mlightcad/cad-html-core'
+import { ACEX_DEFAULT_CHUNK_MAX_BYTES } from '@mlightcad/cad-html-core'
+import type { AcTrView2d } from '@mlightcad/cad-simple-viewer'
 
-export type { AcApHtmlExpiryDays } from './AcExHtmlAccess'
+export type { AcApHtmlExpiryDays } from '@mlightcad/cad-html-core'
 
 /** Matches the offline HTML viewer orthographic half-height in world units. */
 const HTML_VIEWER_CAMERA_FRUSTUM = 400
+
+/** Default max geometry chunk size for multi-file packages (10 MiB). */
+export const ACEX_DEFAULT_CHUNK_SIZE_MIB = 10
+
+/** Minimum allowed geometry chunk size in mebibytes for multi-file export. */
+export const ACEX_MIN_CHUNK_SIZE_MIB = 1
+
+/** Maximum allowed geometry chunk size in mebibytes for multi-file export. */
+export const ACEX_MAX_CHUNK_SIZE_MIB = 64
 
 /**
  * HTML export packaging mode.
@@ -28,6 +37,7 @@ export interface AcApHtmlExportOptions {
   /**
    * Packaging mode. Defaults to `'single'`.
    * Password and expiry apply only to `'single'`.
+   * Chunk size and compression apply only to `'multi'`.
    */
   exportFormat?: AcApHtmlExportFormat
   /**
@@ -69,6 +79,48 @@ export interface AcApHtmlExportOptions {
    * Ignored when {@link AcApHtmlExportOptions.exportFormat} is `'multi'`.
    */
   password?: string
+  /**
+   * Max uncompressed bytes per geometry (ACEC) or OSNAP (ACEO) chunk for
+   * multi-file packages. Defaults to {@link ACEX_DEFAULT_CHUNK_SIZE_MIB} (10 MiB).
+   * Ignored when {@link AcApHtmlExportOptions.exportFormat} is `'single'`.
+   */
+  maxChunkBytes?: number
+  /**
+   * When `true` (default), multi-file package chunks are gzip-compressed
+   * (`.acex.gz` / `.osnap.gz`). When `false`, raw ACEC/ACEO bytes are written.
+   * Ignored when {@link AcApHtmlExportOptions.exportFormat} is `'single'`.
+   */
+  compressChunks?: boolean
+}
+
+/**
+ * Converts a mebibyte chunk-size setting to uncompressed byte budget.
+ */
+export function acexChunkSizeMiBToBytes(miB: number): number {
+  return Math.floor(miB) * 1024 * 1024
+}
+
+/**
+ * Converts an uncompressed byte budget to a mebibyte setting for prompts/UI.
+ */
+export function acexChunkSizeBytesToMiB(bytes: number): number {
+  return Math.max(
+    ACEX_MIN_CHUNK_SIZE_MIB,
+    Math.round(bytes / (1024 * 1024))
+  )
+}
+
+/**
+ * Clamps a multi-file geometry chunk size to the supported mebibyte range.
+ */
+export function clampAcApHtmlChunkSizeMiB(miB: number): number {
+  if (!Number.isFinite(miB)) {
+    return ACEX_DEFAULT_CHUNK_SIZE_MIB
+  }
+  return Math.min(
+    ACEX_MAX_CHUNK_SIZE_MIB,
+    Math.max(ACEX_MIN_CHUNK_SIZE_MIB, Math.floor(miB))
+  )
 }
 
 /**
@@ -85,6 +137,16 @@ export function resolveAcApHtmlExportOptions(
 } {
   const exportFormat: AcApHtmlExportFormat =
     options.exportFormat === 'multi' ? 'multi' : 'single'
+  const maxChunkBytes =
+    exportFormat === 'multi'
+      ? acexChunkSizeMiBToBytes(
+          clampAcApHtmlChunkSizeMiB(
+            options.maxChunkBytes != null
+              ? acexChunkSizeBytesToMiB(options.maxChunkBytes)
+              : ACEX_DEFAULT_CHUNK_SIZE_MIB
+          )
+        )
+      : ACEX_DEFAULT_CHUNK_MAX_BYTES
   return {
     exportFormat,
     exportInvisibleLayers: options.exportInvisibleLayers !== false,
@@ -93,9 +155,38 @@ export function resolveAcApHtmlExportOptions(
     viewerMode: options.viewerMode ?? 'measure',
     expiryDays: exportFormat === 'multi' ? 'never' : (options.expiryDays ?? 'never'),
     expiresAt: exportFormat === 'multi' ? null : (options.expiresAt ?? null),
-    password: exportFormat === 'multi' ? '' : (options.password?.trim() ?? '')
+    password: exportFormat === 'multi' ? '' : (options.password?.trim() ?? ''),
+    maxChunkBytes,
+    compressChunks:
+      exportFormat === 'multi' ? options.compressChunks !== false : true
   }
 }
+
+/**
+ * Package-builder knobs derived from resolved multi-file export options.
+ */
+export function resolveAcApHtmlPackageBuildOptions(
+  options: Pick<AcApHtmlExportOptions, 'maxChunkBytes' | 'compressChunks'>
+): {
+  maxChunkBytes: number
+  maxBatchBytes: number
+  maxOsnapChunkBytes: number
+  compressChunks: boolean
+} {
+  const maxChunkBytes =
+    options.maxChunkBytes ?? acexChunkSizeMiBToBytes(ACEX_DEFAULT_CHUNK_SIZE_MIB)
+  const compressChunks = options.compressChunks !== false
+  return {
+    maxChunkBytes,
+    // Keep batch pieces and OSNAP catalogs in sync with the chunk budget so
+    // oversized layers / measure catalogs split at the same threshold users
+    // configure for package chunks.
+    maxBatchBytes: maxChunkBytes,
+    maxOsnapChunkBytes: maxChunkBytes,
+    compressChunks
+  }
+}
+
 /**
  * Captures the active 2D view as camera state understood by the offline viewer.
  */

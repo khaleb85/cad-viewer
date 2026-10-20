@@ -17,8 +17,9 @@ export interface AcTrStyleManagerOptions {
   viewportScaleUniform: number
 
   /**
-   * WebGL has a limited capability for FragmentUniforms. Thus, cannot have as many
-   * clippingPlanes as expected.
+   * Legacy fragment-uniform budget. Hatch patterns no longer consume this
+   * (pattern lines are sampled from a DataTexture; see #743). Retained so
+   * existing callers that set the option keep compiling.
    */
   maxFragmentUniforms: number
 
@@ -34,6 +35,20 @@ export interface AcTrStyleManagerOptions {
    * - `false`: force basic line materials with 1px width
    */
   showLineWeight: boolean
+
+  /**
+   * Whether the active GPU/driver cannot render the custom line-pattern
+   * shader on native `gl.LINES`.
+   *
+   * Set automatically by `AcTrLinePatternShaderProbe` during renderer
+   * initialization. When `true`, patterned (dashed/dot-dash) lines are
+   * rendered via `LineMaterial` on `LineSegments2` (triangle-quad meshes)
+   * instead of the custom shader on native lines, because some drivers
+   * (e.g. integrated AMD Radeon via ANGLE/Direct3D 11) produce zero
+   * fragments for that combination. On healthy GPUs this stays `false`
+   * and the original high-fidelity linetype shader is used.
+   */
+  linePatternShaderBroken: boolean
 
   /**
    * Current canvas background colour, as a 24-bit RGB number.

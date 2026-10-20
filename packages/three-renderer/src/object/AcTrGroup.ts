@@ -190,6 +190,29 @@ export class AcTrGroup extends AcTrEntity {
   }
 
   /**
+   * Block-local child boxes shared by every INSERT of this template, plus the
+   * matrix that maps them into WCS.
+   *
+   * Does not copy the box list. Returns null once boxes have been materialized
+   * for this instance (for example after an attribute was appended).
+   *
+   * @returns Shared boxes and a cloned INSERT matrix, or null when this
+   *   instance already owns a private box list.
+   */
+  peekLazyChildBoxes(): {
+    boxes: readonly AcTrEntityBox[]
+    matrix: THREE.Matrix4
+  } | null {
+    if (!this._wcsChildBoxesTemplate || this._wcsChildBoxes.length > 0) {
+      return null
+    }
+    const matrix = this._wcsChildBoxesPendingMatrix
+      ? this._wcsChildBoxesPendingMatrix.clone()
+      : new THREE.Matrix4()
+    return { boxes: this._wcsChildBoxesTemplate, matrix }
+  }
+
+  /**
    * Merges same-material drawable leaves so block-template clones copy far
    * fewer geometries.
    *
@@ -425,10 +448,34 @@ export class AcTrGroup extends AcTrEntity {
    * children can wait for fonts without using the sync fallback path.
    */
   override async asyncDraw(): Promise<void> {
-    const sourceEntities = new Set(this.getSourceEntities())
+    await this.asyncDrawPendingGlyphs()
+    this.refreshWcsChildBoxesFromChildren()
+  }
+
+  /**
+   * Draws empty glyph shells on this group.
+   *
+   * @param options.chunkSize - Glyphs started per micro-batch (default 24).
+   * @param options.yieldBudgetMs - Wall time between cooperative yields.
+   *   Defaults to 32 when {@link AcTrRenderContext.yieldDuringAsyncDraw} is
+   *   set, and to no yield for headless export.
+   */
+  private async asyncDrawPendingGlyphs(
+    options: { chunkSize?: number; yieldBudgetMs?: number } = {}
+  ): Promise<void> {
+    const chunkSize = options.chunkSize ?? 24
+    const yieldBudgetMs =
+      options.yieldBudgetMs ??
+      (this.renderContext.yieldDuringAsyncDraw ? 32 : Number.POSITIVE_INFINITY)
+    const sourceEntities = this.getSourceEntities()
     const tasks: Array<() => Promise<void>> = []
     const shared = new Map<string, AcTrGlyphEntity[]>()
+    const seen = new Set<AcTrEntity>()
     const enqueue = (child: AcTrEntity) => {
+      if (seen.has(child)) {
+        return
+      }
+      seen.add(child)
       if (child.hasDrawableGeometry()) {
         return
       }
@@ -438,25 +485,21 @@ export class AcTrGroup extends AcTrEntity {
       tasks.push(() => child.asyncDraw())
     }
 
-    sourceEntities.forEach(enqueue)
-    this.traverse(child => {
-      if (child === this) {
-        return
-      }
-      if (!(child instanceof AcTrEntity)) {
-        return
-      }
-      if (sourceEntities.has(child)) {
-        return
-      }
-      enqueue(child)
-    })
+    for (const entity of sourceEntities) {
+      enqueue(entity)
+    }
+    // Only walk AcTrEntity containers — never dive into flattened mesh/line
+    // leaves (a mega-block may have 100k+ of those).
+    this.enqueuePendingGlyphEntitiesFromTree(this, enqueue)
+
     for (const group of shared.values()) {
       tasks.push(() => asyncDrawSharedGlyphGroup(group))
     }
+    if (tasks.length === 0) {
+      return
+    }
     // Start glyph draws in small batches and return to the event loop so a
     // block with tens of thousands of texts cannot allocate them all at once.
-    const chunkSize = 24
     let budgetStart = performance.now()
     for (let i = 0; i < tasks.length; i += chunkSize) {
       const end = Math.min(i + chunkSize, tasks.length)
@@ -465,12 +508,40 @@ export class AcTrGroup extends AcTrEntity {
         pending.push(tasks[j]())
       }
       await Promise.all(pending)
-      if (end < tasks.length && performance.now() - budgetStart >= 32) {
+      if (end < tasks.length && performance.now() - budgetStart >= yieldBudgetMs) {
         await new Promise<void>(resolve => setTimeout(resolve, 0))
         budgetStart = performance.now()
       }
     }
-    this.refreshWcsChildBoxesFromChildren()
+  }
+
+  /**
+   * Collects nested {@link AcTrEntity} glyph hosts under `root` without
+   * walking drawable mesh/line leaves.
+   */
+  private enqueuePendingGlyphEntitiesFromTree(
+    root: THREE.Object3D,
+    enqueue: (entity: AcTrEntity) => void
+  ): void {
+    const children = root.children
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i]
+      if (child instanceof AcTrGlyphEntity) {
+        enqueue(child)
+        continue
+      }
+      if (child instanceof AcTrGroup) {
+        for (const entity of child.getSourceEntities()) {
+          enqueue(entity)
+        }
+        this.enqueuePendingGlyphEntitiesFromTree(child, enqueue)
+        continue
+      }
+      if (child instanceof AcTrEntity) {
+        enqueue(child)
+        this.enqueuePendingGlyphEntitiesFromTree(child, enqueue)
+      }
+    }
   }
 
   /**
@@ -597,10 +668,9 @@ export class AcTrGroup extends AcTrEntity {
    *
    * When the source {@link isCompacted}, leaf {@link THREE.BufferGeometry}
    * buffers are shared by default so INSERT cache hits avoid deep copies.
-   * Uncompacted templates with 2+ drawable children are compacted on the
-   * first {@link fastDeepClone} so dense symbol blocks share buffers instead
-   * of deep-cloning (which OOMed large drawings). Single-child templates
-   * still deep-clone until an explicit {@link compactForInstancing}.
+   * Uncompacted templates are sealed or compacted on the first
+   * {@link fastDeepClone} so every later INSERT aliases those buffers instead
+   * of deep-cloning them (which OOMed drawings with many block references).
    *
    * Materials are reused. When compacted, detached source-entity shells are
    * not cloned. Callers must treat compacted templates as immutable: batching
@@ -612,16 +682,15 @@ export class AcTrGroup extends AcTrEntity {
    * @returns Independent group instance suitable for one INSERT.
    */
   fastDeepClone(shareGeometry: boolean = this._compacted) {
-    // Dense drawings (many small reused symbols) never reached data-model's
-    // MIN_CHILDREN_TO_COMPACT=8, so every cache hit deep-cloned buffers and
-    // OOMed. Compact the template before the first clone when there are enough
-    // leaves — no prior INSERT has shared aliases yet.
-    if (
-      !this._compacted &&
-      shareGeometry === false &&
-      this.childCount >= 2
-    ) {
-      this.compactForInstancing()
+    // Data-model only compacts templates with 8+ direct children, and a
+    // coalesced symbol often has a single mesh. Seal or compact before the
+    // first clone so every INSERT shares the template buffers.
+    if (!this._compacted && this.childCount >= 1) {
+      if (this.childCount >= 2) {
+        this.compactForInstancing()
+      } else {
+        this.sealForSharedClone()
+      }
       shareGeometry = true
     }
     const cloned = new AcTrGroup([], this.renderContext)

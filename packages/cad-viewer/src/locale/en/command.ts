@@ -17,6 +17,10 @@ export default {
     properties: {
       description: 'Entity properties palette'
     },
+    find: {
+      description:
+        'Opens the Find palette to search text, multiline text, attributes and text in blocks, dimensions, leaders and tables across layouts'
+    },
     countlist: {
       description:
         'Opens the Count palette to display and manage counted blocks'

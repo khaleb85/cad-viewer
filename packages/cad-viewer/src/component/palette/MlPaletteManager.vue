@@ -24,13 +24,22 @@
           v-else-if="store.dialogs.activePaletteTab === 'entityProperties'"
           class="ml-entity-properties-wrapper"
         >
-          <ml-entity-properties :entity-props-list="properties" />
+          <ml-entity-properties
+            :entity-props-list="properties"
+            :entity-locked="propertyEntityLocked"
+          />
         </div>
         <div
           v-else-if="store.dialogs.activePaletteTab === 'countList'"
           class="ml-count-list-wrapper"
         >
           <ml-count-list />
+        </div>
+        <div
+          v-else-if="store.dialogs.activePaletteTab === 'find'"
+          class="ml-find-palette-wrapper"
+        >
+          <ml-find-palette />
         </div>
         <div
           v-else-if="store.dialogs.activePaletteTab === 'designReview'"
@@ -77,13 +86,25 @@
         >
           <agent-chat-panel embedded />
         </div>
+        <div
+          v-else-if="
+            store.features.scriptPlugin &&
+            store.dialogs.activePaletteTab === 'cadScript'
+          "
+          class="ml-agent-palette-wrapper"
+        >
+          <ml-cad-script-panel />
+        </div>
       </ml-overflow-tabs>
     </ml-tool-palette>
   </el-config-provider>
 </template>
 
 <script setup lang="ts">
-import { AcApDocManager } from '@mlightcad/cad-simple-viewer'
+import {
+  AcApDocManager,
+  AcApLayerService
+} from '@mlightcad/cad-simple-viewer'
 import { AcDbEntityProperties } from '@mlightcad/data-model'
 import {
   type MlOverflowTab,
@@ -92,25 +113,31 @@ import {
 } from '@mlightcad/ui-components'
 import { ElConfigProvider } from 'element-plus'
 import { computed, defineAsyncComponent, nextTick, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { store } from '../../app'
 import { useSelectionSet, useViewerRect } from '../../composable'
 import { toolPaletteTabName, toolPaletteTitle } from '../../locale'
 import MlBlocksPalette from './MlBlocksPalette.vue'
+import MlCadScriptPanel from './MlCadScriptPanel.vue'
 import MlCountList from './MlCountList.vue'
 import MlDesignReviewPalette from './MlDesignReviewPalette.vue'
 import MlEntityProperties from './MlEntityProperties.vue'
+import MlFindPalette from './MlFindPalette.vue'
 import MlLayerList from './MlLayerList.vue'
 import MlMeasurementPalette from './MlMeasurementPalette.vue'
 import MlMemoryProfile from './MlMemoryProfile.vue'
 import MlMissingResources from './MlMissingResources.vue'
 import MlOpenFileProfile from './MlOpenFileProfile.vue'
 
-const AgentChatPanel = defineAsyncComponent(() =>
+const loadAgentPlugin = () =>
   Promise.all([
     import('@mlightcad/cad-agent-plugin/style.css'),
     import('@mlightcad/cad-agent-plugin')
-  ]).then(([, module]) => module.AgentChatPanel)
+  ]).then(([, module]) => module)
+
+const AgentChatPanel = defineAsyncComponent(() =>
+  loadAgentPlugin().then(module => module.AgentChatPanel)
 )
 
 /**
@@ -124,6 +151,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const { t } = useI18n()
 const containerRect = useViewerRect()
 
 const DEFAULT_WIDTH = 520
@@ -212,6 +240,7 @@ const baseTabNames = [
   'layerManager',
   'entityProperties',
   'countList',
+  'find',
   'designReview',
   'measurements',
   'blocks',
@@ -227,6 +256,9 @@ const tabNames = computed((): readonly string[] => {
   if (store.features.agentPlugin) {
     names.push('agent')
   }
+  if (store.features.scriptPlugin) {
+    names.push('cadScript')
+  }
   return names
 })
 
@@ -234,12 +266,18 @@ const tabs = computed<MlOverflowTab[]>(() => {
   return tabNames.value.map(name => {
     return {
       name,
-      label: toolPaletteTabName(name)
+      label:
+        name === 'cadScript'
+          ? t('main.toolPalette.script.scriptTab')
+          : toolPaletteTabName(name)
     }
   })
 })
 
 const activeTabTitle = computed(() => {
+  if (store.dialogs.activePaletteTab === 'cadScript') {
+    return t('main.toolPalette.script.scriptTitle')
+  }
   return toolPaletteTitle(store.dialogs.activePaletteTab)
 })
 
@@ -263,15 +301,23 @@ watch(
 )
 
 const { selectionSet } = useSelectionSet()
-const properties = computed(() => {
+const propertyRows = computed(() => {
   const list: AcDbEntityProperties[] = []
-  const db = AcApDocManager.instance.curDocument.database
-  selectionSet.value.forEach(id => {
-    const entity = db.tables.blockTable.modelSpace.getIdAt(id)
-    if (entity) list.push(entity.properties)
-  })
-  return list
+  const locked: boolean[] = []
+  const db = AcApDocManager.instance.curDocument?.database
+  if (!db) return { list, locked }
+  const blockTable = db.tables.blockTable
+  for (const id of selectionSet.value) {
+    // Use getEntityById which works for entities in any layout (model space or paper space)
+    const entity = blockTable.getEntityById(id)
+    if (!entity) continue
+    list.push(entity.properties)
+    locked.push(AcApLayerService.isEntityOnLockedLayer(db, entity))
+  }
+  return { list, locked }
 })
+const properties = computed(() => propertyRows.value.list)
+const propertyEntityLocked = computed(() => propertyRows.value.locked)
 </script>
 
 <style scoped>
@@ -305,6 +351,15 @@ const properties = computed(() => {
 }
 
 .ml-count-list-wrapper {
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ml-find-palette-wrapper {
   overflow: hidden;
   width: 100%;
   height: 100%;

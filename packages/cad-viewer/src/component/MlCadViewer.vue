@@ -108,6 +108,11 @@ import {
   unregisterCadViewerNotificationCenter
 } from '../app'
 import {
+  isFindShortcut,
+  isFindShortcutInViewer,
+  openFindPalette
+} from '../command/AcApFindCmd'
+import {
   ensureColorThemeSync,
   isDark,
   provideViewerRect,
@@ -192,11 +197,12 @@ interface Props {
   /**
    * Whether opening a drawing is progressive.
    *
-   * Controls both stages: mid-open paints during entity convert, and whether
-   * the open overlay waits for deferred text geometry. When `false` (default),
-   * the canvas waits until entities and deferred text geometry are idle.
-   * When `true`, geometry paints as it converts and the overlay hides when
-   * entity convert finishes. Deprecated `waitForTextGeometry` is ignored.
+   * Controls both stages: mid-open paints during entity convert, and overlay
+   * policy. When `false` (default), the overlay stays until entities and
+   * deferred text geometry are idle. When `true`, the overlay locks the UI
+   * until parse/conversion finish, then hides so pan/zoom work while scene
+   * convert continues (status bar clears at CONVERSION end). Deprecated
+   * `waitForTextGeometry` is ignored.
    */
   progressiveRendering?: boolean
   /**
@@ -473,8 +479,23 @@ watch(
   }
 )
 
+/**
+ * Ctrl/Cmd+F opens the Find palette. The browser's own page search cannot
+ * find text drawn on the canvas, so it is only left alone while the user is
+ * typing in a field outside the viewer or editing MText.
+ */
+const onFindShortcut = (e: KeyboardEvent) => {
+  if (!isFindShortcut(e) || e.defaultPrevented) return
+  if (AcEdMTextEditor.getActiveInputBox()) return
+  if (!isFindShortcutInViewer(e.target, layoutRef.value)) return
+  e.preventDefault()
+  e.stopPropagation()
+  openFindPalette()
+}
+
 // Component lifecycle: Initialize and load initial file if URL or localFile is provided
 onMounted(async () => {
+  window.addEventListener('keydown', onFindShortcut, true)
   beginPendingOpen(props.mode)
 
   if (props.url || props.localFile) {
@@ -529,6 +550,8 @@ onMounted(async () => {
 onUnmounted(() => {
   // Notify consumers first
   emit('destroy')
+
+  window.removeEventListener('keydown', onFindShortcut, true)
 
   AcEdMTextEditor.setDefaultToolbarEnabled(true)
   headerResizeObserver?.disconnect()

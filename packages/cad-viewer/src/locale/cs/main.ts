@@ -295,6 +295,7 @@ export default {
       properties: 'Otevře paletu Vlastnosti pro aktuální výběr.',
       quickSelect:
         'Otevře Rychlý výběr pro filtrování a výběr objektů podle kritérií.',
+      find: 'Otevře paletu Hledat pro hledání textu v celém výkresu nebo v aktuálním layoutu.',
       countList: 'Otevře paletu Počet pro zobrazení a správu počtu bloků.',
       missingResources:
         'Otevře paletu Chybějící / externí zdroje pro fonty, obrázky a externí reference.',
@@ -405,6 +406,7 @@ export default {
       redo: 'Znovu',
       properties: 'Vlastnosti',
       quickSelect: 'Rychlý\nvýběr',
+      find: 'Hledat',
       countList: 'Počet',
       drawingUnits: 'Jednotky\nvýkresu',
       attachDwg: 'Připojit\nDWG',
@@ -584,7 +586,7 @@ export default {
       description: 'Zvětší na maximální rozsah všech objektů'
     },
     zoomSmartExtents: {
-      text: 'Chytrý rozsah',
+      text: 'Chytrý',
       description:
         'Zvětší na dominantní geometrický shluk a ignoruje vzdálené odlehlé objekty'
     },
@@ -722,6 +724,34 @@ export default {
         newLayerPlaceholder: 'Název hladiny',
         zoomToLayer: 'Přiblíženo na zvolenou hladinu „{layer}“',
         lineWeightDefault: 'Výchozí'
+      }
+    },
+    find: {
+      tab: 'Hledat',
+      title: 'Hledat',
+      placeholder: 'Hledat text',
+      input: 'Hledaný text',
+      find: 'Hledat',
+      matchCase: 'Rozlišovat velikost písmen',
+      currentLayoutOnly: 'Pouze aktuální layout',
+      hint: 'Stiskněte Enter pro hledání textu, víceřádkového textu, atributů a textu v blocích, kótách, odkazech a tabulkách v celém výkresu (všechny layouty).',
+      hintLayout:
+        'Stiskněte Enter pro hledání textu, víceřádkového textu, atributů a textu v blocích, kótách, odkazech a tabulkách v aktuálním layoutu.',
+      noResults: 'Nebyl nalezen žádný text',
+      count: 'Nalezeno: {count}',
+      countLayouts: 'Nalezeno: {count} (layouty: {layouts})',
+      countTruncated: 'Zobrazeno prvních {count} výsledků – upřesněte hledání',
+      noDocument: 'Pro hledání otevřete výkres',
+      layoutUnavailable: 'Layout „{layout}“ se nepodařilo otevřít',
+      unnamedLayout: '(nepojmenovaný layout)',
+      kind: {
+        text: 'Text',
+        mtext: 'Mtext',
+        attribute: 'Atribut',
+        block: 'Text bloku',
+        dimension: 'Kóta',
+        leader: 'Odkaz',
+        table: 'Tabulka'
       }
     },
     countList: {

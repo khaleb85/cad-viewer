@@ -6,14 +6,16 @@
  */
 export const cs: Record<string, string> = {
   'toolbar.select': 'Výběr',
+  'toolbar.open': 'Otevřít',
   'toolbar.pan': 'Posun',
   'toolbar.zoom': 'Zoom',
   'toolbar.zoomExtent': 'Rozsah',
-  'toolbar.zoomSmartExtents': 'Chytrý rozsah',
+  'toolbar.zoomSmartExtents': 'Chytrý',
   'toolbar.zoomWindow': 'Okno',
   'toolbar.zoomSaved': 'Uložený',
   'toolbar.zoomOriginal': 'Uložený',
   'toolbar.layer': 'Správce hladin',
+  'toolbar.find': 'Hledat',
   'toolbar.layerShort': 'Hladiny',
   'toolbar.layout': 'Rozvržení',
   'toolbar.settings': 'Nastavení',
@@ -94,6 +96,7 @@ export const cs: Record<string, string> = {
   'dockPanel.moreTabs': 'Další karty',
   'dockPanel.tab.layers': 'Hladiny',
   'dockPanel.tab.review': 'Kontrola',
+  'dockPanel.tab.find': 'Hledat',
   'dockPanel.tab.measurements': 'Měření',
   'dockPanel.resize': 'Změnit velikost panelu',
   'reviewPalette.searchPlaceholder': 'Hledat poznámky',
@@ -133,5 +136,29 @@ export const cs: Record<string, string> = {
   'measurePalette.typeValues.angle': 'Úhel',
   'measurePalette.typeValues.area': 'Plocha',
   'measurePalette.typeValues.arc': 'Oblouk',
-  'measurePalette.typeValues.point': 'XY'
+  'measurePalette.typeValues.point': 'XY',
+  'findPalette.placeholder': 'Hledat text',
+  'findPalette.input': 'Hledaný text',
+  'findPalette.find': 'Hledat',
+  'findPalette.matchCase': 'Rozlišovat velikost písmen',
+  'findPalette.currentLayoutOnly': 'Pouze aktuální layout',
+  'findPalette.hint':
+    'Stiskněte Enter pro hledání textu, víceřádkového textu, atributů a textu v blocích, kótách, odkazech a tabulkách v celém výkresu (všechny layouty).',
+  'findPalette.hintLayout':
+    'Stiskněte Enter pro hledání textu, víceřádkového textu, atributů a textu v blocích, kótách, odkazech a tabulkách v aktuálním layoutu.',
+  'findPalette.noResults': 'Nebyl nalezen žádný text',
+  'findPalette.count': 'Nalezeno: {count}',
+  'findPalette.countLayouts': 'Nalezeno: {count} (layouty: {layouts})',
+  'findPalette.countTruncated':
+    'Zobrazeno prvních {count} výsledků – upřesněte hledání',
+  'findPalette.noDocument': 'Pro hledání otevřete výkres',
+  'findPalette.layoutUnavailable': 'Layout „{layout}“ se nepodařilo otevřít',
+  'findPalette.kind.text': 'Text',
+  'findPalette.kind.mtext': 'Mtext',
+  'findPalette.kind.attribute': 'Atribut',
+  'findPalette.kind.block': 'Text bloku',
+  'findPalette.kind.dimension': 'Kóta',
+  'findPalette.kind.leader': 'Odkaz',
+  'findPalette.kind.table': 'Tabulka',
+  'findPalette.unnamedLayout': '(nepojmenovaný layout)'
 }

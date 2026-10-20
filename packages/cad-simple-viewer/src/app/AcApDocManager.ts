@@ -124,10 +124,16 @@ import {
 } from './AcApWebworkerReadiness'
 import { AcApXrefManager } from './AcApXrefManager'
 import {
+  AcApDataSourceManager,
+  AcApLocalDataSource,
+  AcApUrlDataSource
+} from './dataSource'
+import {
   acapDisposeNotificationService,
   acapInstallNotificationService,
   type AcUiNotificationBellPlacement
 } from './notification'
+import { syncCurrentSpaceFromTileMode } from './syncCurrentSpaceFromTileMode'
 
 const DEFAULT_BASE_URL = 'https://cdn.jsdelivr.net/gh/mlightcad/cad-data'
 /** Default ISO drawing template loaded by {@link AcApDocManager.newDocument}. */
@@ -469,6 +475,8 @@ export class AcApDocManager {
   private _commandManager: AcEdCommandStack
   /** Plugin manager */
   private _pluginManager: AcApPluginManager
+  /** Data source manager (local, URL, cloud plugins) */
+  private _dataSourceManager: AcApDataSourceManager
   /**
    * Alias overrides provided by caller options.
    *
@@ -494,6 +502,13 @@ export class AcApDocManager {
   private _workersReadyCheckPromise?: Promise<boolean>
   /** Monotonically increasing counter used to generate overlay ids */
   private _nextOverlayId = 1
+  /**
+   * In-flight / completed preset (default+symbol) font load started at open.
+   * Reused across opens so IndexedDB/mesh parse is not repeated.
+   */
+  private _presetFontsForOpenPromise: Promise<void> | null = null
+  /** Names last requested by {@link ensurePresetFontsForOpen} (OPENPROF). */
+  private _lastPresetFontsForOpen: string[] = []
 
   /** Events fired during document lifecycle */
   public readonly events = {
@@ -601,17 +616,18 @@ export class AcApDocManager {
       this.context,
       this._commandManager
     )
+    this._dataSourceManager = new AcApDataSourceManager()
+    this._dataSourceManager.register(new AcApLocalDataSource())
+    this._dataSourceManager.register(new AcApUrlDataSource())
     const busyHost = options.busyIndicatorHost ?? view.container
     this._busyIndicatorHost = busyHost
     this._openFileProgress = new AcApOpenFileProgressController(busyHost)
     this._openFileProgress.setSceneBusyGate(() => {
       const view = this.openProgressView
-      // Progressive open hides when entity convert finishes so pan/zoom work
-      // while glyphs catch up. Default open keeps "Rendering drawing ..."
-      // until deferred glyph jobs finish as well.
-      return view.progressiveRendering
-        ? view.isConvertingEntities
-        : view.isProcessingEntities
+      // Progressive open hides at CONVERSION END (see-through path) and does
+      // not use this gate. Default open keeps "Rendering drawing ..." until
+      // entity convert and deferred glyph jobs both finish.
+      return view.isProcessingEntities
     })
     this._openFileProgress.setOnHidden(() => this.onOpenProgressHidden())
     this._busyIndicator = new AcApBusyIndicator(busyHost)
@@ -716,6 +732,11 @@ export class AcApDocManager {
    * Destroy the view and unload all plugins
    */
   async destroy() {
+    // Abort progressive convert before plugins/documents go away so in-flight
+    // entity commits do not read a torn-down singleton.
+    this._mainView.abortConversion()
+    this._splitView?.abortConversion()
+
     await this._pluginManager.unloadAllPlugins()
     for (const session of [...this._sessions]) {
       session.context.dispose()
@@ -895,12 +916,14 @@ export class AcApDocManager {
     acdbHostApplicationServices().workingDatabase = doc.database
     this._pluginManager.setContext(session.context)
     this.curView.bindDrawDatabase(doc.database)
+    // Bind the view to the session's currentSpaceId before documentActivated
+    // so layout tabs snapshot the correct active layout.
+    this.setActiveLayout()
+    this.curView.syncDisplaySysVars(doc.database)
     this.events.documentActivated.dispatch({
       doc,
       mode: doc.openMode
     })
-    this.setActiveLayout()
-    this.curView.syncDisplaySysVars(doc.database)
     if (!this._openingSession) {
       this.syncProgressOverlayHost()
     }
@@ -1080,6 +1103,15 @@ export class AcApDocManager {
   }
 
   /**
+   * Gets data source manager for opening drawings from local, URL, or cloud.
+   *
+   * @returns The data source manager
+   */
+  get dataSourceManager() {
+    return this._dataSourceManager
+  }
+
+  /**
    * Color / font-size session accessory for measurement and markup drawing.
    */
   get drawStyleSessionAccessory() {
@@ -1231,6 +1263,76 @@ export class AcApDocManager {
     } else {
       await this._fontLoader.load(fonts)
     }
+  }
+
+  /**
+   * Starts loading the active default/symbol preset chain
+   * ({@link FontManager.getFontsToLoad}) so it overlaps DWG/DXF parse.
+   *
+   * Preset faces are drawing-independent. Callers must not await this from
+   * the open hot path — linework convert continues; glyph finalize awaits
+   * {@link awaitPresetFontsReady} instead.
+   *
+   * - Worker mode: {@link AcTrMTextRenderer.loadFonts} with `scope: 'all'` so
+   *   every isolate has fallbacks before glyph bake (no main-thread dual parse).
+   * - Main mode: {@link FontManager.requestFonts} (full await, including mesh).
+   *
+   * The promise is reused for the process lifetime. A 30s deadline matches
+   * {@link installFontFileLoadTimeout} so a stalled CDN cannot pin the open
+   * overlay; on timeout glyph draw still falls back to `'?'`.
+   */
+  ensurePresetFontsForOpen(): Promise<void> {
+    if (this._presetFontsForOpenPromise) {
+      return this._presetFontsForOpenPromise
+    }
+    const names = [...FontManager.instance.getFontsToLoad()]
+    this._lastPresetFontsForOpen = names
+    if (names.length === 0) {
+      this._presetFontsForOpenPromise = Promise.resolve()
+      return this._presetFontsForOpenPromise
+    }
+    const mtextRenderer = AcTrMTextRenderer.getInstance()
+    const parseSite =
+      mtextRenderer.getRenderMode() === 'worker' ? 'worker' : 'main'
+    // Keep in sync with installFontFileLoadTimeout / text-style preload race.
+    const timeoutMs = 30_000
+    const load =
+      parseSite === 'worker'
+        ? mtextRenderer.loadFonts(names, { scope: 'all' }).then(() => undefined)
+        : FontManager.instance.requestFonts(names).then(() => undefined)
+    this._presetFontsForOpenPromise = new Promise<void>(resolve => {
+      const timer = setTimeout(() => {
+        // Glyph draw still falls back via FontManager defaults / '?'.
+        resolve()
+      }, timeoutMs)
+      load.then(
+        () => {
+          clearTimeout(timer)
+          resolve()
+        },
+        () => {
+          clearTimeout(timer)
+          resolve()
+        }
+      )
+    })
+    return this._presetFontsForOpenPromise
+  }
+
+  /**
+   * Waits until {@link ensurePresetFontsForOpen} has finished (starting it if
+   * open never kicked it off). Used by deferred glyph finalize.
+   */
+  async awaitPresetFontsReady(): Promise<void> {
+    await this.ensurePresetFontsForOpen()
+  }
+
+  /**
+   * Preset face names from the last {@link ensurePresetFontsForOpen} call.
+   * Empty until the first open starts preset preload.
+   */
+  get lastPresetFontsForOpen(): readonly string[] {
+    return this._lastPresetFontsForOpen
   }
 
   /**
@@ -1642,7 +1744,7 @@ export class AcApDocManager {
    * including when MTEXT geometry itself is drawn in workers. A stalled CDN
    * therefore keeps `_pendingGeometryJobs` nonzero and the open overlay up.
    *
-   * Worker isolates also load fonts, but {@link AcTrView2d.startTextStyleFontPreload}
+   * Worker isolates also load fonts, but {@link AcApDocManager.ensurePresetFontsForOpen}
    * races that path with the same deadline; in-worker render requests still
    * fall back to WebWorkerRenderer's request timeout.
    */
@@ -2133,6 +2235,11 @@ export class AcApDocManager {
    *
    * Sets up the active layout block table record ID and model space block table
    * record ID based on the current document's space configuration.
+   *
+   * Does **not** re-apply `$TILEMODE`: layout tab switches update
+   * `currentSpaceId` without flipping `tilemode`, so syncing here would yank
+   * the user back to paper when reactivating a session left on Model.
+   * Open-time sync lives in {@link onAfterOpenDocument}.
    */
   setActiveLayout(view?: AcTrView2d, database?: AcDbDatabase) {
     const currentView = view ?? (this.curView as AcTrView2d)
@@ -2177,6 +2284,19 @@ export class AcApDocManager {
     this._openFileProgress.setSeeThroughOverlay(
       options?.progressiveRendering ?? false
     )
+    // Headless HTML export: convert off layers once, skip pick indexes, and
+    // optionally skip cooperative yields that only matter for an interactive UI.
+    this.openProgressView.convertInvisibleLayers =
+      options?.convertInvisibleLayers === true
+    this.openProgressView.cooperativeYield = options?.cooperativeYield !== false
+    const openCadScene = this.openProgressView.cadScene
+    if (openCadScene) {
+      openCadScene.skipSpatialIndex = options?.skipSpatialIndex === true
+    }
+    // Preset fonts are drawing-independent — start immediately so download /
+    // mesh parse overlaps db.read. Glyph finalize awaits the promise; linework
+    // convert does not.
+    void this.ensurePresetFontsForOpen()
     // OPENPROF: start stage timings before db.read / entity flush.
     this._openFileProfiler.begin(this.context.doc.database)
   }
@@ -2209,13 +2329,18 @@ export class AcApDocManager {
       const view = session.context.view as AcTrView2d
       session.doc.destroy()
       const doc = session.doc
+      const db = doc.database
+      // Header parsing stores `$TILEMODE` but leaves currentSpaceId on model.
+      // Sync once at open (not in setActiveLayout) so later Model-tab visits
+      // survive session reactivation. Do this before documentActivated so
+      // layout tabs snapshot the correct active layout.
+      syncCurrentSpaceFromTileMode(db)
+      this.setActiveLayout(view, db)
+      view.syncDisplaySysVars(db)
       this.events.documentActivated.dispatch({
         doc,
         mode: this.getDocumentEventMode(options)
       })
-      this.setActiveLayout(view, doc.database)
-      view.syncDisplaySysVars(doc.database)
-      const db = doc.database
 
       // View framing at document open time (see `openViewMode`):
       //
@@ -2307,6 +2432,25 @@ export class AcApDocManager {
       // its completion callback instead of here (pre-fit camera is wrong).
       if (framedSynchronously) {
         AcApZoomCmd.rememberOriginalView(view, db.currentSpaceId)
+      }
+      // Headless multi-layout export: convert paper tabs the open stream did
+      // not already claim. `ensureEntitiesConvertedForExport` waits for the
+      // open drain first, so this must not be a second full pass over
+      // in-flight model-space entities (that pass is serial and duplicates
+      // geometry). Fire-and-forget: onAfterOpenDocument is sync;
+      // waitUntilIdle / CLI waitForSceneIdle observe the work this starts.
+      if (options?.convertAllLayouts) {
+        void view
+          .ensureEntitiesConvertedForExport({
+            includeInvisibleLayers: options.convertInvisibleLayers !== false,
+            includeLayouts: true
+          })
+          .catch(error => {
+            log.error(
+              '[AcApDocManager] convertAllLayouts export convert failed',
+              error
+            )
+          })
       }
       // OPENPROF: db.read is done; wait for batchConvert to drain, then print.
       this._openFileProfiler.markReadCompleteAndScheduleReport(view)

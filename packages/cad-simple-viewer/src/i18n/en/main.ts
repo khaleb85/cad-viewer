@@ -33,9 +33,12 @@ export default {
     secondCorner: 'Specify the second corner or'
   },
   message: {
+    onLockedLayer: 'on a locked layer.',
     fetchingDrawingFile: 'Fetching file ...',
     exportingDxf: 'Exporting DXF ...',
     exportingPdf: 'Exporting PDF ...',
+    exportingSvg: 'Exporting SVG ...',
+    calculatingSmartExtents: 'Calculating smart extents ...',
     importingPdf: 'Importing PDF ...',
     exportingEntityPreview: 'Exporting image ...',
     collectingMemoryProfile: 'Analyzing memory ...',
@@ -175,5 +178,30 @@ export default {
     snoozeToday: 'Don\'t remind me today',
     hideForever: 'Don\'t remind me again',
     ok: 'Got it'
+  },
+  dataSource: {
+    open: 'Open',
+    local: 'Local file',
+    url: 'From URL',
+    openFrom: 'Open from {name}',
+    signInTo: 'Sign in to {name}',
+    signOutOf: 'Sign out of {name}',
+    signOutOfAccount: 'Sign out of {name} ({account})',
+    urlDialogTitle: 'Open from URL',
+    urlDialogHint: 'Enter a URL to a .dwg or .dxf file.',
+    urlPlaceholder: 'https://example.com/drawing.dwg',
+    cancel: 'Cancel',
+    onedrive: 'OneDrive',
+    googledrive: 'Google Drive',
+    or: 'or',
+    dropFile: 'Drop a file here or',
+    browse: 'browse',
+    dropOrBrowse: 'Drop a DWG or DXF file here, or browse',
+    newDrawing: 'New Drawing',
+    source: 'Source',
+    unavailable: 'This source is not available yet.',
+    selectFile: 'Select file',
+    signInRequired: 'Sign in first to select a file.',
+    downloading: 'Downloading file ...'
   }
 }

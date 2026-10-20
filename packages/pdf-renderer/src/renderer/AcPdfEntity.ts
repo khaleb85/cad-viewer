@@ -35,6 +35,20 @@ export interface AcPdfPaintContext {
    * they use this matrix alone — not the entity's own transform.
    */
   drawingRebase?: AcGeMatrix3d
+  /**
+   * Layer names frozen in the current paper-space viewport (VPLAYER). When
+   * set, nodes whose effective layer is in this set are skipped for this
+   * paint pass only — shared model-space trees are not mutated.
+   */
+  frozenLayers?: ReadonlySet<string>
+  /**
+   * Annotation scale factor for the active paper-space viewport. When set,
+   * annotative drawables carrying `userData.annotationScale` are rescaled
+   * (or skipped when unsupported and {@link annoAllVisible} is false).
+   */
+  annotationScaleFactor?: number
+  /** When false, hide annotative objects that do not support the scale. */
+  annoAllVisible?: boolean
 }
 
 /**
@@ -199,6 +213,20 @@ export class AcPdfEntity implements AcGiEntity {
     }
     const isInsert = !!this._insertName || this._entityType === 'INSERT'
     const layer = effectivePdfLayer(this._layerName, ctx.insertLayer)
+    // VPLAYER: skip this node (and INSERT children) when its effective layer
+    // is frozen in the active paper viewport. Checking at the INSERT node
+    // also hides cross-layer block fragments, matching AutoCAD.
+    if (ctx.frozenLayers?.has(layer)) {
+      return
+    }
+    const annotationAdjust = resolveAnnotationScaleAdjust(
+      this._userData,
+      ctx.annotationScaleFactor,
+      ctx.annoAllVisible
+    )
+    if (annotationAdjust === 'hide') {
+      return
+    }
     const ocgName = ctx.ocg?.ensure(layer).resourceName
     if (ocgName) {
       writer.beginOcg(ocgName)
@@ -219,8 +247,17 @@ export class AcPdfEntity implements AcGiEntity {
       writer.beginActualText(text)
     }
 
-    const localToDrawing = this._matrix
-      ? composeCtm(ctx.localToDrawing, this._matrix)
+    let entityMatrix = this._matrix
+    if (typeof annotationAdjust === 'number' && annotationAdjust !== 1) {
+      const scale = new AcGeMatrix3d().makeScale(
+        annotationAdjust,
+        annotationAdjust,
+        1
+      )
+      entityMatrix = entityMatrix ? entityMatrix.clone().multiply(scale) : scale
+    }
+    const localToDrawing = entityMatrix
+      ? composeCtm(ctx.localToDrawing, entityMatrix)
       : ctx.localToDrawing
 
     // Form reuse is disabled: Form XObjects + page CTM conjugation proved
@@ -276,6 +313,20 @@ export class AcPdfEntity implements AcGiEntity {
       this._matrix = matrix.clone().multiply(this._matrix)
     }
     this.transformBoxesRecursive(matrix)
+  }
+
+  /**
+   * Maps this node's local geometry box through its own CTM into parent space.
+   *
+   * Used when text glyphs are filled asynchronously after the INSERT's inverse
+   * (or a pre-applied position translation) is already on `_matrix`. Fresh
+   * local boxes must be rebased once so framing matches paint.
+   */
+  rebaseLocalBoxThroughMatrix() {
+    if (!this._matrix || this._box.isEmpty()) {
+      return
+    }
+    AcPdfMatrixUtil.transformBox(this._box, this._matrix)
   }
 
   private transformBoxesRecursive(matrix: AcGeMatrix3d) {
@@ -523,6 +574,40 @@ function composeCtm(
   local: AcGeMatrix3d
 ): AcGeMatrix3d {
   return parent ? parent.clone().multiply(local) : local.clone()
+}
+
+/**
+ * Resolves how an annotative drawable should adjust for the viewport's
+ * annotation scale. Returns `'hide'`, a positive scale ratio, or `undefined`
+ * when no adjustment applies.
+ */
+function resolveAnnotationScaleAdjust(
+  userData: object,
+  annotationScaleFactor: number | undefined,
+  annoAllVisible: boolean | undefined
+): 'hide' | number | undefined {
+  if (!(annotationScaleFactor != null && annotationScaleFactor > 0)) {
+    return undefined
+  }
+  const info = (userData as {
+    annotationScale?: {
+      drawnScaleFactor?: number
+      supportedScaleFactors?: number[]
+    }
+  }).annotationScale
+  if (!info || !(info.drawnScaleFactor != null && info.drawnScaleFactor > 0)) {
+    return undefined
+  }
+  const supported = Array.isArray(info.supportedScaleFactors)
+    ? info.supportedScaleFactors
+    : []
+  const matches = supported.some(
+    factor => Math.abs(factor - annotationScaleFactor) < 1e-9
+  )
+  if (!matches) {
+    return annoAllVisible === false ? 'hide' : undefined
+  }
+  return annotationScaleFactor / info.drawnScaleFactor
 }
 
 /**

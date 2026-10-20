@@ -5,6 +5,8 @@
 [![npm downloads](https://img.shields.io/npm/dy/@mlightcad/cad-simple-viewer.svg?label=cad-simple-viewer)](https://www.npmjs.com/package/@mlightcad/cad-simple-viewer)
 [![npm downloads](https://img.shields.io/npm/dy/@mlightcad/cad-viewer.svg?label=cad-viewer)](https://www.npmjs.com/package/@mlightcad/cad-viewer)
 
+<a href="https://trendshift.io/repositories/16129?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-16129" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/16129/daily?language=TypeScript" alt="mlightcad%2Fcad-viewer | Trendshift" width="250" height="55"/></a>
+
 cad-viewer es `el primer visor y editor web de DXF/DWG del mundo que funciona completamente en el navegador, sin depender de ningún servicio backend`.
 Al realizar el análisis de DWG/DXF, el procesamiento geométrico y el renderizado directamente en el navegador, cad-viewer permite una visualización y edición CAD verdaderamente sin servidor, ideal para aplicaciones en la nube, uso sin conexión y flujos de trabajo sensibles a la privacidad.
 
@@ -17,6 +19,7 @@ También ofrece algo que rara vez encontrará en otros visores CAD: **exportaci�
 - X (Twitter): [@mlightcad](https://x.com/mlightcad)
 - YouTube: [@mlightcad](https://www.youtube.com/@mlightcad)
 - Medium: [@mlightcad](https://medium.com/@mlightcad)
+- DEV.to: [@mlightcad](https://dev.to/mlightcad)
 - Juejin(稀土掘金): [@mlightcad](https://juejin.cn/column/7501992214283501579)
 
 ### Aplicaciones creadas con cad-viewer
@@ -431,7 +434,7 @@ Leyenda:
 
 ### Plataformas objetivo
 
-* [ ] ⏳ Integración con Google Drive
+* [x] Integración con Google Drive (origen de datos Picker; Drive “Open with” como seguimiento opcional)
 * [ ] Visor de Mini Program de WeChat
 * [x] Soporte de navegador móvil (diseño responsive y gestos táctiles)
 

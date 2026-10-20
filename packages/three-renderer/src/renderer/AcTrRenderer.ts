@@ -34,7 +34,11 @@ import {
   AcTrPolygon,
   AcTrShape
 } from '../object'
-import { buildOffsetRingDirectGeometry } from '../object/AcTrLineGeometryBuilder'
+import {
+  buildOffsetRingCenterline,
+  buildOffsetRingDirectGeometry
+} from '../object/AcTrLineGeometryBuilder'
+import { AcTrLinePatternShaderProbe } from '../style/AcTrLinePatternShaderProbe'
 import { AcTrMaterialManager } from '../style/AcTrMaterialManager'
 import { AcTrSubEntityTraitsUtil } from '../util'
 import { AcTrCamera } from '../viewport/AcTrCamera'
@@ -142,8 +146,10 @@ export type AcTrDirectCapturePayload =
     }
   | {
       /**
-       * Closed wide polyline captured from {@link AcTrRenderer.offsetRing}.
-       * `outer[i]` and `inner[i]` are the two offsets of one centerline sample.
+       * Closed wide polyline payload shape retained for direct-batch rebuild.
+       * {@link AcTrRenderer.offsetRing} no longer captures this kind — fill +
+       * centerline stroke cannot share one payload — but batch rebuild still
+       * accepts it. `outer[i]` / `inner[i]` are the two offsets of one sample.
        */
       kind: 'offsetRing'
       outer: AcGePoint3dLike[]
@@ -211,11 +217,36 @@ export class AcTrRenderer implements AcGiRenderer<AcTrEntity> {
     fontLoaded: new AcCmEventManager<AcTrFontNotFoundEventArgs>()
   }
 
-  constructor(renderer: THREE.WebGLRenderer) {
+  /**
+   * Options for {@link AcTrRenderer} construction beyond a live WebGL backend.
+   */
+  static readonly DEFAULT_EXPORT_VIEWPORT = { width: 1920, height: 1080 }
+
+  constructor(
+    renderer: THREE.WebGLRenderer,
+    options?: {
+      /**
+       * Skip {@link AcTrLinePatternShaderProbe} (requires a real GPU).
+       * Used by {@link createForExport}.
+       */
+      skipShaderProbe?: boolean
+      /**
+       * When `skipShaderProbe` is true, seed
+       * {@link AcTrStyleManagerOptions.linePatternShaderBroken}.
+       * Defaults to `false` (shader path available) so export matches a
+       * probe-passing browser GPU.
+       */
+      linePatternShaderBroken?: boolean
+    }
+  ) {
     this._renderer = renderer
     this._context = new AcTrRenderContext()
     const size = renderer.getSize(new THREE.Vector2())
     this._context.styleManager.updateLineResolution(size.x, size.y)
+    this._context.styleManager.options.linePatternShaderBroken =
+      options?.skipShaderProbe === true
+        ? (options.linePatternShaderBroken ?? false)
+        : !AcTrLinePatternShaderProbe.test(renderer)
     AcTrMTextRenderer.getInstance().overrideStyleManager(
       this._context.styleManager
     )
@@ -226,6 +257,28 @@ export class AcTrRenderer implements AcGiRenderer<AcTrEntity> {
       this.events.fontLoaded.dispatch(args)
     })
     this._subEntityTraits = AcTrSubEntityTraitsUtil.createDefaultTraits()
+  }
+
+  /**
+   * Builds a renderer that can run `worldDraw` / direct-batch capture without
+   * a browser, canvas, or WebGL context.
+   *
+   * Geometry construction never calls `render` / viewport APIs. Line-pattern
+   * materials use the shader path (`linePatternShaderBroken = false`) so
+   * exported pattern metadata matches a healthy browser GPU.
+   */
+  static createForExport(options?: {
+    width?: number
+    height?: number
+  }): AcTrRenderer {
+    const width =
+      options?.width ?? AcTrRenderer.DEFAULT_EXPORT_VIEWPORT.width
+    const height =
+      options?.height ?? AcTrRenderer.DEFAULT_EXPORT_VIEWPORT.height
+    return new AcTrRenderer(createExportWebGlStub(width, height), {
+      skipShaderProbe: true,
+      linePatternShaderBroken: false
+    })
   }
 
   /**
@@ -539,12 +592,14 @@ export class AcTrRenderer implements AcGiRenderer<AcTrEntity> {
   /**
    * Restores or clears session-scoped missed fonts (main + MText workers).
    * Fire-and-forget worker sync so document switches stay synchronous.
+   * Swallow worker rejections (e.g. "Renderer terminated" when destroy()
+   * runs before the sync settles) so they do not become unhandled.
    */
   replaceMissedFonts(fonts: Record<string, number>): void {
     FontManager.instance.replaceMissedFonts(fonts)
-    void AcTrMTextRenderer.getInstance().replaceMissedFonts(
-      FontManager.instance.missedFonts
-    )
+    void AcTrMTextRenderer.getInstance()
+      .replaceMissedFonts(FontManager.instance.missedFonts)
+      .catch(() => {})
   }
 
   /** Clears session-scoped missed fonts for the active document. */
@@ -753,12 +808,17 @@ export class AcTrRenderer implements AcGiRenderer<AcTrEntity> {
 
   /**
    * @inheritdoc
+   *
+   * Draws the filled offset ring and a centerline stroke. The fill carries
+   * true world-space width; the stroke stays ≥ ~1 device pixel so title-block
+   * frames (small `constantWidth` × large INSERT scale) do not vanish at
+   * fit-zoom.
    */
   offsetRing(outer: AcGePoint3dLike[], inner: AcGePoint3dLike[]) {
     if (this._directCapture !== 'off') {
-      if (this.tryCaptureDirectPayload({ kind: 'offsetRing', outer, inner })) {
-        return this.createDirectCapturePlaceholder()
-      }
+      // Fill + centerline cannot share one direct payload; fall back so the
+      // hairline visibility stroke is not dropped.
+      this.missDirectCapture()
       return this.createDirectCapturePlaceholder()
     }
     const built = buildOffsetRingDirectGeometry(
@@ -767,11 +827,21 @@ export class AcTrRenderer implements AcGiRenderer<AcTrEntity> {
       this._subEntityTraits,
       this._context
     )
-    if (!built) {
-      // Strip triangulation rejects collapsed or non-aligned loops. Rebuild
-      // the same two boundaries as an area so the fill is not dropped.
-      return this.area(this.offsetRingArea(outer, inner))
+    const fill = built
+      ? this.createOffsetRingFillEntity(built)
+      : // Strip triangulation rejects collapsed or non-aligned loops. Rebuild
+        // the same two boundaries as an area so the fill is not dropped.
+        this.area(this.offsetRingArea(outer, inner))
+    const centerline = buildOffsetRingCenterline(outer, inner)
+    if (!centerline) {
+      return fill
     }
+    return this.group([fill, this.linePoints(centerline)])
+  }
+
+  private createOffsetRingFillEntity(
+    built: NonNullable<ReturnType<typeof buildOffsetRingDirectGeometry>>
+  ): AcTrEntity {
     const entity = new AcTrEntity(this._context)
     const mesh = new THREE.Mesh(built.geometry, built.material)
     mesh.position.copy(built.worldOffset)
@@ -941,6 +1011,42 @@ export class AcTrRenderer implements AcGiRenderer<AcTrEntity> {
     // DxfLoader.CameraZoomUniform.value = (zoom * this.container.height) / 50;
     AcTrMaterialManager.CameraZoomUniform.value = zoom
   }
+}
+
+/**
+ * Minimal WebGLRenderer stand-in for headless geometry conversion.
+ * Only {@link THREE.WebGLRenderer.getSize} is used during export construction.
+ */
+function createExportWebGlStub(
+  width: number,
+  height: number
+): THREE.WebGLRenderer {
+  const stub = {
+    autoClear: true,
+    domElement: undefined as unknown as HTMLCanvasElement,
+    getSize(target: THREE.Vector2) {
+      return target.set(width, height)
+    },
+    setSize() {},
+    getViewport(target: THREE.Vector4) {
+      return target.set(0, 0, width, height)
+    },
+    setViewport() {},
+    setScissor() {},
+    setScissorTest() {},
+    clear() {},
+    clearDepth() {},
+    render() {},
+    setClearColor() {},
+    getClearColor(color: THREE.Color) {
+      return color
+    },
+    setClearAlpha() {},
+    getClearAlpha() {
+      return 1
+    }
+  }
+  return stub as unknown as THREE.WebGLRenderer
 }
 
 installBlockLineCoalescePatch()

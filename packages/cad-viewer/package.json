@@ -1,6 +1,6 @@
 {
   "name": "@mlightcad/cad-viewer",
-  "version": "1.7.3",
+  "version": "1.7.6",
   "license": "MIT",
   "type": "module",
   "repository": {
@@ -43,13 +43,17 @@
     "lint:fix": "eslint --fix --quiet src/"
   },
   "devDependencies": {
+    "@mlightcad/cad-agent-core": "workspace:*",
     "@mlightcad/cad-agent-plugin": "workspace:*",
+    "@mlightcad/cad-script-plugin": "workspace:*",
     "@mlightcad/cad-html-plugin": "workspace:*",
+    "@mlightcad/cad-onedrive-plugin": "workspace:*",
+    "@mlightcad/cad-google-drive-plugin": "workspace:*",
     "@mlightcad/cad-pdf-plugin": "workspace:*",
     "@mlightcad/pdf-renderer": "workspace:*",
     "@mlightcad/cad-svg-plugin": "workspace:*",
     "@mlightcad/cad-simple-viewer": "workspace:*",
-    "@mlightcad/data-model": "^1.15.1",
+    "@mlightcad/data-model": "^1.15.12",
     "@mlightcad/ribbon": "^0.1.13",
     "@mlightcad/three-renderer": "workspace:*",
     "@mlightcad/three-viewcube": "0.0.9",
@@ -57,10 +61,12 @@
     "@element-plus/icons-vue": "^2.3.1",
     "@vueuse/core": "^11.1.0",
     "@vitejs/plugin-vue": "^6.0.8",
+    "@vue/language-core": "^3.1.5",
     "element-plus": "^2.12.0",
     "lodash-es": "4.17.21",
     "sass": "^1.95.1",
-    "three": "^0.172.0",
+    "three": "^0.186.1",
+    "vite": "^6.4.3",
     "vite-plugin-dts": "^5.0.3",
     "vite-plugin-lib-inject-css": "^2.2.2",
     "vite-svg-loader": "^5.1.1",
@@ -70,26 +76,42 @@
     "vue-tsc": "^2.1.6"
   },
   "peerDependencies": {
+    "@mlightcad/cad-agent-core": "workspace:*",
     "@mlightcad/cad-agent-plugin": "workspace:*",
+    "@mlightcad/cad-script-plugin": "workspace:*",
     "@mlightcad/cad-html-plugin": "workspace:*",
+    "@mlightcad/cad-onedrive-plugin": "workspace:*",
+    "@mlightcad/cad-google-drive-plugin": "workspace:*",
     "@mlightcad/cad-pdf-plugin": "workspace:*",
     "@mlightcad/pdf-renderer": "workspace:*",
     "@mlightcad/cad-svg-plugin": "workspace:*",
     "@mlightcad/cad-simple-viewer": "workspace:*",
-    "@mlightcad/data-model": "^1.15.1",
+    "@mlightcad/data-model": "^1.15.12",
     "@mlightcad/three-renderer": "workspace:*",
     "@vueuse/core": "^11.1.0",
     "element-plus": "^2.12.0",
     "lodash-es": "4.17.21",
-    "three": "^0.172.0",
+    "three": "^0.186.1",
     "vue": "^3.4.21",
     "vue-i18n": "^11.4.4"
   },
   "peerDependenciesMeta": {
+    "@mlightcad/cad-agent-core": {
+      "optional": true
+    },
     "@mlightcad/cad-agent-plugin": {
       "optional": true
     },
+    "@mlightcad/cad-script-plugin": {
+      "optional": true
+    },
     "@mlightcad/cad-html-plugin": {
+      "optional": true
+    },
+    "@mlightcad/cad-onedrive-plugin": {
+      "optional": true
+    },
+    "@mlightcad/cad-google-drive-plugin": {
       "optional": true
     },
     "@mlightcad/cad-pdf-plugin": {

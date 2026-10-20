@@ -87,10 +87,10 @@ export interface AcApOpenDatabaseOptions extends Omit<
    *   stays up until deferred text / INSERT glyph jobs finish
    *   ({@link AcTrView2d.isProcessingEntities}).
    * - `true`: entity conversion yields across event-loop turns so geometry
-   *   paints as batches land and the camera can reframe. The overlay hides
-   *   once entity convert finishes ({@link AcTrView2d.isConvertingEntities}).
-   *   Deferred text / INSERT glyph geometry may still finalize afterward, and
-   *   pan/zoom are already enabled.
+   *   paints as batches land and the camera can reframe. The canvas overlay
+   *   blocks the UI until FETCH_FILE + CONVERSION finish, then hides so
+   *   pan/zoom work while scene convert continues. The status bar tracks
+   *   parse/conversion progress and clears at CONVERSION `END`.
    *
    * Export / CLI completeness is not controlled by this flag. Callers that
    * need fully drawable text (HTML/PDF/PNG, headless scripts) still wait via
@@ -127,4 +127,37 @@ export interface AcApOpenDatabaseOptions extends Omit<
    * `PAPERBKCOLOR` accept {@link AcCmColor}; see {@link AcApOpenSysVars}.
    */
   sysVars?: AcApOpenSysVars
+
+  /**
+   * When `true`, convert entities on off/frozen layers during open so offline
+   * HTML/PDF export does not need a second convert pass for those entities.
+   * Interactive viewing leaves this `false` (default) and converts them later
+   * when a layer is turned on or {@link AcTrView2d.ensureEntitiesConvertedForExport}
+   * runs.
+   */
+  convertInvisibleLayers?: boolean
+
+  /**
+   * When `true`, register and convert every paper-space layout during /
+   * immediately after open so export does not wait for the user to visit each
+   * tab. Default `false`.
+   */
+  convertAllLayouts?: boolean
+
+  /**
+   * When `true`, skip building the hierarchical spatial index while converting
+   * entities. Headless HTML/JPEG export only needs scene batch geometry and
+   * layout boxes; the spatial index is for interactive pick / smart extents.
+   * Default `false`.
+   */
+  skipSpatialIndex?: boolean
+
+  /**
+   * When `false`, disable cooperative `setTimeout` yields during entity
+   * convert and skip non-progressive mid-open WebGL paints. Headless
+   * Chromium scripts do not need a responsive UI; yields and full-scene
+   * paints inflate open wall time. Default `true` for interactive viewers
+   * so "Rendering drawing ..." can still refresh the canvas (throttled).
+   */
+  cooperativeYield?: boolean
 }

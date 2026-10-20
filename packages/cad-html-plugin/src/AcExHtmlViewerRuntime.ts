@@ -1,3 +1,59 @@
+import type { AcExPackageManifest } from '@mlightcad/cad-html-core'
+import type {
+  AcExExtents,
+  AcExLayoutSnapshot,
+  AcExLineBatch,
+  AcExMeshBatch,
+  AcExSnapshot,
+  AcExViewerMode
+} from '@mlightcad/cad-html-core'
+import { decodeChunkPayload } from '@mlightcad/cad-html-core'
+import { acexSetDocsBaseUrl } from '@mlightcad/cad-html-core'
+import {
+  createAcExHtmlAccessKey,
+  decryptAcExHtmlSnapshotPayload,
+  isAcExHtmlAccessExpired,
+  parseAcExHtmlAccessManifest
+} from '@mlightcad/cad-html-core'
+import { parseAcExHtmlBinaryEncoding } from '@mlightcad/cad-html-core'
+import {
+  createAcExDomEmbeddedPackageFetch,
+  decryptAcExEmbeddedManifest,
+  parseAcExEmbeddedPackageConfig
+} from '@mlightcad/cad-html-core'
+import { AcExHtmlI18n, detectAcExHtmlLocale } from '@mlightcad/cad-html-core'
+import { AcExHtmlIcons } from '@mlightcad/cad-html-core'
+import {
+  ACEX_PACKAGE_DIRECTORY_ORIGIN,
+  acexGlobalFetch,
+  chooseInitialManifestHref,
+  probePackageManifest,
+  resolveViewerManifestUrl
+} from '@mlightcad/cad-html-core'
+import {
+  type AcExBatchExtentEntry,
+  collectLayoutBatchExtentEntries,
+  computeIntelligentExtentsFromBatchEntries,
+  computeLayerExtentsMap,
+  resolveLayoutViewExtents} from '@mlightcad/cad-html-core'
+import {
+  ACEX_GEOMETRY_CHUNK_FETCH_CONCURRENCY,
+  createAcExOrderedBytePrefetcher,
+  loadAcExPackageLayoutOsnap,
+  resolveChunkUrl,
+  snapshotSkeletonFromManifest
+} from '@mlightcad/cad-html-core'
+import {
+  AcExCameraZoomUniform,
+  createViewerLineMaterial,
+  createViewerMeshMaterial,
+  createViewerPointsMaterial
+} from '@mlightcad/cad-html-core'
+import {
+  decodeSnapshotFromCompressedBytes,
+  snapshotPayloadToCompressedBytes
+} from '@mlightcad/cad-html-core'
+import { ACEX_MAX_COMPRESSED_BYTES } from '@mlightcad/cad-html-core'
 import { accmYieldForPaint, FLOAT_TOL } from '@mlightcad/data-model'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
@@ -5,19 +61,11 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js'
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js'
 
-import { decodeChunkGzip } from './AcExChunkBinaryCodec'
 import {
   AcExCommandSessionPanel,
   type AcExCommandSessionUiState
 } from './AcExCommandSessionPanel'
 import { acexCssTopLeftRectToGl, acexWcsBoxToCssRect } from './AcExCssRect'
-import { acexSetDocsBaseUrl } from './AcExDocsUrl'
-import {
-  createAcExHtmlAccessKey,
-  decryptAcExHtmlSnapshotPayload,
-  isAcExHtmlAccessExpired,
-  parseAcExHtmlAccessManifest
-} from './AcExHtmlAccess'
 import {
   ACEX_HTML_MAX_PASSWORD_ATTEMPTS,
   lockAcExHtmlAccessGate,
@@ -28,14 +76,7 @@ import {
   acexHtmlIsPhoneLayout,
   setupAcExHtmlDrawerSheets
 } from './AcExHtmlDrawerSheet'
-import {
-  createAcExDomEmbeddedPackageFetch,
-  decryptAcExEmbeddedManifest,
-  parseAcExEmbeddedPackageConfig
-} from './AcExHtmlEmbeddedPackage'
 import { setupAcExHtmlExpiryMonitor } from './AcExHtmlExpiryUi'
-import { AcExHtmlI18n, detectAcExHtmlLocale } from './AcExHtmlI18n'
-import { AcExHtmlIcons } from './AcExHtmlIcons'
 import {
   type AcExHtmlMainToolbarController,
   setupAcExHtmlMainToolbar
@@ -43,13 +84,6 @@ import {
 import { setupAcExHtmlMeasurePanel } from './AcExHtmlMeasurePanel'
 import { setupAcExHtmlMeasureSettings } from './AcExHtmlMeasureSettings'
 import { setupAcExHtmlNavTools } from './AcExHtmlNavTools'
-import {
-  ACEX_PACKAGE_DIRECTORY_ORIGIN,
-  acexGlobalFetch,
-  chooseInitialManifestHref,
-  probePackageManifest,
-  resolveViewerManifestUrl
-} from './AcExHtmlPackageBootstrap'
 import { promptAcExHtmlPackageSource } from './AcExHtmlPackageSourceGate'
 import { setupAcExHtmlReviewPanel } from './AcExHtmlReviewPanel'
 import { acexSyncHtmlShortCutSelection } from './AcExHtmlShortCutSelection'
@@ -62,12 +96,6 @@ import {
   type AcExIdlePointerHost,
   acexIdlePointerStrategy
 } from './AcExIdlePointerStrategy'
-import {
-  type AcExBatchExtentEntry,
-  collectLayoutBatchExtentEntries,
-  computeIntelligentExtentsFromBatchEntries,
-  computeLayerExtentsMap,
-  resolveLayoutViewExtents} from './AcExLayerExtents'
 import { AcExMarkupController } from './AcExMarkup'
 import { AcExMeasureController } from './AcExMeasurement'
 import {
@@ -83,14 +111,6 @@ import {
 } from './AcExOsnap'
 import { AcExOsnapMarker } from './AcExOsnapMarker'
 import {
-  ACEX_GEOMETRY_CHUNK_FETCH_CONCURRENCY,
-  createAcExOrderedBytePrefetcher,
-  loadAcExPackageLayoutOsnap,
-  resolveChunkUrl,
-  snapshotSkeletonFromManifest
-} from './AcExPackageLoader'
-import type { AcExPackageManifest } from './AcExPackageTypes'
-import {
   computeOnscreenPaperViewportPass,
   computeViewportCamera,
   findDrillThroughViewport,
@@ -99,12 +119,6 @@ import {
   snapshotHasPaperViewports,
   viewportPaperToModelScale
 } from './AcExPaperViewport'
-import {
-  AcExCameraZoomUniform,
-  createViewerLineMaterial,
-  createViewerMeshMaterial,
-  createViewerPointsMaterial
-} from './AcExPatternSnapshot'
 import { acexSelectionModeFromDrag } from './AcExSelectionBox'
 import { setupAcExSessionDrawStyle } from './AcExSessionDrawStyle'
 import { createAcExSessionHistory } from './AcExSessionHistory'
@@ -118,19 +132,6 @@ import {
   ACEX_SNAP_LOUPE_ZOOM,
   AcExSnapLoupe
 } from './AcExSnapLoupe'
-import {
-  decodeSnapshotFromCompressedBytes,
-  snapshotPayloadToCompressedBytes
-} from './AcExSnapshotCodec'
-import { ACEX_MAX_COMPRESSED_BYTES } from './AcExSnapshotCompression'
-import type {
-  AcExExtents,
-  AcExLayoutSnapshot,
-  AcExLineBatch,
-  AcExMeshBatch,
-  AcExSnapshot,
-  AcExViewerMode
-} from './AcExSnapshotTypes'
 import {
   acexIsSimulatedMouseEnabled,
   type AcExTouchPickHudHost,
@@ -570,11 +571,15 @@ async function resolveSnapshotPayload(
       })
       pendingError = undefined
       try {
+        const encoding = parseAcExHtmlBinaryEncoding(
+          snapshotEl.getAttribute('type')
+        )
         return {
           payload: await decryptAcExHtmlSnapshotPayload(
             password,
             payload,
-            manifest.salt
+            manifest.salt,
+            encoding
           ),
           expiresAt
         }
@@ -677,7 +682,10 @@ async function startViewer(): Promise<void> {
       }
       expiresAt = resolved.expiresAt
       // Retain gzip so layouts can be rehydrated after CPU release on switch.
-      monolithicCompressed = snapshotPayloadToCompressedBytes(resolved.payload)
+      monolithicCompressed = snapshotPayloadToCompressedBytes(
+        resolved.payload,
+        snapshotEl.getAttribute('type') ?? undefined
+      )
       snapshot = decodeSnapshotFromCompressedBytes(monolithicCompressed)
       removeSnapshotElement(snapshotEl)
     } else {
@@ -1050,7 +1058,7 @@ async function startViewer(): Promise<void> {
         loaded: String(loadedChunks),
         total: String(chunks.length)
       })
-      const decoded = decodeChunkGzip(entry.bytes)
+      const decoded = decodeChunkPayload(entry.bytes)
       const lineStart = target.lineBatches.length
       const meshStart = target.meshBatches.length
       target.lineBatches.push(...decoded.lineBatches)
@@ -1779,6 +1787,24 @@ async function startViewer(): Promise<void> {
     AcExCameraZoomUniform.value = fitted.zoom
   }
 
+  /**
+   * Temporarily hides model-space layer groups listed in a viewport's
+   * VPLAYER freeze list. Returns prior visibility for restoration.
+   */
+  const hideViewportFrozenLayers = (
+    frozenLayers: readonly string[] | undefined
+  ): Array<[THREE.Object3D, boolean]> => {
+    if (!frozenLayers?.length) return []
+    const frozenNames = new Set(frozenLayers)
+    const restored: Array<[THREE.Object3D, boolean]> = []
+    for (const child of modelRoot.children) {
+      if (!frozenNames.has(child.name) || !child.visible) continue
+      restored.push([child, child.visible])
+      child.visible = false
+    }
+    return restored
+  }
+
   const renderPaperViewports = () => {
     const viewports = layout.viewports
     if (
@@ -1837,8 +1863,15 @@ async function startViewer(): Promise<void> {
         pass.hit.height,
         viewport.twist ?? 0
       )
-      renderer.render(modelScene, viewportCamera)
-      renderer.setScissorTest(false)
+      const restored = hideViewportFrozenLayers(viewport.frozenLayers)
+      try {
+        renderer.render(modelScene, viewportCamera)
+      } finally {
+        for (const [object, visible] of restored) {
+          object.visible = visible
+        }
+        renderer.setScissorTest(false)
+      }
     }
 
     renderer.setViewport(
@@ -1926,7 +1959,14 @@ async function startViewer(): Promise<void> {
           pass.hit.height,
           viewport.twist ?? 0
         )
-        renderer.render(modelScene, loupeCamera)
+        const restored = hideViewportFrozenLayers(viewport.frozenLayers)
+        try {
+          renderer.render(modelScene, loupeCamera)
+        } finally {
+          for (const [object, visible] of restored) {
+            object.visible = visible
+          }
+        }
       }
     }
 
@@ -2973,6 +3013,9 @@ async function startViewer(): Promise<void> {
       for (const target of firstPaintLayouts) {
         await loadPackageLayoutGeometry(target)
       }
+      // Leave the last "n/n" up only while chunks are in flight. View-only
+      // packages never replace it with an OSNAP status, so clear it now.
+      clearStatusBar()
       layoutExtents = resolveLayoutViewExtents(
         layout,
         snapshot.meta.viewExtents ?? snapshot.meta.extents
@@ -3964,15 +4007,21 @@ function createPointObject(batch: AcExMeshBatch): THREE.Points | null {
 }
 
 function createMeshObject(batch: AcExMeshBatch): THREE.Mesh | null {
-  if (!batch.indices || batch.indices.length < 3) {
-    return null
+  const vertexCount = (batch.positions.length / 3) | 0
+  let indices = batch.indices
+  if (!indices || indices.length < 3) {
+    // Shared block fills are often triangle lists without an index. The live
+    // viewer draws them directly; playback needs an index buffer.
+    if (vertexCount < 3 || vertexCount % 3 !== 0) return null
+    indices = new Uint32Array(vertexCount)
+    for (let i = 0; i < vertexCount; i++) indices[i] = i
   }
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute(
     'position',
     new THREE.BufferAttribute(batch.positions, 3)
   )
-  geometry.setIndex(new THREE.BufferAttribute(batch.indices, 1))
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1))
   if (
     batch.gradientFill &&
     batch.gradientPositions &&
