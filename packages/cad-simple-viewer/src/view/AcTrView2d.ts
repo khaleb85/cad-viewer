@@ -2759,6 +2759,19 @@ export class AcTrView2d extends AcEdBaseView {
   }
 
   /**
+   * Frames the paper layout a document opens into with the same heuristic
+   * as a first tab visit (see {@link applyInitialZoom}), so raw `limits`
+   * are not trusted before the layout's viewports are converted.
+   *
+   * @param layoutBtrId Input the block table record id of the layout
+   * @param layout Input the layout to frame
+   */
+  zoomToInitialLayoutView(layoutBtrId: AcDbObjectId, layout: AcDbLayout) {
+    this._initializedLayouts.add(layoutBtrId)
+    this.applyInitialZoom(layoutBtrId, layout)
+  }
+
+  /**
    * Returns the 2D box of drawable geometry in the active layout.
    *
    * Uses {@link AcTrScene.box}, which is derived from batch geometry — not
@@ -2816,6 +2829,19 @@ export class AcTrView2d extends AcEdBaseView {
       () => !this.isProcessingEntities,
       () => {
         if (this._externallyFramedLayouts.delete(btrId)) {
+          return
+        }
+
+        // Model space has no viewports to validate LIMMIN/LIMMAX against, and
+        // its limits are drawing-area settings, not a sheet: frame the
+        // geometry like a document opened on Model.
+        if (btrId === this.modelSpaceBtrId) {
+          const box = this.getDrawingExtents()
+          if (box) {
+            this.zoomTo(box)
+          }
+          this._isDirty = true
+          AcApZoomCmd.rememberOriginalView(this, btrId)
           return
         }
 

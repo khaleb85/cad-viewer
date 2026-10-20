@@ -2344,13 +2344,13 @@ export class AcApDocManager {
 
       // View framing at document open time (see `openViewMode`):
       //
-      // 1. **Paper space + has LIMMIN/LIMMAX**: frame the authoritative
-      //    paper sheet rectangle (`AcDbLayout.limits`). Real-world DWGs
-      //    frequently mix scales inside paper space (e.g. a title block
-      //    authored in mm alongside viewport rectangles authored in m),
-      //    so the entity bounding box is unreliable here 鈥?it gets
-      //    dominated by the largest-scale outliers and shrinks the
-      //    actual paper to a grain.
+      // 1. **Paper space**: same heuristic as a first tab visit
+      //    (`AcTrView2d.zoomToInitialLayoutView`): LIMMIN/LIMMAX only when
+      //    they contain the layout's viewports, else the viewports box,
+      //    evaluated after the layout's entities convert. Raw limits are
+      //    often template garbage, and the entity bounding box is
+      //    dominated by mixed-scale outliers (title block in mm alongside
+      //    viewports in m).
       //
       // 2. **Extents** (Read/Review default): poll `zoomToFitDrawing`
       //    and frame batch-derived geometry bounds once entities land.
@@ -2375,14 +2375,14 @@ export class AcApDocManager {
       const isPaperSpaceActive = db.currentSpaceId !== modelSpaceId
       const activeLayout =
         acdbHostApplicationServices().layoutManager.getActiveLayout(db)
-      const layoutLimits = activeLayout?.limits
       const openViewMode = this.resolveOpenViewMode(options)
 
       const progressiveRendering = options?.progressiveRendering ?? false
       let framedSynchronously = false
-      if (isPaperSpaceActive && layoutLimits && !layoutLimits.isEmpty()) {
-        view.zoomTo(layoutLimits)
-        framedSynchronously = true
+      let framedAsFirstVisit = false
+      if (isPaperSpaceActive && activeLayout) {
+        view.zoomToInitialLayoutView(db.currentSpaceId, activeLayout)
+        framedAsFirstVisit = true
       } else if (openViewMode === AcApOpenViewMode.Extents) {
         if (progressiveRendering) {
           view.beginProgressiveOpenFit()
@@ -2427,7 +2427,9 @@ export class AcApDocManager {
       // state on this layout. Cast is intentional: `setActiveLayout`
       // above relies on `curView` being an `AcTrView2d`, and the
       // markLayoutAsInitialized method is part of that contract.
-      view.markLayoutAsInitialized(db.currentSpaceId)
+      if (!framedAsFirstVisit) {
+        view.markLayoutAsInitialized(db.currentSpaceId)
+      }
       // `zoomToFitDrawing` frames asynchronously; capture original view in
       // its completion callback instead of here (pre-fit camera is wrong).
       if (framedSynchronously) {
