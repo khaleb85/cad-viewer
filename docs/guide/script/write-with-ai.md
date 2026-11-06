@@ -91,6 +91,11 @@ Control the selection set:
 - cad.view.zoomExtents() -> Zoom to model space extents
 - cad.view.capturePreview({ longSide? }) -> Queue a PNG screenshot after the script finishes; returns { queued: true, index }. Prefer for visual self-check; skip for simple edits
 
+### cad.file
+- cad.file.saveDxf(path?) -> After a successful script, export DXF. Path string or { path?, fileName? }. In-app agent downloads the file; cad-mcp-server writes path (relative to the server cwd). Returns { queued: true, index, fileName }. The DXF text is not returned. The tool result includes savedFiles
+- cad.file.savePdf(path?) -> After a successful script, export PDF. Path string or { path?, fileName?, exportLayouts?, colorMode?, textMode?, modelSpaceFit? }. Bytes are not returned. The tool result includes savedFiles
+- cad.file.saveHtml(path?) -> After a successful script, export offline HTML (or multi zip). Path string or { path?, fileName?, exportFormat?, exportLayouts?, background? }. Requires a viewer host; skipped on headless sessions. Bytes are not returned. The tool result includes savedFiles
+
 ### cad.measure
 - cad.measure.distance(a, b) -> Distance between {x,y} points
 - cad.measure.angleDeg(a, b) -> Bearing a→b deg (-180,180]; angleDeg(a,b,c) -> interior angle at b

@@ -16,8 +16,14 @@ depend on `@mlightcad/cad-simple-viewer` or a browser.
   Set `zipPackage: false` and pass an output folder to write those files
   directly. Set `maxChunkBytes` (1–64 MiB, default 10 MiB) and `compressChunks`
   (default `true`; gzip of chunk payloads, independent of the outer zip).
+  When the DWG/DXF provides a drawing thumbnail (`AcDbDatabase.thumbnailImage`),
+  a `preview.jpg` is written next to `viewer.html` (and included in the zip).
 - `viewerMode` defaults to `measure` for both formats: measure tools and
   review markup. Pass `view` for pan, zoom, and layers only.
+- `background` is `black` (default), `white`, or `space`. ACI 7 ink is drawn
+  against that canvas. A paper-space drawing still exports on black unless
+  `white` or `space` is set. `space` uses a black canvas in model space and a
+  white canvas in paper space; the offline viewer switches when the layout changes.
 
 ## Example
 
@@ -44,6 +50,9 @@ await exportFileToHtml('drawing.dwg', 'drawing.html', {
   fontsDir: 'D:/code/cad-data',
   // Or override the remote library (ignored when fontsDir is set).
   // fontsUrl: 'https://cdn.jsdelivr.net/gh/mlightcad/cad-data/fonts/'
+  // Optional commercial DWG parser (must install @mlightcad/dwg-converter):
+  // dwgParser: 'dwg',
+  // dwgLicenseKey: process.env.DWG_LICENSE_KEY
 })
 
 await exportFileToHtml('drawing.dwg', 'drawing.zip', {
@@ -68,7 +77,7 @@ itself stays on the caller. The techniques below are the Node exporter; the
 browser plugin keeps its own codec and thread model.
 
 A server should run **one drawing per process** (or a process pool capped by
-the machine's cores). `worldDraw`, glyph `asyncDraw`, and `encodeChunkBinary`
+the machine's cores). `worldDraw`, glyph `asyncDraw`, and `acexHtmlEncodeChunkBinary`
 are JavaScript on that process's main thread. A second `exportFileToHtml` in
 the same process shares the thread, so it does not shorten the busy export.
 Separate processes are how multiple drawings overlap.
@@ -177,8 +186,8 @@ zip. Pack was 78 geometry chunks, ~571 MiB of geometry buffers, and no OSNAP
 chunks. Do not reintroduce the following for this exporter.
 
 **`worker_threads` pool for chunk encode + gzip.**
-`buildAcExPackageDataAsync` already overlaps chunk gzip on the libuv pool.
-Moving `encodeChunkBinary` / `encodeOsnapCatalogBinary` plus gzip onto up to
+`acexHtmlBuildPackageDataAsync` already overlaps chunk gzip on the libuv pool.
+Moving `acexHtmlEncodeChunkBinary` / `acexHtmlEncodeOsnapCatalogBinary` plus gzip onto up to
 `min(8, availableParallelism())` workers did not move pack time (10.7 s with
 the pool, 11.3 s on the main thread). Binary encode of every chunk summed to
 ~340 ms. Structured-clone of the chunk graph onto the workers cost ~410 ms.
@@ -195,14 +204,35 @@ beat 4 by about 1.4× on that synthetic gzip, not 4×. On the drawing above,
 pack stayed ~11.4 s with the default pool of 4. A larger pool on every
 concurrent exporter process oversubscribes the machine for that small gain.
 
-**Parallelizing `encodeChunkBinary` on its own.**
+**Parallelizing `acexHtmlEncodeChunkBinary` on its own.**
 It was ~340 ms of an ~11 s pack. The bytes are already walked once to build
 the ACEC buffer; a second thread would need those typed arrays copied or
 transferred first.
 
+## DWG parsers
+
+`exportFileToHtml` defaults to LibreDWG (`dwgParser: 'libredwg'`), which is a
+normal dependency of this package.
+
+To use the commercial parser instead:
+
+1. Install `@mlightcad/dwg-converter` yourself from the private registry (it is
+   **not** listed in this package's dependencies, so `pnpm i` never fetches it).
+2. Pass `dwgParser: 'dwg'` and, when needed, `dwgLicenseKey`.
+3. Or on the CLI: `--dwg-parser dwg --dwg-license-key <key>`.
+
+`@mlightcad/data-model` is **external** in this package's Node build so the
+commercial converter and the exporter share one `AcDb*` / host-services
+singleton. That requires a `data-model` (and its `lib/` dependency packages)
+release with Node-native ESM relative imports (`.js` / `index.js` specifiers).
+
+If the package is missing, or the license/trial cannot be activated, registration
+fails with an explicit error; LibreDWG remains the default path for users who
+never install the commercial converter.
+
 ## Notes
 
-- Requires Node 20+ (`crypto.subtle` for optional password protection).
+- Requires Node 22+ (`crypto.subtle` for optional password protection).
 - Embeds `viewer-runtime.iife.js` from `@mlightcad/cad-html-plugin` (copied at
   build time into `runtime/`).
 - See [Performance](#performance) for zlib, local fonts, headless conversion,

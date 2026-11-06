@@ -1,8 +1,11 @@
 import {
-  type AcApHtmlExpiryDays,
-  type AcExInitialViewMode,
-  type AcExViewerMode
+  type AcExHtmlBackground,
+  type AcExHtmlExpiryDays,
+  type AcExHtmlInitialViewMode,
+  type AcExHtmlViewerMode
 } from '@mlightcad/cad-html-core'
+
+import type { AcExDwgParser } from './registerDwg'
 
 /** Packaging mode for headless HTML export. */
 export type AcExHtmlExportFormat = 'single' | 'multi'
@@ -28,7 +31,8 @@ export interface AcExHtmlExporterOptions {
    *   ACEX snapshot; large drawings embed progressive ACEC chunks.
    * - `multi` — multi-file ACEX package. Written as one `.zip` unless
    *   {@link AcExHtmlExporterOptions.zipPackage} is `false`, in which case
-   *   the package files are written into an output folder.
+   *   the package files are written into an output folder. When the drawing
+   *   has a thumbnail, `preview.jpg` is included next to `viewer.html`.
    * Password and expiry apply only to `'single'`.
    * Chunk size, chunk compression, and {@link AcExHtmlExporterOptions.zipPackage}
    * apply only to `'multi'`.
@@ -36,18 +40,31 @@ export interface AcExHtmlExporterOptions {
   exportFormat?: AcExHtmlExportFormat
   exportInvisibleLayers?: boolean
   exportLayouts?: boolean
-  initialView?: AcExInitialViewMode
+  /**
+   * Canvas background written into the HTML.
+   * `'black'` (default), `'white'`, or `'space'`.
+   *
+   * `'black'` and `'white'` apply to every layout. Foreground ink (ACI 7) is
+   * drawn against that color, so a white background uses black ink. The active
+   * layout does not choose the color: a paper-space drawing still exports on
+   * black unless this is `'white'` or `'space'`.
+   *
+   * `'space'` matches AutoCAD: model space is black and paper space is white.
+   * The offline viewer switches the canvas when the layout changes.
+   */
+  background?: AcExHtmlBackground
+  initialView?: AcExHtmlInitialViewMode
   /**
    * Toolbar written into the HTML. Defaults to `'measure'`: distance, area,
    * and the other measure tools, plus review markup. `'view'` is pan, zoom,
    * and layers only — no object-snap index and no measure or markup tools.
    */
-  viewerMode?: AcExViewerMode
+  viewerMode?: AcExHtmlViewerMode
   /**
    * How long a single-file HTML remains valid. Defaults to `'never'`.
    * Ignored when {@link AcExHtmlExporterOptions.exportFormat} is `'multi'`.
    */
-  expiryDays?: AcApHtmlExpiryDays
+  expiryDays?: AcExHtmlExpiryDays
   /**
    * Absolute expiry timestamp (Unix ms) when {@link AcExHtmlExporterOptions.expiryDays}
    * is `'custom'`. Ignored for `'multi'`.
@@ -73,8 +90,9 @@ export interface AcExHtmlExporterOptions {
   /**
    * When `true` (default), a multi-file export is written as one `.zip`.
    * When `false`, the zip members (`viewer.html`, `drawing.acex.json`,
-   * geometry and OSNAP chunks) are written directly into the output folder
-   * passed to {@link exportFileToHtml}. Ignored for `'single'`.
+   * geometry and OSNAP chunks, and `preview.jpg` when the drawing has a
+   * thumbnail) are written directly into the output folder passed to
+   * {@link exportFileToHtml}. Ignored for `'single'`.
    * Independent of {@link AcExHtmlExporterOptions.compressChunks}, which
    * gzip-compresses chunk payloads either way.
    */
@@ -108,6 +126,25 @@ export interface AcExHtmlExporterOptions {
   height?: number
   /** Locale embedded in the snapshot (`en`, `zh`, …). Defaults to `en`. */
   locale?: string
+  /**
+   * DWG parser used by {@link exportFileToHtml}. Defaults to `'libredwg'`.
+   * `'dwg'` needs a separately installed `@mlightcad/dwg-converter` (and a
+   * license or active trial). Ignored for DXF inputs.
+   */
+  dwgParser?: AcExDwgParser
+  /**
+   * License key for `@mlightcad/dwg-converter` when
+   * {@link AcExHtmlExporterOptions.dwgParser} is `'dwg'`.
+   */
+  dwgLicenseKey?: string
+  /**
+   * Whether entities on non-plottable ("no-plot") layers are drawn.
+   *
+   * Defaults to `false` so headless HTML matches `cad-editor` (Defpoints,
+   * `不打印`, markup-only layers, etc. are omitted). Pass `true` to keep
+   * those layers visible.
+   */
+  drawNoPlotLayers?: boolean
 }
 
 export interface AcExHtmlExportResult {
@@ -122,7 +159,8 @@ export interface AcExHtmlExportResult {
   zipBytes?: Uint8Array
   /**
    * Package members when {@link AcExHtmlExportResult.kind} is `'directory'`.
-   * Paths are relative to the output folder (`viewer.html`, `chunks/…`).
+   * Paths are relative to the output folder (`viewer.html`, `preview.jpg`,
+   * `chunks/…`).
    */
   files?: ReadonlyArray<{ path: string; bytes: Uint8Array }>
   /**
@@ -138,7 +176,10 @@ export interface AcExHtmlExportResult {
  * {@link AcExHtmlExporterOptions.maxChunkBytes}.
  */
 export function resolveAcExHtmlPackageBuildOptions(
-  options: Pick<AcExHtmlExporterOptions, 'maxChunkBytes' | 'compressChunks'> = {}
+  options: Pick<
+    AcExHtmlExporterOptions,
+    'maxChunkBytes' | 'compressChunks'
+  > = {}
 ): {
   maxChunkBytes: number
   maxBatchBytes: number

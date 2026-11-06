@@ -1,4 +1,4 @@
-# CAD-Viewer（日本語）
+# MLightCAD（日本語）
 
 [English](./README.md) | [简体中文](./README.zh-CN.md) | [日本語](./README.ja.md) | [한국어](./README.ko.md) | [Español](./README.es.md) | [Português](./README.pt.md) | [Русский](./README.ru.md) | [Čeština](./README.cs.md)
 
@@ -7,10 +7,10 @@
 
 <a href="https://trendshift.io/repositories/16129?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-16129" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/16129/daily?language=TypeScript" alt="mlightcad%2Fcad-viewer | Trendshift" width="250" height="55"/></a>
 
-cad-viewer は、`バックエンドサービスに一切依存せず、完全にブラウザ上で動作する世界初の Web ベース DXF/DWG ビューア兼エディタ` です。
-DWG/DXF の解析、ジオメトリ処理、レンダリングをすべてブラウザ内で行うことで、cad-viewer は真のサーバーレス CAD 閲覧・編集を実現します。クラウドアプリ、オフライン利用、プライバシーに配慮したワークフローに最適です。
+MLightCAD は、`バックエンドサービスに一切依存せず、完全にブラウザ上で動作する世界初の Web ベース DXF/DWG ビューア兼エディタ` です。
+DWG/DXF の解析、ジオメトリ処理、レンダリングをすべてブラウザ内で行うことで、MLightCAD は真のサーバーレス CAD 閲覧・編集を実現します。クラウドアプリ、オフライン利用、プライバシーに配慮したワークフローに最適です。
 
-また、他の CAD ビューアではほとんど見られない機能として、**ワンクリックで単一の自己完結型 HTML ファイルへエクスポート** できます。ダウンロードした `.html` には図面スナップショットと軽量なビューアランタイムが埋め込まれており、受信者は **CAD アプリもサーバーもインストールも不要** で、任意のモダンブラウザから開いて、パン、ズーム、レイヤー切り替え、距離測定ができます。多くのデスクトップおよび Web CAD ビューアは自社製品内での閲覧に限られますが、cad-viewer はライブな図面を、メール送信、アーカイブ、静的ファイルホストに置けるポータブルなオフライン成果物に変換します。クライアントへの共有、コンプライアンスアーカイブ、エアギャップ環境に最適です。オフラインビューアは、同じ図面を開く際に従来のデスクトップツールよりはるかに少ないメモリを使用します（下記の[メモリ比較](#自己完結型-html-のメモリ使用量)を参照）。
+また、他の CAD ビューアではほとんど見られない機能として、**ワンクリックで単一の自己完結型 HTML ファイルへエクスポート** できます。ダウンロードした `.html` には図面スナップショットと軽量なビューアランタイムが埋め込まれており、受信者は **CAD アプリもサーバーもインストールも不要** で、任意のモダンブラウザから開いて、パン、ズーム、レイヤー切り替え、距離測定ができます。多くのデスクトップおよび Web CAD ビューアは自社製品内での閲覧に限られますが、MLightCAD はライブな図面を、メール送信、アーカイブ、静的ファイルホストに置けるポータブルなオフライン成果物に変換します。クライアントへの共有、コンプライアンスアーカイブ、エアギャップ環境に最適です。オフラインビューアは、同じ図面を開く際に従来のデスクトップツールよりはるかに少ないメモリを使用します（下記の[メモリ比較](#自己完結型-html-のメモリ使用量)を参照）。
 
 - [**🌐 ホームページ**](https://mlightcad.com/)
 - **🌐 ライブデモ**：[Netlify](https://mlightcad.netlify.app/) · [GitHub Pages](https://mlightcad.github.io/cad-viewer/)
@@ -22,9 +22,9 @@ DWG/DXF の解析、ジオメトリ処理、レンダリングをすべてブラ
 - DEV.to: [@mlightcad](https://dev.to/mlightcad)
 - Juejin(稀土掘金): [@mlightcad](https://juejin.cn/column/7501992214283501579)
 
-### cad-viewer で構築されたアプリ
+### MLightCAD で構築されたアプリ
 
-[Thingraph](https://cad.thingraph.site/) チームは cad-viewer 上に本番向け DWG/DXF ビューアとプラットフォーム連携を構築し、世界中で数万ユーザーにサービスを提供しています：
+[Thingraph](https://cad.thingraph.site/) チームは MLightCAD 上に本番向け DWG/DXF ビューアとプラットフォーム連携を構築し、世界中で数万ユーザーにサービスを提供しています：
 
 - [DWG Viewer Web App](https://cad.thingraph.site/dwg-viewer) — エンジニアリングチームが高速かつサーバーレスで図面にアクセスするためのブラウザベース DWG/DXF ビューア。各プラットフォーム向けインストール：
   - [Google Drive](https://workspace.google.com/marketplace/app/dwg_viewer/641533811831) — **Open with** から Drive 上の DWG/DXF を開く
@@ -46,13 +46,13 @@ DWG/DXF の解析、ジオメトリ処理、レンダリングをすべてブラ
 
 ### デモアプリ（Demo Apps）
 
-cad-viewer を自社プロダクトへ組み込む方法を示す公式サンプルです：
+MLightCAD を自社プロダクトへ組み込む方法を示す公式サンプルです：
 
-- [cad-simple-viewer-example](https://github.com/mlightcad/cad-simple-viewer-example) — [`@mlightcad/cad-simple-viewer`](https://www.npmjs.com/package/@mlightcad/cad-simple-viewer) 向けの最小構成 vanilla TypeScript ホスト。ローカルまたは CDN の DXF/DWG を開き、小型ツールバーでコマンドを実行し、フル Vue UI なしで HTML/PDF/SVG エクスポートプラグインを遅延読み込みします。
-- [cad-viewer-example](https://github.com/mlightcad/cad-viewer-example) — [`@mlightcad/cad-viewer`](https://www.npmjs.com/package/@mlightcad/cad-viewer) ベースのフル機能 Vue 3 アプリ。メニュー、リボン、ダイアログ、コマンドライン、ステータスバー付き（[ライブデモ](https://mlightcad.github.io/cad-viewer-example/)）。
+- [cad-simple-viewer-demo](https://github.com/mlightcad/cad-simple-viewer-example) — [`@mlightcad/cad-simple-viewer`](https://www.npmjs.com/package/@mlightcad/cad-simple-viewer) 向けの最小構成 vanilla TypeScript ホスト。ローカルまたは CDN の DXF/DWG を開き、小型ツールバーでコマンドを実行し、フル Vue UI なしで HTML/PDF/SVG エクスポートプラグインを遅延読み込みします。
+- [cad-editor-demo](https://github.com/mlightcad/cad-viewer-example) — [`@mlightcad/cad-editor`](https://www.npmjs.com/package/@mlightcad/cad-editor) ベースのフル機能 Vue 3 アプリ。メニュー、リボン、ダイアログ、コマンドライン、ステータスバー付き（[ライブデモ](https://mlightcad.github.io/cad-viewer-example/)）。
 - [cad-viewer-nextjs-demo](https://github.com/mlightcad/cad-viewer-nextjs-demo) — Next.js の「CAD ドライブ」デモ。DWG/DXF のチャンク再開アップロード、SQLite のファイル一覧とプレビュー、**ブラウザ側ライブ解析**（`cad-simple-viewer`）または**サーバー側 ACEX プリレンダ**（高速表示・低メモリ）での図面オープンに対応。
 
-![CAD-Viewer Quick Demo](./assets/cad-viewer.gif)
+![MLightCAD Quick Demo](./assets/cad-viewer.gif)
 
 ## 機能
 
@@ -61,8 +61,9 @@ cad-viewer を自社プロダクトへ組み込む方法を示す公式サンプ
 - **データセキュリティの強化** — ファイルがデバイス外に出ないため、完全なプライバシーを確保
 - **容易な統合** — サーバー設定やバックエンドインフラが不要
 - サードパーティ連携に適したモジュラーアーキテクチャ
+- **プラグインシステム** — 拡張可能なプラグインアーキテクチャ。UI、AI アシスタント、HTML/PDF/SVG エクスポートの公式プラグインを提供。詳細は[プラグインシステム開発ガイド](https://mlightcad.com/cad-viewer/docs/ja/development/plugin-system.html)
 - **モバイルレイアウトとタッチ操作** — `@mlightcad/cad-simple-viewer` にレスポンシブなスマホ/タブレット UI とタッチジェスチャ（ピンチズーム、単指パン、タップ選択）を内蔵。専用モバイルアプリなしでモバイルブラウザから利用可能
-- **オフライン HTML へのエクスポート** — 現在の図面を、埋め込みビューア付きの単一自己完結型 `.html` ファイルとしてエクスポート（パン/ズーム、範囲ズーム、レイヤー、距離測定、EN/ZH UI）。任意のブラウザでオフライン起動可能。cad-viewer インスタンスやバックエンドは不要
+- **オフライン HTML へのエクスポート** — 現在の図面を、埋め込みビューア付きの単一自己完結型 `.html` ファイルとしてエクスポート（パン/ズーム、範囲ズーム、レイヤー、距離測定、EN/ZH UI）。任意のブラウザでオフライン起動可能。MLightCAD インスタンスやバックエンドは不要
 - オフラインおよびオンライン編集ワークフロー
 - 高度な最適化手法を備えた THREE.js 3D レンダリングエンジン
 - CMS、Notion、WeChat などのプラットフォームとの連携を見据えた拡張性
@@ -73,7 +74,7 @@ cad-viewer を自社プロダクトへ組み込む方法を示す公式サンプ
 
 ```html
 <iframe
-  src="https://mlightcad.com/embed.html?url=https://example.com/plans/floor.dwg&mode=review&toolbar=1"
+  src="https://mlightcad.com/embed.html?url=https://example.com/plans/floor.dwg&mode=review&toolbar=1
   style="width:100%;height:600px;border:0"
   allowfullscreen>
 </iframe>
@@ -124,7 +125,7 @@ pnpm preview:simple
 
 ## 使い方
 
-CAD Viewer を初めてお使いですか？**[ユーザーガイド](https://mlightcad.com/cad-viewer/docs/)** では、ビューアの画面構成、デスクトップ/タッチ操作、マークアップ、計測ツールについて順を追って説明しています。
+MLightCAD を初めてお使いですか？**[ユーザーガイド](https://mlightcad.com/cad-viewer/docs/)** では、ビューアの画面構成、デスクトップ/タッチ操作、マークアップ、計測ツールについて順を追って説明しています。
 
 ### デスクトップブラウザ操作
 - **選択**：エンティティを左クリック
@@ -137,63 +138,18 @@ CAD Viewer を初めてお使いですか？**[ユーザーガイド](https://ml
 - **ズーム**：2 本指でピンチ
 - **パン**：1 本指でドラッグ
 
-## プラグインシステム
+## パフォーマンス
 
-CAD-Viewer は [`@mlightcad/cad-simple-viewer`](packages/cad-simple-viewer) 内のモジュラー **プラグインシステム** を中心に構築されています。プラグインは `AcApPlugin` インターフェースを実装し、`onLoad` / `onUnload` 経由でビューアのライフサイクルにフックします。通常はコマンド登録、UI 追加、エクスポート/インポートパイプラインの接続に使用します。
+MLightCAD は **卓越したパフォーマンス** 向けに設計されており、高フレームレートを維持しながら非常に大きな DXF/DWG ファイルを処理できます。複数の高度なレンダリング技術でパフォーマンスを最適化しています：
 
-プラグインは `AcApDocManager.instance.pluginManager`（`loadPlugin`、`registerLazyPlugin`、またはドキュメントマネージャー作成時の `plugins.fromConfig`）から読み込みます。エクスポート向けプラグインは **遅延読み込み** をサポートします。起動時に小さなスタブだけを登録し、ユーザーが関連コマンド（例：`-chtml`、または `cad-viewer` の `chtml` ダイアログでエクスポートを確定したとき）を実行した時点で重いバンドルをダウンロードします。
+- **カスタムシェーダーマテリアル**：GPU 加速シェーダーマテリアルで複雑な線種とハッチ塗りつぶしパターンを効率的にレンダリング
+- **ジオメトリバッチング**：同一マテリアルの点、線、面をマージし、ドローコールを大幅に削減
+- **インスタンスレンダリング**：インスタンシング技術で反復ジオメトリのレンダリングを最適化
+- **バッファジオメトリ最適化**：効率的なメモリ管理とジオメトリマージングで GPU オーバーヘッドを低減
+- **マテリアルキャッシュ**：類似エンティティ間でマテリアルを再利用し、状態変更を最小化
+- **WebGL 最適化**：モダン WebGL 機能でハードウェア加速レンダリングを活用
 
-モノレポには複数のファーストパーティプラグインが同梱されています。各プラグインは 1 つの関心事に集中しており、必要に応じて組み合わせられます。**インストール、登録、API の詳細は各パッケージの README に記載されています** — 下記リンクを参照してください。
-
-### 公式プラグイン
-
-| パッケージ | 役割 | コマンド / 機能 |
-|---------|------|-------------------------|
-| [`@mlightcad/cad-simple-ui-plugin`](packages/cad-simple-ui-plugin) | `cad-simple-viewer` 向け **ツールバー・レイヤーマネージャー・レビューパレット UI**（プレーン DOM、Vue/React 非依存） | `layer`、`markuppanel`、デフォルトツールバー（表示、測定、エクスポート、レビュー、テーマ、ロケール） |
-| [`@mlightcad/cad-agent-plugin`](packages/cad-agent-plugin) | **自然言語 CAD エージェント**（AI チャットパネル + 図面ツール呼び出し） | `agent` |
-| [`@mlightcad/cad-html-plugin`](packages/cad-html-plugin) | 図面を **自己完結型オフライン HTML** へエクスポート | `chtml`（`cad-viewer` のダイアログ）、`-chtml`（コマンドライン） |
-| [`@mlightcad/cad-pdf-plugin`](packages/cad-pdf-plugin) | **PDF エクスポートとインポート**（ベクターパイプライン） | `cpdf`、`ipdf` |
-| [`@mlightcad/cad-svg-plugin`](packages/cad-svg-plugin) | **SVG エクスポート** と共有ベクターレンダラー（PDF エクスポートでも使用） | `csvg` |
-
-### `@mlightcad/cad-simple-ui-plugin` — シンプルビューア向け UI 層
-
-[`cad-simple-viewer`](packages/cad-simple-viewer) は意図的に **アプリケーション UI を同梱しません** — キャンバスと CAD コアのみです。シンプルビューアを独自 Web アプリに埋め込み、Vue ベースのフル [`cad-viewer`](packages/cad-viewer) シェルを採用せずにすぐ使える UI が必要な場合、**`cad-simple-ui-plugin` が想定される UI 層** です。
-
-提供機能：
-
-- **設定可能なツールバー**（任意の辺に配置、デフォルト CAD コマンド、ネストメニュー、カスタム項目）
-- **ドックパネル**：**レイヤーマネージャー**タブ（レイヤー ON/OFF、ACI カラーピッカー、ダブルクリックでレイヤーへズーム）と**レビューパレット**タブ（マークアップ一覧、ステータス、コメント）
-- **`COLORTHEME` システム変数とホスト要素上の `--ml-ui-*` CSS トークンとのテーマ同期**
-- **`AcApI18n` とのロケール同期**（英語 / 中国語 / チェコ語 / トルコ語）
-
-すべてのウィジェットはフレームワーク非依存（プレーン DOM）です。フル Vue [`cad-viewer`](packages/cad-viewer) アプリは Element Plus UI を内蔵しており、このプラグインは不要です。`cad-simple-viewer` を直接ベースに構築する場合に `cad-simple-ui-plugin` を使用してください。
-
-→ **クイックスタート、ツールバーカスタマイズ、オプション：** [packages/cad-simple-ui-plugin/README.md](packages/cad-simple-ui-plugin/README.md)
-
-### `@mlightcad/cad-agent-plugin` — AI 図面アシスタント
-
-[`cad-agent-plugin`](packages/cad-agent-plugin) は `cad-simple-viewer` ベースのアプリに **自然言語 CAD エージェント** を追加します。ユーザーは平易な言語で希望を記述し、エージェントが CAD ツールを呼び出して図面を調査し、ジオメトリを作成または変更します。
-
-提供機能：
-
-- **遅延読み込み** `AcApPlugin`（トリガーコマンド：`agent`）により、AI バンドルをクリティカルパスから外す
-- Vercel AI SDK（`Experimental_Agent` + `@ai-sdk/vue`）上の **Vue チャットパネル**（`AgentChatPanel`）
-- **ブラウザ側 LLM 設定** — OpenAI、Anthropic、OpenAI 互換エンドポイントの API キーはクライアントに保持（`localStorage` に暗号化保存）
-- **フェーズ 1 CAD ツール** — `get_drawing_context`；`draw_line`、`draw_circle`、`draw_arc`、`draw_rectangle`、`draw_polyline`、`draw_text`；`set_current_layer`、`create_layer`、`zoom_extents`
-- プラグイン i18n 層による **英語 / 中国語 / トルコ語 / チェコ語** UI 文字列
-
-フル Vue [`cad-viewer`](packages/cad-viewer) アプリは、パッケージインストール時にエージェントを自動登録します（パレットタブ）。[`cad-simple-viewer-example`](packages/cad-simple-viewer-example) は `cad-simple-ui-plugin` 経由でドックタブに接続します。ホストアプリは `registerLazyAgentPlugin` と `setAgentPaletteOpener` を呼び出し、パネルのマウント位置を決定します。
-
-→ **インストール、登録、ツール一覧：** [packages/cad-agent-plugin/README.md](packages/cad-agent-plugin/README.md)
-
-### エクスポートプラグイン（HTML / PDF / SVG）
-
-これらのプラグインは、同一プラグインマネージャーにエクスポート（および PDF インポート）コマンドを追加します。**遅延読み込み** により初期ページ重量を抑えます。[`cad-simple-viewer-example`](packages/cad-simple-viewer-example) デモは 3 つのエクスポートプラグイン、`cad-simple-ui-plugin`、`cad-agent-plugin` をすべて登録します。フル [`cad-viewer`](packages/cad-viewer) アプリはブートストラップ時にエクスポートプラグインと（インストール時）エージェントプラグインを登録します。
-
-- **HTML** — 共有とアーカイブ向けの単一ファイルオフラインビューア：[packages/cad-html-plugin/README.md](packages/cad-html-plugin/README.md)  
-  （同一パイプラインのヘッドレス CLI：[packages/cad-simple-viewer-cli/README.md](packages/cad-simple-viewer-cli/README.md)）
-- **PDF** — ベクター PDF エクスポートと PDF から CAD へのインポート：[packages/cad-pdf-plugin/README.md](packages/cad-pdf-plugin/README.md)
-- **SVG** — ベクター SVG エクスポート：[packages/cad-svg-plugin/README.md](packages/cad-svg-plugin/README.md)
+これらの最適化により、MLightCAD は数千のエンティティを含む複雑な CAD 図面を滑らかにレンダリングし、応答性の高いユーザー操作を維持します。
 
 #### 自己完結型 HTML のメモリ使用量
 
@@ -207,19 +163,6 @@ CAD-Viewer は [`@mlightcad/cad-simple-viewer`](packages/cad-simple-viewer) 内�
 | 自己完結型 HTML（表示モード） | 33 MB |
 
 オフライン HTML ビューアは、表示モードで AutoCAD 2020 より約 **83% 少ない** メモリ、GstarCAD Viewer より約 **77% 少ない** メモリを使用しながら、パン/ズーム、レイヤー切り替え、距離測定（測定モード）をサポートします。
-
-## パフォーマンス
-
-CAD-Viewer は **卓越したパフォーマンス** 向けに設計されており、高フレームレートを維持しながら非常に大きな DXF/DWG ファイルを処理できます。複数の高度なレンダリング技術でパフォーマンスを最適化しています：
-
-- **カスタムシェーダーマテリアル**：GPU 加速シェーダーマテリアルで複雑な線種とハッチ塗りつぶしパターンを効率的にレンダリング
-- **ジオメトリバッチング**：同一マテリアルの点、線、面をマージし、ドローコールを大幅に削減
-- **インスタンスレンダリング**：インスタンシング技術で反復ジオメトリのレンダリングを最適化
-- **バッファジオメトリ最適化**：効率的なメモリ管理とジオメトリマージングで GPU オーバーヘッドを低減
-- **マテリアルキャッシュ**：類似エンティティ間でマテリアルを再利用し、状態変更を最小化
-- **WebGL 最適化**：モダン WebGL 機能でハードウェア加速レンダリングを活用
-
-これらの最適化により、CAD-Viewer は数千のエンティティを含む複雑な CAD 図面を滑らかにレンダリングし、応答性の高いユーザー操作を維持します。
 
 ## 既知の問題
 
@@ -242,8 +185,6 @@ CAD-Viewer は **卓越したパフォーマンス** 向けに設計されてお
 
 凡例：
 - [x] 完了
-- [ ] 計画
-- [ ] ⏳ 進行中
 
 ### コアファイルとデータ層
 
@@ -253,16 +194,16 @@ CAD-Viewer は **卓越したパフォーマンス** 向けに設計されてお
 * [x] DWG 読み込み
 * [x] 自己完結型オフライン HTML へのエクスポート（埋め込みビューア）
 * [x] 大容量ファイルのストリーミング / 増分読み込み
-* [ ] ⏳ ファイルバージョン互換性（R12–Latest）
+* [x] ファイルバージョン互換性（R12–Latest）
 
 #### データモデル
 
 * [x] 統一エンティティデータモデル
 * [x] レイヤーテーブルサポート
 * [x] ブロック / 挿入構造
-* [ ] ⏳ Handle と object ID 管理：現在 objectId は handle と同一で、bigint（int64）ではなく 1 つの文字列として表現されている
-* [ ] ⏳ XData / 拡張辞書サポート
-* [ ] プロキシエンティティ処理
+* [ ] Handle と object ID 管理：現在 objectId は handle と同一で、bigint（int64）ではなく 1 つの文字列として表現されている
+* [x] XData / 拡張辞書サポート
+* [x] プロキシエンティティ処理
 
 ### レンダリングとパフォーマンス
 
@@ -272,7 +213,7 @@ CAD-Viewer は **卓越したパフォーマンス** 向けに設計されてお
 * [x] 2D 専用最適化パイプライン
 * [x] レイヤーベースのシーン構成
 * [x] レイアウト / ペーパースペースレンダリング
-* [ ] ビューポートエンティティサポート
+* [x] ビューポートエンティティサポート
 
 #### パフォーマンス最適化
 
@@ -297,7 +238,7 @@ CAD-Viewer は **卓越したパフォーマンス** 向けに設計されてお
 * [x] レイヤー表示 ON/OFF
 * [x] レイヤーフリーズ / ロック
 * [x] 線幅表示
-* [ ] 線種スケーリング
+* [x] 線種スケーリング
 * [x] 背景 / テーマ切り替え
 
 ### 選択と操作
@@ -359,9 +300,9 @@ CAD-Viewer は **卓越したパフォーマンス** 向けに設計されてお
 #### 高度なエンティティ
 
 * [x] ハッチ
-* [ ] テキスト（単一行 / 複数行）
-* [ ] 寸法（線形、位置合わせ、角度）
-* [ ] ブロック作成と挿入
+* [x] テキスト（単一行 / 複数行）
+* [x] 寸法（線形、位置合わせ、角度）
+* [x] ブロック作成と挿入
 
 ### 測定
 
@@ -369,14 +310,14 @@ CAD-Viewer は **卓越したパフォーマンス** 向けに設計されてお
 * [x] 弧長
 * [x] 面積
 * [x] 角度
-* [ ] 座標
-* [ ] エンティティ統計（長さ、面積、数）
+* [x] 座標
+* [x] エンティティ統計（長さ、面積、数）
 
 ### 寸法
 
 * [x] 線形寸法
-* [ ] 角度寸法
-* [ ] 座標
+* [x] 角度寸法
+* [x] 座標
 
 ### プロパティと UI パネル
 
@@ -389,7 +330,7 @@ CAD-Viewer は **卓越したパフォーマンス** 向けに設計されてお
 #### パネルと UI
 
 * [x] レイヤーマネージャー
-* [ ] ブロックマネージャー
+* [x] ブロックマネージャー
 * [x] コマンド履歴 / コンソール
 * [x] ステータスバー（スナップ、直交、グリッド）
 
@@ -406,6 +347,7 @@ CAD-Viewer は **卓越したパフォーマンス** 向けに設計されてお
 * [x] フレームワーク非依存コア
 * [ ] React 統合サンプル
 * [x] Vue 統合サンプル
+* [x] [Next.js 統合サンプル](https://github.com/mlightcad/cad-viewer-nextjs-demo)
 * [ ] OpenLayers / マップ統合
 * [ ] CMS / Notion 埋め込み
 
@@ -421,7 +363,7 @@ CAD-Viewer は **卓越したパフォーマンス** 向けに設計されてお
 
 * [x] ブラウザ内ローカル編集
 * [x] DXF として保存
-* [ ] 変更セット / diff の保存
+* [x] 変更セット / diff の保存
 * [ ] IndexedDB 永続化
 
 #### オンラインエディタ
@@ -435,6 +377,7 @@ CAD-Viewer は **卓越したパフォーマンス** 向けに設計されてお
 ### プラットフォーム目標
 
 * [x] Google Drive 連携（Picker データソース；Drive “Open with” は任意のフォローアップ）
+* [x] OneDrive 連携（Microsoft OneDrive / SharePoint データソース）
 * [ ] WeChat Mini Program ビューア
 * [x] モバイルブラウザサポート（レスポンシブレイアウトとタッチ操作）
 
@@ -454,7 +397,7 @@ CAD-Viewer は **卓越したパフォーマンス** 向けに設計されてお
 
 ## ライセンス
 
-cad-viewer モノレポは主に [MIT](LICENSE) ライセンスです。
+MLightCAD モノレポは主に [MIT](LICENSE) ライセンスです。
 
 DXF 読み込みは `@mlightcad/data-model` 内の組み込み MIT パーサーを使用します。DWG 読み込みは **オプトイン** です：`@mlightcad/cad-simple-viewer` は GPL の LibreDWG パッケージに依存しません。オープンソースの DWG サポートが必要なホストは、自身で `@mlightcad/libredwg-converter`（GPL-3.0）を追加し、worker と wasm を配置してコンバーターを登録します。クローズドソース製品を提供し、GPL コードを顧客に配布できない場合は、代わりに [**プロプライエタリ DWG パーサー**](./PROPRIETARY-PARSER.md) を使用してください。
 

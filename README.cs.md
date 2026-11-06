@@ -1,4 +1,4 @@
-# CAD-Viewer (Čeština)
+# MLightCAD (Čeština)
 
 [English](./README.md) | [简体中文](./README.zh-CN.md) | [日本語](./README.ja.md) | [한국어](./README.ko.md) | [Español](./README.es.md) | [Português](./README.pt.md) | [Русский](./README.ru.md) | [Čeština](./README.cs.md)
 
@@ -7,10 +7,10 @@
 
 <a href="https://trendshift.io/repositories/16129?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-16129" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/16129/daily?language=TypeScript" alt="mlightcad%2Fcad-viewer | Trendshift" width="250" height="55"/></a>
 
-cad-viewer je `první webový prohlížeč a editor DXF/DWG na světě, který běží zcela v prohlížeči a nevyžaduje žádné backendové služby`.
-Tím, že parsování DWG/DXF, zpracování geometrie a vykreslování probíhá přímo v prohlížeči, cad-viewer umožňuje skutečné bezserverové prohlížení a úpravy CAD — ideální pro cloudové aplikace, offline použití a pracovní postupy citlivé na soukromí.
+MLightCAD je `první webový prohlížeč a editor DXF/DWG na světě, který běží zcela v prohlížeči a nevyžaduje žádné backendové služby`.
+Tím, že parsování DWG/DXF, zpracování geometrie a vykreslování probíhá přímo v prohlížeči, MLightCAD umožňuje skutečné bezserverové prohlížení a úpravy CAD — ideální pro cloudové aplikace, offline použití a pracovní postupy citlivé na soukromí.
 
-Nabízí také něco, co u jiných CAD prohlížečů jen zřídka najdete — **export jedním kliknutím do jediného samostatného souboru HTML**. Stažený soubor `.html` obsahuje snímek výkresu a lehké běhové prostředí prohlížeče, takže příjemci mohou v jakémkoli moderním prohlížeči otevírat, posouvat, přibližovat, přepínat vrstvy a měřit vzdálenosti **bez CAD aplikace, bez serveru a bez instalace**. Většina desktopových i webových CAD prohlížečů umožňuje prohlížení pouze ve vlastním produktu; cad-viewer promění živý výkres v přenosný offline artefakt, který můžete poslat e-mailem, archivovat nebo umístit na statický souborový hosting — ideální pro sdílení s klienty, archivy pro compliance a izolovaná prostředí bez připojení k síti. Offline prohlížeč také spotřebovává výrazně méně paměti než tradiční desktopové nástroje při otevírání stejného výkresu (viz [porovnání paměti](#spotřeba-paměti-samostatného-html) níže).
+Nabízí také něco, co u jiných CAD prohlížečů jen zřídka najdete — **export jedním kliknutím do jediného samostatného souboru HTML**. Stažený soubor `.html` obsahuje snímek výkresu a lehké běhové prostředí prohlížeče, takže příjemci mohou v jakémkoli moderním prohlížeči otevírat, posouvat, přibližovat, přepínat vrstvy a měřit vzdálenosti **bez CAD aplikace, bez serveru a bez instalace**. Většina desktopových i webových CAD prohlížečů umožňuje prohlížení pouze ve vlastním produktu; MLightCAD promění živý výkres v přenosný offline artefakt, který můžete poslat e-mailem, archivovat nebo umístit na statický souborový hosting — ideální pro sdílení s klienty, archivy pro compliance a izolovaná prostředí bez připojení k síti. Offline prohlížeč také spotřebovává výrazně méně paměti než tradiční desktopové nástroje při otevírání stejného výkresu (viz [porovnání paměti](#spotřeba-paměti-samostatného-html) níže).
 
 - [**🌐 Domovská stránka**](https://mlightcad.com/)
 - **🌐 Živé demo**: [Netlify](https://mlightcad.netlify.app/) · [GitHub Pages](https://mlightcad.github.io/cad-viewer/)
@@ -22,9 +22,9 @@ Nabízí také něco, co u jiných CAD prohlížečů jen zřídka najdete — *
 - DEV.to: [@mlightcad](https://dev.to/mlightcad)
 - Juejin(稀土掘金): [@mlightcad](https://juejin.cn/column/7501992214283501579)
 
-### Aplikace postavené na cad-viewer
+### Aplikace postavené na MLightCAD
 
-Tým [Thingraph](https://cad.thingraph.site/) staví produkční prohlížeče DWG/DXF a integrace platforem na základě cad-viewer a obsluhuje desítky tisíc uživatelů po celém světě:
+Tým [Thingraph](https://cad.thingraph.site/) staví produkční prohlížeče DWG/DXF a integrace platforem na základě MLightCAD a obsluhuje desítky tisíc uživatelů po celém světě:
 
 - [DWG Viewer Web App](https://cad.thingraph.site/dwg-viewer) — webový prohlížeč DWG/DXF využívaný inženýrskými týmy po celém světě pro rychlý, bezserverový přístup k výkresům. Instalace pro vaši platformu:
   - [Google Drive](https://workspace.google.com/marketplace/app/dwg_viewer/641533811831) — otevření DWG/DXF z Disku pomocí **Open with**
@@ -46,13 +46,13 @@ Komunitní desktopové balíčky pro Linux:
 
 ### Demo aplikace (Demo Apps)
 
-Oficiální ukázkové aplikace, které ukazují, jak integrovat cad-viewer do vlastního produktu:
+Oficiální ukázkové aplikace, které ukazují, jak integrovat MLightCAD do vlastního produktu:
 
-- [cad-simple-viewer-example](https://github.com/mlightcad/cad-simple-viewer-example) — Minimální vanilla TypeScript host pro [`@mlightcad/cad-simple-viewer`](https://www.npmjs.com/package/@mlightcad/cad-simple-viewer): otevření lokálních nebo CDN DXF/DWG, ovládání příkazů malým toolbarem a líné načítání pluginů pro export HTML/PDF/SVG bez plného Vue UI.
-- [cad-viewer-example](https://github.com/mlightcad/cad-viewer-example) — Plnohodnotná Vue 3 aplikace na [`@mlightcad/cad-viewer`](https://www.npmjs.com/package/@mlightcad/cad-viewer) s nabídkami, ribbonem, dialogy, příkazovým řádkem a stavovým řádkem ([živé demo](https://mlightcad.github.io/cad-viewer-example/)).
+- [cad-simple-viewer-demo](https://github.com/mlightcad/cad-simple-viewer-example) — Minimální vanilla TypeScript host pro [`@mlightcad/cad-simple-viewer`](https://www.npmjs.com/package/@mlightcad/cad-simple-viewer): otevření lokálních nebo CDN DXF/DWG, ovládání příkazů malým toolbarem a líné načítání pluginů pro export HTML/PDF/SVG bez plného Vue UI.
+- [cad-editor-demo](https://github.com/mlightcad/cad-viewer-example) — Plnohodnotná Vue 3 aplikace na [`@mlightcad/cad-editor`](https://www.npmjs.com/package/@mlightcad/cad-editor) s nabídkami, ribbonem, dialogy, příkazovým řádkem a stavovým řádkem ([živé demo](https://mlightcad.github.io/cad-viewer-example/)).
 - [cad-viewer-nextjs-demo](https://github.com/mlightcad/cad-viewer-nextjs-demo) — Next.js demo „CAD disk“: obnovitelné chunkované nahrávání DWG/DXF, seznam souborů v SQLite s náhledy a otevření výkresů buď **živým parsováním v prohlížeči** (`cad-simple-viewer`), nebo **serverovým ACEX prerenderem** (rychlejší otevření, méně paměti).
 
-![CAD-Viewer Quick Demo](./assets/cad-viewer.gif)
+![MLightCAD Quick Demo](./assets/cad-viewer.gif)
 
 ## Funkce
 
@@ -61,8 +61,9 @@ Oficiální ukázkové aplikace, které ukazují, jak integrovat cad-viewer do v
 - **Vyšší bezpečnost dat** — soubory nikdy neopustí vaše zařízení, zajištění úplného soukromí
 - **Snadná integrace** — není potřeba nastavení serveru ani backendové infrastruktury
 - Modulární architektura pro bezproblémovou integraci třetích stran
+- **Systém pluginů** — Rozšiřitelná architektura pluginů s oficiálními pluginy pro UI, AI asistenta a export do HTML/PDF/SVG; viz [průvodce systémem pluginů](https://mlightcad.com/cad-viewer/docs/cs/development/plugin-system.html)
 - **Mobilní rozložení a dotykové ovládání** — responzivní UI pro telefon/tablet a dotyková gesta (štípnutí pro zoom, posun jedním prstem, klepnutí pro výběr) vestavěná v `@mlightcad/cad-simple-viewer`, bez nutnosti samostatné mobilní aplikace
-- **Export do offline HTML** — export aktuálního výkresu jako jediného samostatného souboru `.html` s vloženým prohlížečem (posun/přiblížení, přizpůsobení zobrazení, vrstvy, měření vzdálenosti, UI EN/ZH). Otevírá se offline v jakémkoli prohlížeči; není vyžadována instance cad-viewer ani backend.
+- **Export do offline HTML** — export aktuálního výkresu jako jediného samostatného souboru `.html` s vloženým prohlížečem (posun/přiblížení, přizpůsobení zobrazení, vrstvy, měření vzdálenosti, UI EN/ZH). Otevírá se offline v jakémkoli prohlížeči; není vyžadována instance MLightCAD ani backend.
 - Offline i online editační pracovní postupy
 - 3D vykreslovací engine THREE.js s pokročilými optimalizačními technikami
 - Navrženo pro rozšiřitelnost a integraci s platformami jako CMS, Notion a WeChat
@@ -73,7 +74,7 @@ Přidejte prohlížení DWG/DXF na libovolný web jediným `<iframe>` — bez CA
 
 ```html
 <iframe
-  src="https://mlightcad.com/embed.html?url=https://example.com/plans/floor.dwg&mode=review&toolbar=1"
+  src="https://mlightcad.com/embed.html?url=https://example.com/plans/floor.dwg&mode=review&toolbar=1
   style="width:100%;height:600px;border:0"
   allowfullscreen>
 </iframe>
@@ -124,7 +125,7 @@ pnpm preview:simple
 
 ## Jak používat
 
-Jste v CAD Viewer noví? **[Uživatelská příručka](https://mlightcad.com/cad-viewer/docs/)** nabízí podrobné návody k rozhraní prohlížeče, ovládání na počítači i dotykových zařízeních a k nástrojům pro poznámky a měření.
+Jste v MLightCAD noví? **[Uživatelská příručka](https://mlightcad.com/cad-viewer/docs/)** nabízí podrobné návody k rozhraní prohlížeče, ovládání na počítači i dotykových zařízeních a k nástrojům pro poznámky a měření.
 
 ### Ovládání v desktopovém prohlížeči
 - **Výběr**: levé tlačítko myši na entitách
@@ -137,63 +138,18 @@ Jste v CAD Viewer noví? **[Uživatelská příručka](https://mlightcad.com/cad
 - **Přiblížení**: stažení dvěma prsty
 - **Posun**: tažení jedním prstem
 
-## Systém pluginů
+## Výkon
 
-CAD-Viewer je postaven kolem modulárního **systému pluginů** v [`@mlightcad/cad-simple-viewer`](packages/cad-simple-viewer). Pluginy implementují rozhraní `AcApPlugin` a napojují se na životní cyklus prohlížeče přes `onLoad` / `onUnload` — typicky pro registraci příkazů, přidání UI nebo propojení exportních/importních pipeline.
+MLightCAD je navržen pro **výjimečný výkon** a zvládne velmi rozsáhlé soubory DXF/DWG při zachování vysoké snímkové frekvence. Využívá několik pokročilých vykreslovacích technologií pro optimalizaci výkonu:
 
-Pluginy načítejte přes `AcApDocManager.instance.pluginManager` (`loadPlugin`, `registerLazyPlugin` nebo `plugins.fromConfig` při vytváření správce dokumentů). Exportně orientované pluginy podporují **lazy loading**: zaregistrujte malý stub předem a stáhněte těžký balíček až když uživatel spustí související příkaz (například `-chtml`, nebo při potvrzení exportu z dialogu `chtml` v `cad-viewer`).
+- **Vlastní shader materiály**: GPU-akcelerované shader materiály pro efektivní vykreslování složitých typů čar a vzorů výplně šrafování
+- **Dávkování geometrie**: slučování bodů, čar a ploch se stejným materiálem pro výrazné snížení počtu draw callů
+- **Instancované vykreslování**: optimalizace vykreslování opakující se geometrie pomocí instancing technik
+- **Optimalizace buffer geometrie**: efektivní správa paměti a slučování geometrie pro snížení GPU režie
+- **Cache materiálů**: opakované použití materiálů u podobných entit pro minimalizaci změn stavu
+- **WebGL optimalizace**: využití moderních WebGL funkcí pro hardwarově akcelerované vykreslování
 
-Monorepo dodává několik oficiálních pluginů. Každý se zaměřuje na jednu oblast; kombinujte je podle potřeby. **Instalace, registrace a podrobnosti API jsou v README každého balíčku** — viz odkazy níže.
-
-### Oficiální pluginy
-
-| Balíček | Účel | Příkazy / schopnosti |
-|---------|------|-------------------------|
-| [`@mlightcad/cad-simple-ui-plugin`](packages/cad-simple-ui-plugin) | **Panel nástrojů, správce vrstev a paleta revizí** pro `cad-simple-viewer` (čisté DOM, bez Vue/React) | `layer`, `markuppanel`, výchozí panel nástrojů (zobrazení, měření, export, revize, motiv, jazyk) |
-| [`@mlightcad/cad-agent-plugin`](packages/cad-agent-plugin) | **CAD agent v přirozeném jazyce** (AI chat panel + volání nástrojů pro výkres) | `agent` |
-| [`@mlightcad/cad-html-plugin`](packages/cad-html-plugin) | Export výkresů do **samostatného offline HTML** | `chtml` (dialog v `cad-viewer`), `-chtml` (příkazová řádka) |
-| [`@mlightcad/cad-pdf-plugin`](packages/cad-pdf-plugin) | **Export a import PDF** (vektorová pipeline) | `cpdf`, `ipdf` |
-| [`@mlightcad/cad-svg-plugin`](packages/cad-svg-plugin) | **Export SVG** a sdílený vektorový renderer (používá se také u exportu PDF) | `csvg` |
-
-### `@mlightcad/cad-simple-ui-plugin` — UI vrstva pro jednoduchý prohlížeč
-
-[`cad-simple-viewer`](packages/cad-simple-viewer) záměrně **nedodává aplikační UI** — pouze plátno a CAD jádro. Pokud vkládáte jednoduchý prohlížeč do vlastní webové aplikace a chcete hotovou UI vrstvu bez plné Vue [`cad-viewer`](packages/cad-viewer) shell aplikace, **`cad-simple-ui-plugin` je určená UI vrstva**.
-
-Poskytuje:
-
-- **Konfigurovatelný panel nástrojů** (umístění na libovolném okraji, výchozí CAD příkazy, vnořená menu, vlastní položky)
-- **Dokovací panel** se záložkou **správce vrstev** (zapnutí/vypnutí vrstvy, výběr barvy ACI, přiblížení na vrstvu dvojklikem) a záložkou **palety revizí** (seznam značek, stav, komentáře)
-- **Synchronizaci motivu** se sysvar `COLORTHEME` a CSS tokeny `--ml-ui-*` na hostitelském elementu
-- **Synchronizaci jazyka** s `AcApI18n` (angličtina / čínština / čeština / turečtina)
-
-Všechny widgety jsou nezávislé na frameworku (čisté DOM). Plná Vue aplikace [`cad-viewer`](packages/cad-viewer) má vlastní Element Plus UI a tento plugin nevyžaduje; použijte `cad-simple-ui-plugin`, když stavíte přímo na `cad-simple-viewer`.
-
-→ **Rychlý start, přizpůsobení panelu nástrojů a možnosti:** [packages/cad-simple-ui-plugin/README.md](packages/cad-simple-ui-plugin/README.md)
-
-### `@mlightcad/cad-agent-plugin` — AI asistent pro výkresy
-
-[`cad-agent-plugin`](packages/cad-agent-plugin) přidává **CAD agenta v přirozeném jazyce** do aplikací založených na `cad-simple-viewer`. Uživatelé popíší, co chtějí, běžnou řečí; agent volá CAD nástroje pro prohlížení výkresu a vytváření nebo úpravu geometrie.
-
-Poskytuje:
-
-- **Lazy-loaded** `AcApPlugin` (spouštěcí příkaz: `agent`), takže AI balíček není na kritické cestě
-- **Vue chat panel** (`AgentChatPanel`) postavený na Vercel AI SDK (`Experimental_Agent` + `@ai-sdk/vue`)
-- **Konfiguraci LLM v prohlížeči** — API klíče pro OpenAI, Anthropic nebo OpenAI-kompatibilní endpointy zůstávají v klientovi (šifrované v `localStorage`)
-- **CAD nástroje fáze 1** — `get_drawing_context`; `draw_line`, `draw_circle`, `draw_arc`, `draw_rectangle`, `draw_polyline`, `draw_text`; `set_current_layer`, `create_layer`, `zoom_extents`
-- **UI řetězce v angličtině / čínštině / turečtině / češtině** přes i18n vrstvu pluginu
-
-Plná Vue aplikace [`cad-viewer`](packages/cad-viewer) registruje agenta automaticky, pokud je balíček nainstalován (záložka palety). [`cad-simple-viewer-example`](packages/cad-simple-viewer-example) ho propojuje do dock záložky přes `cad-simple-ui-plugin`. Hostitelské aplikace volají `registerLazyAgentPlugin` a `setAgentPaletteOpener` pro umístění panelu podle potřeby.
-
-→ **Instalace, registrace a seznam nástrojů:** [packages/cad-agent-plugin/README.md](packages/cad-agent-plugin/README.md)
-
-### Exportní pluginy (HTML / PDF / SVG)
-
-Tyto pluginy přidávají exportní (a u PDF importní) příkazy do stejného správce pluginů. Jsou **lazy-loaded**, aby počáteční velikost stránky zůstala malá. Demo [`cad-simple-viewer-example`](packages/cad-simple-viewer-example) registruje všechny tři exportní pluginy, `cad-simple-ui-plugin` a `cad-agent-plugin`; plná aplikace [`cad-viewer`](packages/cad-viewer) registruje exportní pluginy a agent plugin (pokud je nainstalován) při bootstrapu.
-
-- **HTML** — jednosouborový offline prohlížeč pro sdílení a archivaci: [packages/cad-html-plugin/README.md](packages/cad-html-plugin/README.md)  
-  (Headless CLI používající stejnou pipeline: [packages/cad-simple-viewer-cli/README.md](packages/cad-simple-viewer-cli/README.md))
-- **PDF** — vektorový export PDF a import PDF do CAD: [packages/cad-pdf-plugin/README.md](packages/cad-pdf-plugin/README.md)
-- **SVG** — vektorový export SVG: [packages/cad-svg-plugin/README.md](packages/cad-svg-plugin/README.md)
+Tyto optimalizace umožňují MLightCAD plynule vykreslovat složité CAD výkresy s tisíci entitami při zachování responzivní interakce s uživatelem.
 
 #### Spotřeba paměti samostatného HTML
 
@@ -207,19 +163,6 @@ Při otevírání ukázkového výkresu [`canteen.dwg`](https://cdn.jsdelivr.net
 | Samostatné HTML (režim prohlížení) | 33 MB |
 
 Offline HTML prohlížeč spotřebovává přibližně o **83 % méně paměti než AutoCAD 2020** a v režimu prohlížení o **77 % méně než GstarCAD Viewer**, přičemž stále podporuje posun/přiblížení, přepínání vrstev a měření vzdálenosti (režim měření).
-
-## Výkon
-
-CAD-Viewer je navržen pro **výjimečný výkon** a zvládne velmi rozsáhlé soubory DXF/DWG při zachování vysoké snímkové frekvence. Využívá několik pokročilých vykreslovacích technologií pro optimalizaci výkonu:
-
-- **Vlastní shader materiály**: GPU-akcelerované shader materiály pro efektivní vykreslování složitých typů čar a vzorů výplně šrafování
-- **Dávkování geometrie**: slučování bodů, čar a ploch se stejným materiálem pro výrazné snížení počtu draw callů
-- **Instancované vykreslování**: optimalizace vykreslování opakující se geometrie pomocí instancing technik
-- **Optimalizace buffer geometrie**: efektivní správa paměti a slučování geometrie pro snížení GPU režie
-- **Cache materiálů**: opakované použití materiálů u podobných entit pro minimalizaci změn stavu
-- **WebGL optimalizace**: využití moderních WebGL funkcí pro hardwarově akcelerované vykreslování
-
-Tyto optimalizace umožňují CAD-Viewer plynule vykreslovat složité CAD výkresy s tisíci entitami při zachování responzivní interakce s uživatelem.
 
 ## Známé problémy
 
@@ -242,8 +185,6 @@ Cílem tohoto projektu je vytvořit plnohodnotný **2D systém podobný AutoCADu
 
 Legenda:
 - [x] Dokončeno
-- [ ] Plánováno
-- [ ] ⏳ Probíhá
 
 ### Jádro souborů a datové vrstvy
 
@@ -253,16 +194,16 @@ Legenda:
 * [x] Načítání DWG
 * [x] Export do samostatného offline HTML (vložený prohlížeč)
 * [x] Streamování / přírůstkové načítání velkých souborů
-* [ ] ⏳ Kompatibilita verzí souborů (R12–Latest)
+* [x] Kompatibilita verzí souborů (R12–Latest)
 
 #### Datový model
 
 * [x] Jednotný datový model entit
 * [x] Podpora tabulky vrstev
 * [x] Struktura bloků / vložení
-* [ ] ⏳ Správa handle a object ID: v současnosti je objectId stejný jako handle a reprezentován jako jeden řetězec místo bigint (int64).
-* [ ] ⏳ Podpora XData / rozšiřujícího slovníku
-* [ ] Zpracování proxy entit
+* [ ] Správa handle a object ID: v současnosti je objectId stejný jako handle a reprezentován jako jeden řetězec místo bigint (int64).
+* [x] Podpora XData / rozšiřujícího slovníku
+* [x] Zpracování proxy entit
 
 ### Vykreslování a výkon
 
@@ -272,7 +213,7 @@ Legenda:
 * [x] Pipeline optimalizovaná pouze pro 2D
 * [x] Organizace scény podle vrstev
 * [x] Vykreslování layoutu / papírového prostoru
-* [ ] Podpora entit viewportu
+* [x] Podpora entit viewportu
 
 #### Optimalizace výkonu
 
@@ -297,7 +238,7 @@ Legenda:
 * [x] Viditelnost vrstev zap/vyp
 * [x] Zmrazení / uzamčení vrstev
 * [x] Zobrazení tloušťky čar
-* [ ] Měřítko typů čar
+* [x] Měřítko typů čar
 * [x] Přepínání pozadí / motivu
 
 ### Výběr a interakce
@@ -359,9 +300,9 @@ Legenda:
 #### Pokročilé entity
 
 * [x] Šrafování
-* [ ] Text (jednořádkový / víceřádkový)
-* [ ] Kóty (lineární, zarovnané, úhlové)
-* [ ] Vytváření a vkládání bloků
+* [x] Text (jednořádkový / víceřádkový)
+* [x] Kóty (lineární, zarovnané, úhlové)
+* [x] Vytváření a vkládání bloků
 
 ### Měření
 
@@ -369,14 +310,14 @@ Legenda:
 * [x] Délka oblouku
 * [x] Plocha
 * [x] Úhel
-* [ ] Souřadnice
-* [ ] Statistiky entit (délka, plocha, počet)
+* [x] Souřadnice
+* [x] Statistiky entit (délka, plocha, počet)
 
 ### Kóty
 
 * [x] Lineární kóta
-* [ ] Úhlová kóta
-* [ ] Souřadnice
+* [x] Úhlová kóta
+* [x] Souřadnice
 
 ### Vlastnosti a UI panely
 
@@ -389,7 +330,7 @@ Legenda:
 #### Panely a UI
 
 * [x] Správce vrstev
-* [ ] Správce bloků
+* [x] Správce bloků
 * [x] Historie příkazů / konzole
 * [x] Stavový řádek (přichycení, orto, mřížka)
 
@@ -406,6 +347,7 @@ Legenda:
 * [x] Jádro nezávislé na frameworku
 * [ ] Příklad integrace React
 * [x] Příklad integrace Vue
+* [x] [Příklad integrace Next.js](https://github.com/mlightcad/cad-viewer-nextjs-demo)
 * [ ] Integrace OpenLayers / Map
 * [ ] Vkládání do CMS / Notion
 
@@ -421,7 +363,7 @@ Legenda:
 
 * [x] Lokální úpravy v prohlížeči
 * [x] Uložení do DXF
-* [ ] Uložení sady změn / diff
+* [x] Uložení sady změn / diff
 * [ ] Perzistence IndexedDB
 
 #### Online editor
@@ -435,6 +377,7 @@ Legenda:
 ### Cílové platformy
 
 * [x] Integrace Google Drive (datový zdroj Picker; Drive „Open with“ jako volitelné pokračování)
+* [x] Integrace OneDrive (datový zdroj Microsoft OneDrive / SharePoint)
 * [ ] Prohlížeč pro WeChat Mini Program
 * [x] Podpora mobilního prohlížeče (responzivní rozložení a dotykové ovládání)
 
@@ -454,7 +397,7 @@ Příspěvky jsou vítány! Otevírejte issue nebo pull requesty pro opravy chyb
 
 ## Licence
 
-Monorepo cad-viewer je primárně licencováno pod [MIT](LICENSE).
+Monorepo MLightCAD je primárně licencováno pod [MIT](LICENSE).
 
 Načítání DXF používá vestavěný MIT parser v `@mlightcad/data-model`. Načítání DWG je **opt-in**: `@mlightcad/cad-simple-viewer` nezávisí na GPL balíčcích LibreDWG. Hostitelé, kteří chtějí open-source podporu DWG, si sami přidají `@mlightcad/libredwg-converter` (GPL-3.0), nasadí jeho worker + wasm a zaregistrují konvertor. Pokud dodáváte produkt s uzavřeným zdrojovým kódem a nemůžete zákazníkům distribuovat GPL kód, použijte místo toho [**vlastní parser DWG**](./PROPRIETARY-PARSER.md).
 

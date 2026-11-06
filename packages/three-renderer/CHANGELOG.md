@@ -1,5 +1,163 @@
 # @mlightcad/three-renderer
 
+## 1.8.0-preview.1
+
+### Patch Changes
+
+- 7399150: fix: HTML export keeps IMAGE/OLE on their real layer, and offline viewers can turn initially-off layers back on after CPU geometry release
+- fix: skip in-batch selection overlays in HTML export
+
+  Mark shared INSERT and mesh-glyph highlight overlays with
+  `transientHighlight` so HTML export does not bake the cyan selection
+  tint into the offline scene.
+
+- feat: adds a lightweight `@mlightcad/cad-simple-viewer/file-open-panel` landing entry so demos can pick a drawing before loading the full viewer, and fuzzy layer-name search in the simple UI layer panel. PDF and HTML export now respect Off, Frozen, and no-plot layers; HTML keeps OLE/IMAGE layer toggles working after geometry release and skips baking selection overlays into the offline scene
+
+## 1.8.0-preview.0
+
+### Minor Changes
+
+- feat: renames `@mlightcad/cad-viewer` to `@mlightcad/cad-editor`, adds headless PDF export with monochrome mode plus script savePdf/saveHtml APIs, and ships richer entity snapshots for drawing analysis. Agent settings move to a multi-provider model catalog with collapsible tool-call groups. Canvas typing starts commands with Space to confirm or repeat, and coordinate entry matches AutoCAD syntax. Public HTML/PDF core exports use AcExHtml/AcExPdf prefixes; hatch, wipeout, and PDF-export hangs are fixed
+
+### Patch Changes
+
+- 6551be6: fix: keep wipeouts and MTEXT canvas masks fused with the paper background when their layer refreshes to ACI 7
+
+  Background fills were still eligible for ByLayer colour sync, so a layer-table
+  update that supplied ACI 7 (black on light paper) overwrote MODELBKCOLOR /
+  PAPERBKCOLOR tracking. Materials marked `isBackgroundFill` now skip layer
+  colour refresh and are not stored as ByLayer-colour. Bumps `@mlightcad/data-model`
+  to 1.15.22 and `@mlightcad/libredwg-converter` to 3.15.22 for the matching
+  MTEXT mask / wipeout trait flags.
+
+- f5b6152: fix(three-renderer): repair hatch loops that draw an edge twice
+
+  `resolveSelfIntersectingHatchLoop` now runs the PolyBool segments through a
+  union selection before rebuilding rings, so edges without fill on either side
+  are dropped. A spike drawn out and back no longer makes the repair fail (and
+  leak fill outside the boundary), and a notch reached along a doubled edge is no
+  longer filled in.
+
+- c525fa8: fix: PDF export of drawings with wipeouts and many viewports no longer hangs
+
+  Wipeouts are now always painted as a solid mask. `AcDbWipeout` does not set
+  a fill type, so the PDF renderer tessellated the pattern of the last hatch
+  drawn across each wipeout (hundreds of thousands of paper-white strokes per
+  wipeout) and the on-screen renderer drew it with the hatch shader instead of
+  masking.
+
+  Paper-space viewports now skip model-space entities outside the region they
+  show instead of painting all of model space and clipping it. Content streams
+  are compressed at zlib level 6 instead of 9, which cut main-thread
+  compression time about 5× for a 2% larger file.
+
+  On a drawing with 30 layout viewports, export went from never finishing to
+  about 1.5 minutes, with a 19 MB PDF.
+
+## 1.7.8
+
+### Patch Changes
+
+- 05fdcf3: fix: rebase mesh-glyph instance matrices around a bucket origin
+
+  Scene-level TrueType glyph InstancedMesh batching baked absolute world
+  coordinates into float32 instance matrices, so on large-coordinate
+  (georeferenced, e.g. CGCS2000) drawings glyph vertices quantized to
+  0.25–2 drawing units and text rendered mangled; hover/selection
+  overlays were unaffected, which hid the cause. Instance matrices now
+  bake in float64 and are rebased at flush around each bucket's first
+  placement, with the origin carried on the InstancedMesh position where
+  the CPU's float64 model-view math absorbs it. Highlight overlays parent
+  under the InstancedMesh so they inherit the same origin.
+
+- feat: adds dimension drawing commands with an annotation scale selector, rebuilds the Dimension Style Manager with AutoCAD-style tabs, and moves the ribbon dimension tools into the Annotation dropdown. Adds a script-first MCP server with headed/idle session control and `cad.file.saveDxf`, and splits the script runtime into `@mlightcad/cad-script-core`. Fixes repeated redo and redone-entity rendering, box selection through paper-space viewports, offline HTML layout framing, coordinate-bubble drift, embedded raster images, ACI-7 block colours on layer 0, and large-coordinate glyph precision.
+
+## 1.7.8-preview.6
+
+### Patch Changes
+
+- 42351f3: fix: keep explicit ACI-7 block colours on layer 0 instead of inheriting the INSERT layer
+
+  A block entity authored on layer `0` with an explicit ACI-7 (foreground) colour
+  was rebound to the INSERT layer's colour, so a title frame that AutoCAD draws
+  white rendered red on a red INSERT layer.
+
+  The two cases were indistinguishable: `AcGiSubEntityTraits.color` is stored
+  pre-resolved, so ByLayer content on an ACI-7 layer also arrives as an absolute
+  ACI 7. `data-model` now records the original provenance on the traits
+  (`isColorByLayer`), and `three-renderer` uses it to set `isByLayerColor`
+  truthfully. `AcTrInheritedLayerMaterialMapper` can then decide directly: a
+  ByLayer colour inherits the INSERT layer, an explicit colour does not.
+
+  Missing bindings (`isByLayerColor == null`, from conversion paths that drop the
+  flag) are still inferred from the remaining ByLayer markers, so the earlier
+  fixes for ByLayer legend headers (#602) and lost-flag DXF conversions keep
+  working.
+
+  The material cache key now includes that provenance. A ByLayer colour on an
+  ACI-7 layer and an explicit ACI-7 resolve to the same symbolic colour, so they
+  previously shared one cache entry and the first creator's `isByLayerColor`
+  leaked to every later user. Which one won depended on draw order, so the same
+  title frame could inherit the INSERT colour, and inherited ByLayer content could
+  fall back to black on model-space (dark) backgrounds. Traits without provenance
+  keep the historical key.
+
+- fix: box selection in paper-space viewports now reaches model entities, offline HTML exports frame every layout with its own export-time extents, and the coordinate bubble stays anchored to its point while zooming. Explicit ACI-7 block colours on layer 0 keep their colour instead of inheriting the INSERT layer, and the layer-material cache no longer leaks ByLayer provenance between entities.
+
+## 1.7.8-preview.5
+
+### Patch Changes
+
+- 1020d4d: fix: leader entities now expose their properties in the properties palette with localized labels, and TrueType text glyphs are parented to the layout that owns them, so model-space text no longer disappears inside paper-space viewports or headless HTML exports. Dependencies move to data-model 1.15.19 and libredwg-converter 3.15.19.
+
+## 1.7.8-preview.4
+
+### Patch Changes
+
+- fix: headless HTML export now embeds raster and OLE images. Node has no canvas, so IMAGE and OLE textures were omitted from offline HTML. The exporter decodes PNG, JPEG, and BMP and writes those pixels back into the snapshot as PNG, so pictures in paper drawings survive a headless export.
+
+## 1.7.8-preview.3
+
+### Patch Changes
+
+- fix: HTML export now includes instanced block geometry from a hidden model layout, so paper viewports keep walls, fills, and borders. ACI color 7 is remapped onto the selected canvas background, and gradient hatch endpoints flip when the offline viewer changes that background. This preview also upgrades realdwg-web to 1.15.18.
+
+## 1.7.8-preview.2
+
+### Patch Changes
+
+- feat: adds dimension drawing commands and annotation scale UI, rebuilds the Dimension Style Manager tabs to follow AutoCAD layouts for lines, symbols, text, fit, units, and tolerances, and moves the ribbon dimension commands into the Annotation panel dropdown. Undo/redo is fixed so repeated redo steps work and redone entities reappear, and the proprietary parser document now describes pricing as a one-time payment with an annual license fee.
+
+## 1.7.8-preview.1
+
+### Patch Changes
+
+- fix: include the Node-safe cad-agent-core script-api Vite bundle in the Nx CI build so npm packages ship dist/cad-agent-core-script-api.js. Without it, @mlightcad/cad-mcp-server failed to resolve @mlightcad/cad-agent-core/script-api after install because the project build only ran the main lib Vite step and skipped vite.script-api.config.ts
+
+## 1.7.8-preview.0
+
+### Patch Changes
+
+- feat: adds a script-first cad-mcp-server for third-party agents, batches TrueType mesh glyphs with harder MTEXT editing, keeps INSERT block TEXT when PDF glyphs settle late, and updates the demo gallery landing page plus plugin documentation
+
+## 1.7.7
+
+### Patch Changes
+
+- feat: adds Node HTML export with thumbnails and complex linetype SVG previews, plus a script-first CAD agent with measure APIs, searchable built-in scripts, and a Vue-free script console. Fixes layout framing via openViewMode, locked-layer edits, INSERT highlight/pan stability, agent tool streaming, and MTEXT ribbon hangs in production. Externalizes data-model in the HTML exporter Node build, pins @mlightcad packages to exact releases, and upgrades data-model/libredwg-converter and three.js rendering deps
+
+## 1.7.7-preview.1
+
+### Patch Changes
+
+- fix: stops the MTEXT ribbon from hanging in production builds and externalizes data-model in the HTML exporter Node build so Node consumers resolve correctly. Pins @mlightcad package versions to exact releases for reproducible installs, and adds a development guide for contributors
+
+## 1.7.7-preview.0
+
+### Patch Changes
+
+- feat: adds Node HTML export with thumbnails and complex linetype SVG previews, plus a script-first CAD agent with measure APIs, searchable built-in scripts, and a Vue-free script console. Fixes layout framing via openViewMode, locked-layer edits, INSERT highlight/pan stability, and agent tool streaming. Also upgrades data-model/libredwg-converter and three.js rendering deps
+
 ## 1.7.6
 
 ### Patch Changes
@@ -172,7 +330,7 @@
 
 ### Patch Changes
 
-- fix: fix issue 103 and update cad-simple-viewer-example to be able to verify it
+- fix: fix issue 103 and update cad-simple-viewer-demo to be able to verify it
 
 ## 1.4.8
 

@@ -1,10 +1,22 @@
 import {
+  ACEX_COORDINATE_BADGE_LIFT_EM,
   ACEX_HTML_SHELL_CSS,
-  buildAcExHtmlShellBody,
+  acexHtmlBuildShellBody,
   ML_UI_COMPACT_MAX_WIDTH
 } from '@mlightcad/cad-html-core'
 
 describe('ACEX_HTML_SHELL_CSS', () => {
+  it('lifts the coordinate capsule by the shared em offset', () => {
+    // Same constant the runtime transform uses, so first paint and every later
+    // re-position cannot disagree on where the bubble sits.
+    expect(ACEX_HTML_SHELL_CSS).toContain(
+      `.mlcad-measure-badge--coordinate {
+    /* em so the lift tracks the capsule when text height changes. */
+    transform: translate(-50%, calc(-50% - ${ACEX_COORDINATE_BADGE_LIFT_EM}em));
+  }`
+    )
+  })
+
   it('hides drawer title rows on the phone breakpoint', () => {
     expect(ACEX_HTML_SHELL_CSS).toContain(
       '#mlcad-layer-drawer .mlcad-drawer-header,'
@@ -56,12 +68,8 @@ describe('ACEX_HTML_SHELL_CSS', () => {
     expect(ACEX_HTML_SHELL_CSS).toContain('--mlcad-z-chrome: 7;')
     expect(ACEX_HTML_SHELL_CSS).toContain('--mlcad-z-measure: 1;')
     expect(ACEX_HTML_SHELL_CSS).toContain('--mlcad-z-markup: 2;')
-    expect(ACEX_HTML_SHELL_CSS).toContain(
-      'z-index: var(--mlcad-z-measure);'
-    )
-    expect(ACEX_HTML_SHELL_CSS).toContain(
-      'z-index: var(--mlcad-z-markup);'
-    )
+    expect(ACEX_HTML_SHELL_CSS).toContain('z-index: var(--mlcad-z-measure);')
+    expect(ACEX_HTML_SHELL_CSS).toContain('z-index: var(--mlcad-z-markup);')
     expect(ACEX_HTML_SHELL_CSS).toContain(
       'z-index: calc(var(--mlcad-z-chrome) + 3);'
     )
@@ -132,9 +140,9 @@ describe('ACEX_HTML_SHELL_CSS', () => {
   })
 })
 
-describe('buildAcExHtmlShellBody', () => {
+describe('acexHtmlBuildShellBody', () => {
   it('provides an empty toolbar mount and canvas chrome in view mode', () => {
-    const html = buildAcExHtmlShellBody('#000000', 'view')
+    const html = acexHtmlBuildShellBody('#000000', 'view')
 
     expect(html).toContain('id="mlcad-canvas-host"')
     expect(html).toContain('id="mlcad-top-chrome"')
@@ -161,7 +169,7 @@ describe('buildAcExHtmlShellBody', () => {
   })
 
   it('includes measure/review drawers and polar panel in measure mode', () => {
-    const html = buildAcExHtmlShellBody('#000000', 'measure')
+    const html = acexHtmlBuildShellBody('#000000', 'measure')
 
     expect(html).toContain(
       '<nav id="mlcad-toolbar" data-i18n-attr="aria-label" data-i18n-key="toolbar.viewerTools" aria-label="Viewer tools"></nav>'
@@ -191,7 +199,7 @@ describe('buildAcExHtmlShellBody', () => {
   })
 
   it('omits markup/measure result drawers in view mode', () => {
-    const html = buildAcExHtmlShellBody('#000000', 'view')
+    const html = acexHtmlBuildShellBody('#000000', 'view')
     expect(html).not.toContain('data-markup-mode=')
     expect(html).not.toContain('data-action="clear-markups"')
     expect(html).not.toContain('data-action="markup-panel"')
@@ -206,7 +214,7 @@ describe('buildAcExHtmlShellBody', () => {
 
   it('keeps an empty toolbar mount when layouts are not exported', () => {
     // Layout switcher visibility is decided at runtime by AcExHtmlMainToolbar.
-    const html = buildAcExHtmlShellBody('#000000', 'measure', false)
+    const html = acexHtmlBuildShellBody('#000000', 'measure', false)
 
     expect(html).toContain('id="mlcad-toolbar"')
     expect(html).not.toContain('id="mlcad-layout-menu-btn"')

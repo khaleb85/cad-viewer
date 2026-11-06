@@ -131,20 +131,25 @@ const targets = [
     path: join(
       rootDir,
       'packages',
-      'cad-simple-viewer-example',
+      'cad-simple-viewer-demo',
       'package.json'
     ),
-    label: 'cad-simple-viewer-example/package.json',
+    label: 'cad-simple-viewer-demo/package.json',
     transform: replacePackageDep
   },
   {
-    path: join(rootDir, 'packages', 'cad-viewer-example', 'package.json'),
-    label: 'cad-viewer-example/package.json',
+    path: join(rootDir, 'packages', 'cad-editor-demo', 'package.json'),
+    label: 'cad-editor-demo/package.json',
     transform: replacePackageDep
   },
   {
     path: join(rootDir, 'packages', 'cad-simple-viewer-cli', 'package.json'),
     label: 'cad-simple-viewer-cli/package.json',
+    transform: replacePackageDep
+  },
+  {
+    path: join(rootDir, 'packages', 'cad-mcp-server', 'package.json'),
+    label: 'cad-mcp-server/package.json',
     transform: replacePackageDep
   },
   {
@@ -161,15 +166,15 @@ const targets = [
     path: join(
       rootDir,
       'packages',
-      'cad-simple-viewer-example',
+      'cad-simple-viewer-demo',
       'vite.config.ts'
     ),
-    label: 'cad-simple-viewer-example/vite.config.ts',
+    label: 'cad-simple-viewer-demo/vite.config.ts',
     transform: replaceViteLibreDwg
   },
   {
-    path: join(rootDir, 'packages', 'cad-viewer-example', 'vite.config.ts'),
-    label: 'cad-viewer-example/vite.config.ts',
+    path: join(rootDir, 'packages', 'cad-editor-demo', 'vite.config.ts'),
+    label: 'cad-editor-demo/vite.config.ts',
     transform: replaceViteLibreDwg
   },
   {
@@ -187,6 +192,17 @@ const targets = [
     path: join(
       rootDir,
       'packages',
+      'cad-mcp-server',
+      'scripts',
+      'copy-runner-assets.mjs'
+    ),
+    label: 'cad-mcp-server/scripts/copy-runner-assets.mjs',
+    transform: replaceViteLibreDwg
+  },
+  {
+    path: join(
+      rootDir,
+      'packages',
       'cad-diff-viewer-example',
       'src',
       'registerLibreDwg.ts'
@@ -198,22 +214,22 @@ const targets = [
     path: join(
       rootDir,
       'packages',
-      'cad-simple-viewer-example',
+      'cad-simple-viewer-demo',
       'src',
       'registerLibreDwg.ts'
     ),
-    label: 'cad-simple-viewer-example/src/registerLibreDwg.ts',
+    label: 'cad-simple-viewer-demo/src/registerLibreDwg.ts',
     transform: replaceRegisterModule
   },
   {
     path: join(
       rootDir,
       'packages',
-      'cad-viewer-example',
+      'cad-editor-demo',
       'src',
       'registerLibreDwg.ts'
     ),
-    label: 'cad-viewer-example/src/registerLibreDwg.ts',
+    label: 'cad-editor-demo/src/registerLibreDwg.ts',
     transform: replaceRegisterModule
   },
   {
@@ -245,11 +261,11 @@ const targets = [
     path: join(
       rootDir,
       'packages',
-      'cad-simple-viewer-example',
+      'cad-simple-viewer-demo',
       'src',
       'main.ts'
     ),
-    label: 'cad-simple-viewer-example/src/main.ts',
+    label: 'cad-simple-viewer-demo/src/main.ts',
     transform(content) {
       let next = replaceLibreDwgParserWorkerFile(content)
       if (next == null) {
@@ -270,11 +286,11 @@ const targets = [
     path: join(
       rootDir,
       'packages',
-      'cad-simple-viewer-example',
+      'cad-simple-viewer-demo',
       'src',
       'htmlConverter.ts'
     ),
-    label: 'cad-simple-viewer-example/src/htmlConverter.ts',
+    label: 'cad-simple-viewer-demo/src/htmlConverter.ts',
     transform(content) {
       let next = replaceLibreDwgParserWorkerFile(content)
       if (next == null) {
@@ -292,8 +308,8 @@ const targets = [
     }
   },
   {
-    path: join(rootDir, 'packages', 'cad-viewer-example', 'src', 'main.ts'),
-    label: 'cad-viewer-example/src/main.ts',
+    path: join(rootDir, 'packages', 'cad-editor-demo', 'src', 'main.ts'),
+    label: 'cad-editor-demo/src/main.ts',
     transform(content) {
       let next = replaceLibreDwgParserWorkerFile(content)
       if (next == null) {
@@ -341,6 +357,35 @@ const targets = [
 
       if (next === content) {
         throw new Error('No libredwg references found in CLI runner/main.ts')
+      }
+      return next
+    }
+  },
+  {
+    path: join(rootDir, 'packages', 'cad-mcp-server', 'runner', 'main.ts'),
+    label: 'cad-mcp-server/runner/main.ts',
+    transform(content) {
+      if (
+        content.includes('AcDbDwgConverter') &&
+        !content.includes('AcDbLibreDwgConverter')
+      ) {
+        console.log('  already using AcDbDwgConverter')
+        return null
+      }
+
+      let next = content
+      next = next.replaceAll(
+        "from '@mlightcad/libredwg-converter'",
+        "from '@mlightcad/dwg-converter'"
+      )
+      next = next.replaceAll('AcDbLibreDwgConverter', 'AcDbDwgConverter')
+      next = next.replaceAll(
+        'LIBREDWG_PARSER_WORKER_FILE',
+        'DWG_PARSER_WORKER_FILE'
+      )
+
+      if (next === content) {
+        throw new Error('No libredwg references found in MCP runner/main.ts')
       }
       return next
     }

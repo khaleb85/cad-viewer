@@ -1,57 +1,60 @@
-import type { AcExPackageManifest } from '@mlightcad/cad-html-core'
+import type { AcExHtmlPackageManifest } from '@mlightcad/cad-html-core'
 import type {
-  AcExExtents,
-  AcExLayoutSnapshot,
-  AcExLineBatch,
-  AcExMeshBatch,
-  AcExSnapshot,
-  AcExViewerMode
+  AcExHtmlExtents,
+  AcExHtmlLayoutSnapshot,
+  AcExHtmlLineBatch,
+  AcExHtmlMeshBatch,
+  AcExHtmlSnapshot,
+  AcExHtmlViewerMode
 } from '@mlightcad/cad-html-core'
-import { decodeChunkPayload } from '@mlightcad/cad-html-core'
-import { acexSetDocsBaseUrl } from '@mlightcad/cad-html-core'
+import { acexHtmlLayoutBackground } from '@mlightcad/cad-html-core'
+import { acexHtmlDecodeChunkPayload } from '@mlightcad/cad-html-core'
+import { acexHtmlSetDocsBaseUrl } from '@mlightcad/cad-html-core'
 import {
-  createAcExHtmlAccessKey,
-  decryptAcExHtmlSnapshotPayload,
-  isAcExHtmlAccessExpired,
-  parseAcExHtmlAccessManifest
+  acexHtmlCreateAccessKey,
+  acexHtmlDecryptSnapshotPayload,
+  acexHtmlIsAccessExpired,
+  acexHtmlParseAccessManifest
 } from '@mlightcad/cad-html-core'
-import { parseAcExHtmlBinaryEncoding } from '@mlightcad/cad-html-core'
+import { acexHtmlParseBinaryEncoding } from '@mlightcad/cad-html-core'
 import {
-  createAcExDomEmbeddedPackageFetch,
-  decryptAcExEmbeddedManifest,
-  parseAcExEmbeddedPackageConfig
+  acexHtmlCreateDomEmbeddedPackageFetch,
+  acexHtmlDecryptEmbeddedManifest,
+  acexHtmlParseEmbeddedPackageConfig
 } from '@mlightcad/cad-html-core'
-import { AcExHtmlI18n, detectAcExHtmlLocale } from '@mlightcad/cad-html-core'
+import { acexHtmlDetectLocale, AcExHtmlI18n } from '@mlightcad/cad-html-core'
 import { AcExHtmlIcons } from '@mlightcad/cad-html-core'
 import {
   ACEX_PACKAGE_DIRECTORY_ORIGIN,
-  acexGlobalFetch,
-  chooseInitialManifestHref,
-  probePackageManifest,
-  resolveViewerManifestUrl
+  acexHtmlChooseInitialManifestHref,
+  acexHtmlGlobalFetch,
+  acexHtmlProbePackageManifest,
+  acexHtmlResolveViewerManifestUrl
 } from '@mlightcad/cad-html-core'
 import {
-  type AcExBatchExtentEntry,
-  collectLayoutBatchExtentEntries,
-  computeIntelligentExtentsFromBatchEntries,
-  computeLayerExtentsMap,
-  resolveLayoutViewExtents} from '@mlightcad/cad-html-core'
+  type AcExHtmlBatchExtentEntry,
+  acexHtmlCollectLayoutBatchExtentEntries,
+  acexHtmlComputeIntelligentExtentsFromBatchEntries,
+  acexHtmlComputeLayerExtentsMap,
+  acexHtmlResolveLayoutFallbackExtents,
+  acexHtmlResolveLayoutViewExtents
+} from '@mlightcad/cad-html-core'
 import {
   ACEX_GEOMETRY_CHUNK_FETCH_CONCURRENCY,
-  createAcExOrderedBytePrefetcher,
-  loadAcExPackageLayoutOsnap,
-  resolveChunkUrl,
-  snapshotSkeletonFromManifest
+  acexHtmlCreateOrderedBytePrefetcher,
+  acexHtmlLoadPackageLayoutOsnap,
+  acexHtmlResolveChunkUrl,
+  acexHtmlSnapshotSkeletonFromManifest
 } from '@mlightcad/cad-html-core'
 import {
-  AcExCameraZoomUniform,
-  createViewerLineMaterial,
-  createViewerMeshMaterial,
-  createViewerPointsMaterial
+  AcExHtmlCameraZoomUniform,
+  acexHtmlCreateViewerLineMaterial,
+  acexHtmlCreateViewerMeshMaterial,
+  acexHtmlCreateViewerPointsMaterial
 } from '@mlightcad/cad-html-core'
 import {
-  decodeSnapshotFromCompressedBytes,
-  snapshotPayloadToCompressedBytes
+  acexHtmlDecodeSnapshotFromCompressedBytes,
+  acexHtmlSnapshotPayloadToCompressedBytes
 } from '@mlightcad/cad-html-core'
 import { ACEX_MAX_COMPRESSED_BYTES } from '@mlightcad/cad-html-core'
 import { accmYieldForPaint, FLOAT_TOL } from '@mlightcad/data-model'
@@ -144,6 +147,7 @@ import {
 } from './AcExTouchPointSession'
 import { acexMaybeShowTouchPointTutorial } from './AcExTouchPointTutorial'
 import {
+  acexHtmlWithAllLayerGroupsVisible,
   assignLayoutGeometryFrom,
   layoutHasBatchGeometry,
   releaseInactiveLayoutBatchBuffers,
@@ -293,20 +297,34 @@ function invertNearBlackWhite(hex: number): number | null {
   return null
 }
 
+function flipColorValue(color: THREE.Color | undefined): void {
+  if (!color?.getHex) return
+  const next = invertNearBlackWhite(color.getHex())
+  if (next != null) color.setHex(next)
+}
+
 function flipMaterialColor(material: THREE.Material): void {
   const colorMats = material as THREE.MeshBasicMaterial & {
     color?: THREE.Color
-    uniforms?: { u_color?: { value: THREE.Color } }
+    map?: THREE.Texture | null
+    uniforms?: {
+      u_color?: { value: THREE.Color }
+      u_startColor?: { value: THREE.Color }
+      u_endColor?: { value: THREE.Color }
+    }
   }
-  if (colorMats.color?.getHex) {
-    const next = invertNearBlackWhite(colorMats.color.getHex())
-    if (next != null) colorMats.color.setHex(next)
+  // Image and OLE rasters stay white so the texture is not tinted.
+  if (colorMats.map) return
+  flipColorValue(colorMats.color)
+  const uniforms = colorMats.uniforms
+  if (!uniforms) return
+  // Skip when u_color is the same Color already inverted above.
+  if (uniforms.u_color?.value !== colorMats.color) {
+    flipColorValue(uniforms.u_color?.value)
   }
-  const uniformColor = colorMats.uniforms?.u_color?.value
-  if (uniformColor?.getHex) {
-    const next = invertNearBlackWhite(uniformColor.getHex())
-    if (next != null) uniformColor.setHex(next)
-  }
+  // Gradient hatches store the two ends separately from u_color.
+  flipColorValue(uniforms.u_startColor?.value)
+  flipColorValue(uniforms.u_endColor?.value)
 }
 
 function flipNearBlackWhiteMaterials(root: THREE.Object3D): void {
@@ -332,11 +350,11 @@ async function openAcExHtmlEmbeddedPackageSession(
   packageEl: HTMLElement,
   i18n: AcExHtmlI18n
 ): Promise<{
-  manifest: AcExPackageManifest
+  manifest: AcExHtmlPackageManifest
   decryptKey: CryptoKey | null
   expiresAt: number | null
 } | null> {
-  const config = parseAcExEmbeddedPackageConfig(packageEl.textContent)
+  const config = acexHtmlParseEmbeddedPackageConfig(packageEl.textContent)
   if (!config) {
     showViewerError(
       i18n.t('status.loadFailed', { error: 'Invalid embedded package.' })
@@ -345,15 +363,15 @@ async function openAcExHtmlEmbeddedPackageSession(
   }
 
   const accessEl = document.getElementById('mlcad-access')
-  const access = parseAcExHtmlAccessManifest(accessEl?.textContent)
+  const access = acexHtmlParseAccessManifest(accessEl?.textContent)
   const expiresAt = access?.expiresAt ?? null
 
-  if (access && isAcExHtmlAccessExpired(access)) {
+  if (access && acexHtmlIsAccessExpired(access)) {
     showAcExHtmlAccessExpired(i18n, expiresAt)
     return null
   }
 
-  let manifest: AcExPackageManifest | null = null
+  let manifest: AcExHtmlPackageManifest | null = null
   let decryptKey: CryptoKey | null = null
 
   if (config.encrypted) {
@@ -375,8 +393,8 @@ async function openAcExHtmlEmbeddedPackageSession(
         })
         pendingError = undefined
         try {
-          const { key } = await createAcExHtmlAccessKey(password, access.salt)
-          manifest = await decryptAcExEmbeddedManifest(
+          const { key } = await acexHtmlCreateAccessKey(password, access.salt)
+          manifest = await acexHtmlDecryptEmbeddedManifest(
             config.encryptedManifest,
             key
           )
@@ -419,26 +437,26 @@ async function openAcExHtmlPackageSession(options: {
   configManifestUrl?: string
   i18n: AcExHtmlI18n
 }): Promise<{
-  manifest: AcExPackageManifest
+  manifest: AcExHtmlPackageManifest
   manifestUrl: string
   fetchImpl: typeof fetch
 } | null> {
   const { i18n } = options
-  const initial = chooseInitialManifestHref({
+  const initial = acexHtmlChooseInitialManifestHref({
     search: options.search,
     configManifestUrl: options.configManifestUrl
   })
 
   const tryUrl = async (
     href: string,
-    fetchImpl: typeof fetch = acexGlobalFetch
+    fetchImpl: typeof fetch = acexHtmlGlobalFetch
   ): Promise<
-    | { ok: true; manifest: AcExPackageManifest; manifestUrl: string }
+    | { ok: true; manifest: AcExHtmlPackageManifest; manifestUrl: string }
     | { ok: false; reason: 'not-found' | 'invalid' | 'network'; error: Error }
   > => {
     let manifestUrl: string
     try {
-      manifestUrl = resolveViewerManifestUrl(href, options.pageUrl)
+      manifestUrl = acexHtmlResolveViewerManifestUrl(href, options.pageUrl)
     } catch (error) {
       return {
         ok: false,
@@ -446,7 +464,7 @@ async function openAcExHtmlPackageSession(options: {
         error: error instanceof Error ? error : new Error(String(error))
       }
     }
-    const probed = await probePackageManifest(manifestUrl, fetchImpl)
+    const probed = await acexHtmlProbePackageManifest(manifestUrl, fetchImpl)
     if (!probed.ok) {
       return { ok: false, reason: probed.reason, error: probed.error }
     }
@@ -458,7 +476,7 @@ async function openAcExHtmlPackageSession(options: {
     return {
       manifest: first.manifest,
       manifestUrl: first.manifestUrl,
-      fetchImpl: acexGlobalFetch
+      fetchImpl: acexHtmlGlobalFetch
     }
   }
 
@@ -499,7 +517,7 @@ async function openAcExHtmlPackageSession(options: {
         return {
           manifest: loaded.manifest,
           manifestUrl: loaded.manifestUrl,
-          fetchImpl: acexGlobalFetch
+          fetchImpl: acexHtmlGlobalFetch
         }
       }
       gateErrorKey =
@@ -539,10 +557,10 @@ async function resolveSnapshotPayload(
   i18n: AcExHtmlI18n
 ): Promise<{ payload: string; expiresAt: number | null } | null> {
   const accessEl = document.getElementById('mlcad-access')
-  const manifest = parseAcExHtmlAccessManifest(accessEl?.textContent)
+  const manifest = acexHtmlParseAccessManifest(accessEl?.textContent)
   const expiresAt = manifest?.expiresAt ?? null
 
-  if (manifest && isAcExHtmlAccessExpired(manifest)) {
+  if (manifest && acexHtmlIsAccessExpired(manifest)) {
     showAcExHtmlAccessExpired(i18n, expiresAt)
     return null
   }
@@ -571,11 +589,11 @@ async function resolveSnapshotPayload(
       })
       pendingError = undefined
       try {
-        const encoding = parseAcExHtmlBinaryEncoding(
+        const encoding = acexHtmlParseBinaryEncoding(
           snapshotEl.getAttribute('type')
         )
         return {
-          payload: await decryptAcExHtmlSnapshotPayload(
+          payload: await acexHtmlDecryptSnapshotPayload(
             password,
             payload,
             manifest.salt,
@@ -608,19 +626,19 @@ async function startViewer(): Promise<void> {
     return
   }
 
-  const i18n = new AcExHtmlI18n(detectAcExHtmlLocale())
+  const i18n = new AcExHtmlI18n(acexHtmlDetectLocale())
   i18n.applyToDocument()
 
   const statusEl =
     document.getElementById('mlcad-status-bar') ?? createHiddenStatusSink()
   wireStatusBarVisibility(statusEl)
 
-  let snapshot: AcExSnapshot
+  let snapshot: AcExHtmlSnapshot
   let expiresAt: number | null = null
   /** Gzip ACEX retained for monolithic multi-layout CPU rehydrate after release. */
   let monolithicCompressed: Uint8Array | null = null
   let packageSession: {
-    manifest: AcExPackageManifest
+    manifest: AcExHtmlPackageManifest
     manifestUrl: string
     fetchImpl: typeof fetch
     loadedLayouts: Set<string>
@@ -628,7 +646,7 @@ async function startViewer(): Promise<void> {
   } | null = null
   /** Embedded progressive package pending fetch wiring after layout flags. */
   let pendingEmbedded: {
-    manifest: AcExPackageManifest
+    manifest: AcExHtmlPackageManifest
     decryptKey: CryptoKey | null
     expiresAt: number | null
   } | null = null
@@ -648,7 +666,7 @@ async function startViewer(): Promise<void> {
         if (!opened) {
           return
         }
-        snapshot = snapshotSkeletonFromManifest(opened.manifest)
+        snapshot = acexHtmlSnapshotSkeletonFromManifest(opened.manifest)
         expiresAt = opened.expiresAt
         pendingEmbedded = opened
         removeSnapshotElement(packageEl)
@@ -665,7 +683,7 @@ async function startViewer(): Promise<void> {
         if (!opened) {
           return
         }
-        snapshot = snapshotSkeletonFromManifest(opened.manifest)
+        snapshot = acexHtmlSnapshotSkeletonFromManifest(opened.manifest)
         packageSession = {
           manifest: opened.manifest,
           manifestUrl: opened.manifestUrl,
@@ -682,11 +700,11 @@ async function startViewer(): Promise<void> {
       }
       expiresAt = resolved.expiresAt
       // Retain gzip so layouts can be rehydrated after CPU release on switch.
-      monolithicCompressed = snapshotPayloadToCompressedBytes(
+      monolithicCompressed = acexHtmlSnapshotPayloadToCompressedBytes(
         resolved.payload,
         snapshotEl.getAttribute('type') ?? undefined
       )
-      snapshot = decodeSnapshotFromCompressedBytes(monolithicCompressed)
+      snapshot = acexHtmlDecodeSnapshotFromCompressedBytes(monolithicCompressed)
       removeSnapshotElement(snapshotEl)
     } else {
       hideLoading()
@@ -697,11 +715,11 @@ async function startViewer(): Promise<void> {
     return
   }
 
-  const viewerMode: AcExViewerMode = snapshot.meta.viewerMode ?? 'measure'
+  const viewerMode: AcExHtmlViewerMode = snapshot.meta.viewerMode ?? 'measure'
   const measureEnabled = viewerMode === 'measure'
 
   if (snapshot.meta.docsBaseUrl) {
-    acexSetDocsBaseUrl(snapshot.meta.docsBaseUrl)
+    acexHtmlSetDocsBaseUrl(snapshot.meta.docsBaseUrl)
   }
 
   const grip = snapshot.meta.grip
@@ -722,6 +740,15 @@ async function startViewer(): Promise<void> {
   }
   let layout = initialLayout
 
+  /**
+   * Last-resort box for a layout with neither geometry nor an export-time fit
+   * box. See {@link acexHtmlResolveLayoutFallbackExtents} for why the active layout
+   * prefers `meta.viewExtents`.
+   */
+  const fallbackExtentsForLayout = (
+    target: AcExHtmlLayoutSnapshot
+  ): AcExHtmlExtents => acexHtmlResolveLayoutFallbackExtents(target, snapshot)
+
   const layerVisible = new Map(
     snapshot.layers.map(layer => [layer.name, layer.visible])
   )
@@ -736,7 +763,12 @@ async function startViewer(): Promise<void> {
 
   const scene = new THREE.Scene()
   const originalBackground = snapshot.meta.background >>> 0
+  const spaceMode = snapshot.meta.backgroundMode === 'space'
   let backgroundSwapped = false
+  /** Model materials are inverted from the colors baked at export. */
+  let modelInkFlipped = false
+  /** Paper materials are inverted from the colors baked at export. */
+  let paperInkFlipped = false
   scene.background = new THREE.Color(originalBackground)
 
   const getCanvasSize = () => ({
@@ -763,7 +795,7 @@ async function startViewer(): Promise<void> {
   const hasPaperViewports = snapshotHasPaperViewports(snapshot.layouts)
 
   if (pendingEmbedded) {
-    const embeddedFetch = createAcExDomEmbeddedPackageFetch({
+    const embeddedFetch = acexHtmlCreateDomEmbeddedPackageFetch({
       manifest: pendingEmbedded.manifest,
       decryptKey: pendingEmbedded.decryptKey
     })
@@ -816,26 +848,39 @@ async function startViewer(): Promise<void> {
   }
 
   const appendBatchesToScene = (
-    lineBatches: AcExLineBatch[],
-    meshBatches: AcExMeshBatch[],
+    lineBatches: AcExHtmlLineBatch[],
+    meshBatches: AcExHtmlMeshBatch[],
     groups: Map<string, THREE.Group>,
     parent: THREE.Object3D,
     materials: LineMaterial[]
   ) => {
+    const created: THREE.Object3D[] = []
     for (const batch of lineBatches) {
       const object = createLineObject(batch, materials, wideLineResolution)
-      if (object) getOrCreateLayerGroup(groups, parent, batch.layer).add(object)
+      if (!object) continue
+      getOrCreateLayerGroup(groups, parent, batch.layer).add(object)
+      created.push(object)
     }
     for (const batch of meshBatches) {
       const object = batch.points
         ? createPointObject(batch)
         : createMeshObject(batch)
-      if (object) getOrCreateLayerGroup(groups, parent, batch.layer).add(object)
+      if (!object) continue
+      getOrCreateLayerGroup(groups, parent, batch.layer).add(object)
+      created.push(object)
     }
+    const flipped =
+      parent === modelRoot
+        ? modelInkFlipped
+        : parent === paperRoot
+          ? paperInkFlipped
+          : false
+    if (!flipped) return
+    for (const object of created) flipNearBlackWhiteMaterials(object)
   }
 
   const populateLayoutGeometry = (
-    next: AcExLayoutSnapshot,
+    next: AcExHtmlLayoutSnapshot,
     groups: Map<string, THREE.Group>,
     parent: THREE.Object3D,
     materials: LineMaterial[]
@@ -882,7 +927,7 @@ async function startViewer(): Promise<void> {
    * viewports still need it.
    */
   const unloadPackageLayout = (
-    target: AcExLayoutSnapshot,
+    target: AcExHtmlLayoutSnapshot,
     options: { disposeGpu: boolean }
   ) => {
     if (!packageSession) return
@@ -895,7 +940,7 @@ async function startViewer(): Promise<void> {
     packageSession.loadedOsnapLayouts.delete(target.btrId)
   }
 
-  const layoutGpuResident = (target: AcExLayoutSnapshot): boolean => {
+  const layoutGpuResident = (target: AcExHtmlLayoutSnapshot): boolean => {
     if (target.isModelSpace) return modelLayerGroups.size > 0
     return paperLayerGroups.size > 0
   }
@@ -911,7 +956,9 @@ async function startViewer(): Promise<void> {
   /**
    * True when the layout has no GPU and no CPU batches but a reload source exists.
    */
-  const layoutNeedsGeometrySource = (target: AcExLayoutSnapshot): boolean => {
+  const layoutNeedsGeometrySource = (
+    target: AcExHtmlLayoutSnapshot
+  ): boolean => {
     if (layoutGpuResident(target) || layoutHasBatchGeometry(target)) {
       return false
     }
@@ -919,9 +966,9 @@ async function startViewer(): Promise<void> {
     return monolithicCompressed != null
   }
 
-  const rehydrateMonolithicLayout = (target: AcExLayoutSnapshot): void => {
+  const rehydrateMonolithicLayout = (target: AcExHtmlLayoutSnapshot): void => {
     if (!monolithicCompressed) return
-    const full = decodeSnapshotFromCompressedBytes(monolithicCompressed)
+    const full = acexHtmlDecodeSnapshotFromCompressedBytes(monolithicCompressed)
     const source = full.layouts.find(item => item.btrId === target.btrId)
     if (!source) return
     assignLayoutGeometryFrom(target, source)
@@ -932,9 +979,9 @@ async function startViewer(): Promise<void> {
    * must use this after {@link releaseCpuAfterGpuUpload} clears batches —
    * including model space loaded as a paper-viewport sidecar.
    */
-  const batchExtentsByLayout = new Map<string, AcExBatchExtentEntry[]>()
-  const refreshBatchExtentCache = (target: AcExLayoutSnapshot) => {
-    const entries = collectLayoutBatchExtentEntries(target)
+  const batchExtentsByLayout = new Map<string, AcExHtmlBatchExtentEntry[]>()
+  const refreshBatchExtentCache = (target: AcExHtmlLayoutSnapshot) => {
+    const entries = acexHtmlCollectLayoutBatchExtentEntries(target)
     if (entries.length > 0) {
       batchExtentsByLayout.set(target.btrId, entries)
     }
@@ -943,8 +990,22 @@ async function startViewer(): Promise<void> {
   /**
    * After GPU upload (+ hybrid OSNAP when measure is on), drop CPU typed arrays.
    * GPU buffers stay; layout switch reloads from package chunks or monolithic gzip.
+   *
+   * Layers that start off (`visible: false` in the snapshot) sit in invisible
+   * THREE groups and are skipped by the first `render()`. Force one upload pass
+   * with every layer group visible before releasing CPU arrays.
    */
   const releaseCpuAfterGpuUpload = () => {
+    acexHtmlWithAllLayerGroupsVisible(
+      [paperLayerGroups, modelLayerGroups],
+      () => {
+        render()
+      }
+    )
+    // Paint the correct visibility; the upload pass above may have drawn
+    // every layer into the framebuffer.
+    render()
+
     // Snapshot every layout that still has CPU batches (active + sidecar model).
     for (const target of snapshot.layouts) {
       refreshBatchExtentCache(target)
@@ -964,9 +1025,10 @@ async function startViewer(): Promise<void> {
     }
     paperLayerGroups.clear()
     paperWideLineMaterials.length = 0
+    paperInkFlipped = false
   }
 
-  const clearLayoutSceneGeometry = (target: AcExLayoutSnapshot) => {
+  const clearLayoutSceneGeometry = (target: AcExHtmlLayoutSnapshot) => {
     if (target.isModelSpace) {
       for (const group of modelLayerGroups.values()) {
         modelRoot.remove(group)
@@ -974,6 +1036,7 @@ async function startViewer(): Promise<void> {
       }
       modelLayerGroups.clear()
       modelWideLineMaterials.length = 0
+      modelInkFlipped = false
     } else {
       disposePaperGeometry()
     }
@@ -999,7 +1062,7 @@ async function startViewer(): Promise<void> {
    * without touching an already-resident GPU scene.
    */
   const fetchPackageLayoutChunks = async (
-    target: AcExLayoutSnapshot,
+    target: AcExHtmlLayoutSnapshot,
     options: { uploadToGpu: boolean }
   ): Promise<void> => {
     if (!packageSession) return
@@ -1021,11 +1084,11 @@ async function startViewer(): Promise<void> {
 
     // Parallel download window; bytes may arrive out of order but the
     // prefetcher hands them back in manifest (paint) order.
-    const prefetcher = createAcExOrderedBytePrefetcher(
+    const prefetcher = acexHtmlCreateOrderedBytePrefetcher(
       chunks,
       packageChunkFetchConcurrency,
       async chunkRef => {
-        const url = resolveChunkUrl(session.manifestUrl, chunkRef.href)
+        const url = acexHtmlResolveChunkUrl(session.manifestUrl, chunkRef.href)
         const response = await session.fetchImpl(url)
         if (!response.ok) {
           throw new Error(`Failed to load geometry chunk (${response.status})`)
@@ -1058,7 +1121,7 @@ async function startViewer(): Promise<void> {
         loaded: String(loadedChunks),
         total: String(chunks.length)
       })
-      const decoded = decodeChunkPayload(entry.bytes)
+      const decoded = acexHtmlDecodeChunkPayload(entry.bytes)
       const lineStart = target.lineBatches.length
       const meshStart = target.meshBatches.length
       target.lineBatches.push(...decoded.lineBatches)
@@ -1089,7 +1152,7 @@ async function startViewer(): Promise<void> {
   }
 
   const loadPackageLayoutGeometry = async (
-    target: AcExLayoutSnapshot
+    target: AcExHtmlLayoutSnapshot
   ): Promise<void> => {
     if (!packageSession) return
     // GPU still holds this layout (CPU was released after upload) — do not reload.
@@ -1111,6 +1174,7 @@ async function startViewer(): Promise<void> {
     clearLayoutSceneGeometry(target)
     target.lineBatches.length = 0
     target.meshBatches.length = 0
+    syncBackground()
 
     try {
       await fetchPackageLayoutChunks(target, { uploadToGpu: true })
@@ -1128,7 +1192,7 @@ async function startViewer(): Promise<void> {
    * that are already on screen (e.g. model space kept for paper viewports).
    */
   const ensureLayoutCpuBatches = async (
-    target: AcExLayoutSnapshot
+    target: AcExHtmlLayoutSnapshot
   ): Promise<void> => {
     if (layoutHasBatchGeometry(target)) return
     if (packageSession && packageLayoutHasChunks(target.btrId)) {
@@ -1153,7 +1217,7 @@ async function startViewer(): Promise<void> {
    * fetched in parallel; viewing does not depend on this data.
    */
   const loadPackageLayoutOsnap = async (
-    target: AcExLayoutSnapshot
+    target: AcExHtmlLayoutSnapshot
   ): Promise<void> => {
     if (!packageSession || !measureEnabled) {
       return
@@ -1166,7 +1230,7 @@ async function startViewer(): Promise<void> {
       return
     }
     packageSession.loadedOsnapLayouts.delete(target.btrId)
-    await loadAcExPackageLayoutOsnap(
+    await acexHtmlLoadPackageLayoutOsnap(
       packageSession.manifest,
       packageSession.manifestUrl,
       target.btrId,
@@ -1189,6 +1253,50 @@ async function startViewer(): Promise<void> {
     packageSession.loadedOsnapLayouts.add(target.btrId)
   }
 
+  /**
+   * Canvas color for the layout on screen. `'space'` follows model/paper;
+   * the background toggle inverts that natural color.
+   */
+  const displayBackground = (target: AcExHtmlLayoutSnapshot): number => {
+    const natural = acexHtmlLayoutBackground(
+      spaceMode ? 'space' : undefined,
+      target.isModelSpace,
+      originalBackground
+    )
+    if (!backgroundSwapped) return natural
+    return isLightRgb(natural) ? 0x000000 : 0xffffff
+  }
+
+  /**
+   * Near-black and near-white ink is baked for one canvas per space. When the
+   * canvas on screen has the opposite lightness, flip those materials. Batches
+   * appended while the flag is set are flipped as they arrive.
+   */
+  const ensureInk = (isModel: boolean) => {
+    const canvas = displayBackground(layout)
+    const bake = spaceMode
+      ? isModel
+        ? 0x000000
+        : 0xffffff
+      : originalBackground
+    const wanted = isLightRgb(bake) !== isLightRgb(canvas)
+    const current = isModel ? modelInkFlipped : paperInkFlipped
+    const hasGeometry = isModel
+      ? modelLayerGroups.size > 0
+      : paperLayerGroups.size > 0
+    if (hasGeometry && wanted !== current) {
+      flipNearBlackWhiteMaterials(isModel ? modelRoot : paperRoot)
+    }
+    if (isModel) modelInkFlipped = wanted
+    else paperInkFlipped = wanted
+  }
+
+  const syncBackground = () => {
+    scene.background = new THREE.Color(displayBackground(layout))
+    ensureInk(true)
+    ensureInk(false)
+  }
+
   // Attach roots before any progressive fetch so appended batches are visible.
   if (layout.isModelSpace) {
     scene.add(modelRoot)
@@ -1198,6 +1306,8 @@ async function startViewer(): Promise<void> {
       modelScene.add(modelRoot)
     }
   }
+
+  syncBackground()
 
   if (!packageSession) {
     if (modelLayout) {
@@ -1226,21 +1336,17 @@ async function startViewer(): Promise<void> {
     releaseInactiveLayoutBatchBuffers(snapshot, keep)
   }
 
-  const layerExtents = computeLayerExtentsMap(
+  const layerExtents = acexHtmlComputeLayerExtentsMap(
     layout.lineBatches,
     layout.meshBatches
   )
   /** Per-layout layer extents kept after CPU batch release for layer-zoom. */
   const layerExtentsByLayout = new Map<
     string,
-    Map<string, AcExExtents | null>
+    Map<string, AcExHtmlExtents | null>
   >()
   layerExtentsByLayout.set(layout.btrId, new Map(layerExtents))
   refreshBatchExtentCache(layout)
-  let layoutExtents = resolveLayoutViewExtents(
-    layout,
-    snapshot.meta.viewExtents ?? snapshot.meta.extents
-  )
 
   let osnapIndex: AcExOsnapIndex | null = null
   let modelOsnapIndex: AcExOsnapIndex | null = null
@@ -1338,7 +1444,7 @@ async function startViewer(): Promise<void> {
     camera.top = ACEX_CAMERA_FRUSTUM
     camera.bottom = -ACEX_CAMERA_FRUSTUM
     camera.updateProjectionMatrix()
-    AcExCameraZoomUniform.value = camera.zoom
+    AcExHtmlCameraZoomUniform.value = camera.zoom
     controls.update()
   }
 
@@ -1350,7 +1456,7 @@ async function startViewer(): Promise<void> {
     controls.target.copy(target)
     if (zoom != null) camera.zoom = zoom
     camera.updateProjectionMatrix()
-    AcExCameraZoomUniform.value = camera.zoom
+    AcExHtmlCameraZoomUniform.value = camera.zoom
     controls.update()
     recomputeOsnapThresholdWcs()
     bumpSnapCacheKey()
@@ -1373,7 +1479,7 @@ async function startViewer(): Promise<void> {
     bumpSnapCacheKey()
   }
 
-  const zoomToExtents = (extents: AcExExtents, margin = 0.9) => {
+  const zoomToExtents = (extents: AcExHtmlExtents, margin = 0.9) => {
     const { width, height } = getCanvasSize()
     const spanX = Math.max(extents.maxX - extents.minX, FLOAT_TOL)
     const spanY = Math.max(extents.maxY - extents.minY, FLOAT_TOL)
@@ -1384,27 +1490,38 @@ async function startViewer(): Promise<void> {
     render()
   }
 
+  /**
+   * Zoom-to-fit box for one layout.
+   *
+   * Prefers the export-time box persisted in the snapshot so the initial
+   * framing and the toolbar “Extents” action always agree, and so progressive
+   * packages do not frame a partial chunk set. Falls back to live geometry for
+   * snapshots produced before `fitExtents` existed.
+   */
+  const viewExtentsForLayout = (
+    target: AcExHtmlLayoutSnapshot
+  ): AcExHtmlExtents =>
+    acexHtmlResolveLayoutViewExtents(target, fallbackExtentsForLayout(target))
+
   const fit = () => {
-    // Initial open and toolbar "Zoom extents" both use batch-derived layout bounds.
-    zoomToExtents(layoutExtents)
+    // Initial open and toolbar "Zoom extents" both frame the same export-time
+    // layout box (viewport frames + geometry), never a partially painted one.
+    zoomToExtents(viewExtentsForLayout(layout))
   }
 
   const fitSmart = () => {
     const cached = batchExtentsByLayout.get(layout.btrId) ?? []
     const liveEntries =
       layout.lineBatches.length > 0 || layout.meshBatches.length > 0
-        ? collectLayoutBatchExtentEntries(layout)
+        ? acexHtmlCollectLayoutBatchExtentEntries(layout)
         : []
     const entries = liveEntries.length > 0 ? liveEntries : cached
-    const smart = computeIntelligentExtentsFromBatchEntries(entries, {
+    const smart = acexHtmlComputeIntelligentExtentsFromBatchEntries(entries, {
       isLayerVisible: layerName => layerVisible.get(layerName) !== false,
       viewports: layout.viewports,
-      sampleFromLayout:
-        liveEntries.length > 0
-          ? layout
-          : undefined
+      sampleFromLayout: liveEntries.length > 0 ? layout : undefined
     })
-    zoomToExtents(smart ?? layoutExtents)
+    zoomToExtents(smart ?? viewExtentsForLayout(layout))
   }
 
   const captureViewState = () => ({
@@ -1442,14 +1559,7 @@ async function startViewer(): Promise<void> {
 
   const switchDrawingBackground = () => {
     backgroundSwapped = !backgroundSwapped
-    const next = backgroundSwapped
-      ? isLightRgb(originalBackground)
-        ? 0x000000
-        : 0xffffff
-      : originalBackground
-    scene.background = new THREE.Color(next)
-    flipNearBlackWhiteMaterials(scene)
-    flipNearBlackWhiteMaterials(modelScene)
+    syncBackground()
     render()
   }
 
@@ -1768,7 +1878,7 @@ async function startViewer(): Promise<void> {
    */
   const applyOrthoFit = (
     target: THREE.OrthographicCamera,
-    extents: AcExExtents,
+    extents: AcExHtmlExtents,
     vpW: number,
     vpH: number,
     twist = 0
@@ -1784,7 +1894,7 @@ async function startViewer(): Promise<void> {
     target.setRotationFromEuler(new THREE.Euler(0, 0, twist))
     target.zoom = fitted.zoom
     target.updateProjectionMatrix()
-    AcExCameraZoomUniform.value = fitted.zoom
+    AcExHtmlCameraZoomUniform.value = fitted.zoom
   }
 
   /**
@@ -1881,7 +1991,7 @@ async function startViewer(): Promise<void> {
       savedViewportBox.w
     )
     renderer.autoClear = autoClear
-    AcExCameraZoomUniform.value = camera.zoom
+    AcExHtmlCameraZoomUniform.value = camera.zoom
   }
 
   /**
@@ -1902,7 +2012,7 @@ async function startViewer(): Promise<void> {
       loupeSample.clientX + half,
       loupeSample.clientY + half
     )
-    const viewBox: AcExExtents = {
+    const viewBox: AcExHtmlExtents = {
       minX: Math.min(p1.x, p2.x),
       minY: Math.min(p1.y, p2.y),
       maxX: Math.max(p1.x, p2.x),
@@ -1978,7 +2088,7 @@ async function startViewer(): Promise<void> {
       savedViewportBox.w
     )
     renderer.autoClear = autoClear
-    AcExCameraZoomUniform.value = camera.zoom
+    AcExHtmlCameraZoomUniform.value = camera.zoom
   }
 
   const render = () => {
@@ -1990,17 +2100,16 @@ async function startViewer(): Promise<void> {
   }
 
   paintPackageChunk = () => {
-    const next = computeLayerExtentsMap(layout.lineBatches, layout.meshBatches)
+    const next = acexHtmlComputeLayerExtentsMap(
+      layout.lineBatches,
+      layout.meshBatches
+    )
     layerExtents.clear()
     for (const [name, extents] of next) {
       layerExtents.set(name, extents)
     }
     layerExtentsByLayout.set(layout.btrId, new Map(layerExtents))
     refreshBatchExtentCache(layout)
-    layoutExtents = resolveLayoutViewExtents(
-      layout,
-      snapshot.meta.viewExtents ?? snapshot.meta.extents
-    )
     layerPanel?.syncLayerZoomButtons()
     render()
   }
@@ -2482,10 +2591,11 @@ async function startViewer(): Promise<void> {
   }
 
   const remountLayoutRoots = (
-    target: AcExLayoutSnapshot,
+    target: AcExHtmlLayoutSnapshot,
     rebuildPaper: boolean
   ) => {
     layout = target
+    syncBackground()
     if (target.isModelSpace) {
       scene.add(modelRoot)
     } else {
@@ -2497,9 +2607,6 @@ async function startViewer(): Promise<void> {
           paperRoot,
           paperWideLineMaterials
         )
-        if (backgroundSwapped) {
-          flipNearBlackWhiteMaterials(paperRoot)
-        }
       }
       if (hasPaperViewports) {
         modelScene.add(modelRoot)
@@ -2508,7 +2615,7 @@ async function startViewer(): Promise<void> {
   }
 
   const ensureLayoutGeometrySource = async (
-    target: AcExLayoutSnapshot
+    target: AcExHtmlLayoutSnapshot
   ): Promise<'package' | 'monolithic' | 'resident'> => {
     if (layoutGpuResident(target) || layoutHasBatchGeometry(target)) {
       return 'resident'
@@ -2558,13 +2665,11 @@ async function startViewer(): Promise<void> {
       }
     }
 
+    syncBackground()
+
     // Frame the target layout BEFORE geometry / OSNAP reload. Otherwise the
     // camera stays on the previous paper/model view and progressive chunks
     // paint off-screen until load finishes.
-    layoutExtents = resolveLayoutViewExtents(
-      layout,
-      snapshot.meta.viewExtents ?? snapshot.meta.extents
-    )
     const cachedLayerExtents = layerExtentsByLayout.get(btrId)
     if (cachedLayerExtents) {
       layerExtents.clear()
@@ -2638,7 +2743,7 @@ async function startViewer(): Promise<void> {
           layerExtents.set(name, extents)
         }
       } else if (layoutHasBatchGeometry(previousLayout)) {
-        const restoredExtents = computeLayerExtentsMap(
+        const restoredExtents = acexHtmlComputeLayerExtentsMap(
           previousLayout.lineBatches,
           previousLayout.meshBatches
         )
@@ -2647,8 +2752,8 @@ async function startViewer(): Promise<void> {
           layerExtents.set(name, extents)
         }
       }
-      layoutExtents = resolveLayoutViewExtents(previousLayout)
       layerPanel?.syncLayerZoomButtons()
+
       measure?.syncLayoutVisibility()
       markup?.syncLayoutVisibility()
       markGeometryReady(true)
@@ -2674,9 +2779,6 @@ async function startViewer(): Promise<void> {
           paperRoot,
           paperWideLineMaterials
         )
-      }
-      if (backgroundSwapped) {
-        flipNearBlackWhiteMaterials(paperRoot)
       }
     } else if (
       geometrySource === 'monolithic' &&
@@ -2723,12 +2825,8 @@ async function startViewer(): Promise<void> {
       }
     }
 
-    layoutExtents = resolveLayoutViewExtents(
-      layout,
-      snapshot.meta.viewExtents ?? snapshot.meta.extents
-    )
     if (layoutHasBatchGeometry(layout)) {
-      const nextLayerExtents = computeLayerExtentsMap(
+      const nextLayerExtents = acexHtmlComputeLayerExtentsMap(
         layout.lineBatches,
         layout.meshBatches
       )
@@ -2821,7 +2919,7 @@ async function startViewer(): Promise<void> {
   }
 
   controls.addEventListener('change', () => {
-    AcExCameraZoomUniform.value = camera.zoom
+    AcExHtmlCameraZoomUniform.value = camera.zoom
     recomputeOsnapThresholdWcs()
     bumpSnapCacheKey()
     render()
@@ -3006,7 +3104,7 @@ async function startViewer(): Promise<void> {
 
   if (packageSession) {
     try {
-      const firstPaintLayouts: AcExLayoutSnapshot[] = [layout]
+      const firstPaintLayouts: AcExHtmlLayoutSnapshot[] = [layout]
       if (!layout.isModelSpace && hasPaperViewports && modelLayout) {
         firstPaintLayouts.push(modelLayout)
       }
@@ -3016,10 +3114,6 @@ async function startViewer(): Promise<void> {
       // Leave the last "n/n" up only while chunks are in flight. View-only
       // packages never replace it with an OSNAP status, so clear it now.
       clearStatusBar()
-      layoutExtents = resolveLayoutViewExtents(
-        layout,
-        snapshot.meta.viewExtents ?? snapshot.meta.extents
-      )
       layerPanel?.syncLayerZoomButtons()
       recomputeOsnapThresholdWcs()
       bumpSnapCacheKey()
@@ -3028,7 +3122,7 @@ async function startViewer(): Promise<void> {
       markGeometryReady(true)
 
       // Cache per-layer extents while CPU batches are still resident.
-      const paintedExtents = computeLayerExtentsMap(
+      const paintedExtents = acexHtmlComputeLayerExtentsMap(
         layout.lineBatches,
         layout.meshBatches
       )
@@ -3079,13 +3173,13 @@ interface AcExLayerRowRefs {
 /** Dependencies passed into {@link setupLayerPanel}. */
 interface AcExLayerPanelContext {
   /** Full snapshot (layer table and metadata). */
-  snapshot: AcExSnapshot
+  snapshot: AcExHtmlSnapshot
   /** Mutable visibility map shared with the THREE layer groups. */
   layerVisible: Map<string, boolean>
   /** THREE groups keyed by layer name (paper and/or model space). */
   layerGroupMaps: Map<string, THREE.Group>[]
   /** Precomputed XY extents per layer for zoom-to-layer. */
-  layerExtents: Map<string, AcExExtents | null>
+  layerExtents: Map<string, AcExHtmlExtents | null>
   /** Footer status bar element. */
   statusEl: HTMLElement
   /** I18n instance for drawer strings. */
@@ -3093,7 +3187,7 @@ interface AcExLayerPanelContext {
   /** Redraws the WebGL canvas after visibility changes. */
   render: () => void
   /** Fits the camera to the given extents and redraws. */
-  zoomToExtents: (extents: AcExExtents) => void
+  zoomToExtents: (extents: AcExHtmlExtents) => void
   /** Clears an in-progress zoom-window rubber band / mode before layer zoom. */
   cancelZoomWindow: () => void
   /** Object-snap indexes updated when layer visibility changes. */
@@ -3306,7 +3400,7 @@ function applyBatchPose(
  * Prefer the exported `renderOrder` (from `drawOrder`); patterned/gradient
  * batches without that field still fall back to `-1`.
  */
-function resolveMeshRenderOrder(batch: AcExMeshBatch): number | undefined {
+function resolveMeshRenderOrder(batch: AcExHtmlMeshBatch): number | undefined {
   if (batch.renderOrder != null) {
     return batch.renderOrder
   }
@@ -3317,7 +3411,7 @@ function resolveMeshRenderOrder(batch: AcExMeshBatch): number | undefined {
 }
 
 function createLineObject(
-  batch: AcExLineBatch,
+  batch: AcExHtmlLineBatch,
   wideLineMaterials: LineMaterial[],
   wideLineResolution: THREE.Vector2
 ): THREE.Object3D | null {
@@ -3326,7 +3420,7 @@ function createLineObject(
   if (batch.lineWidth != null && batch.lineWidth > 0) {
     const geometry = new LineSegmentsGeometry()
     geometry.setPositions(batch.positions)
-    const material = createViewerLineMaterial(
+    const material = acexHtmlCreateViewerLineMaterial(
       batch,
       wideLineResolution
     ) as LineMaterial
@@ -3354,7 +3448,7 @@ function createLineObject(
       new THREE.BufferAttribute(batch.lineDistances, 1)
     )
   }
-  const material = createViewerLineMaterial(batch)
+  const material = acexHtmlCreateViewerLineMaterial(batch)
   const object = new THREE.LineSegments(geometry, material)
   applyBatchPose(object, batch)
   return object
@@ -3692,7 +3786,7 @@ function setupToolPointerInput(options: AcExToolPointerInputOptions): void {
   ) => {
     const a = screenToWcs(startX, startY)
     const b = screenToWcs(endX, endY)
-    const box: AcExExtents = {
+    const box: AcExHtmlExtents = {
       minX: Math.min(a.x, b.x),
       minY: Math.min(a.y, b.y),
       maxX: Math.max(a.x, b.x),
@@ -3990,14 +4084,14 @@ function setupToolPointerInput(options: AcExToolPointerInputOptions): void {
   })
 }
 
-function createPointObject(batch: AcExMeshBatch): THREE.Points | null {
+function createPointObject(batch: AcExHtmlMeshBatch): THREE.Points | null {
   if (batch.positions.length < 3) return null
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute(
     'position',
     new THREE.BufferAttribute(batch.positions, 3)
   )
-  const material = createViewerPointsMaterial(batch)
+  const material = acexHtmlCreateViewerPointsMaterial(batch)
   const object = new THREE.Points(geometry, material)
   applyBatchPose(object, {
     offset: batch.offset,
@@ -4006,7 +4100,7 @@ function createPointObject(batch: AcExMeshBatch): THREE.Points | null {
   return object
 }
 
-function createMeshObject(batch: AcExMeshBatch): THREE.Mesh | null {
+function createMeshObject(batch: AcExHtmlMeshBatch): THREE.Mesh | null {
   const vertexCount = (batch.positions.length / 3) | 0
   let indices = batch.indices
   if (!indices || indices.length < 3) {
@@ -4035,7 +4129,7 @@ function createMeshObject(batch: AcExMeshBatch): THREE.Mesh | null {
   if (batch.uvs && batch.uvs.length >= 2) {
     geometry.setAttribute('uv', new THREE.BufferAttribute(batch.uvs, 2))
   }
-  const material = createViewerMeshMaterial(batch, {
+  const material = acexHtmlCreateViewerMeshMaterial(batch, {
     onTextureLoad: () => {
       requestViewerTextureRepaint?.()
     }

@@ -1,13 +1,17 @@
-import type { AcApHtmlExpiryDays } from '@mlightcad/cad-html-core'
+import type { AcExHtmlExpiryDays } from '@mlightcad/cad-html-core'
 import type {
-  AcExInitialViewMode,
-  AcExViewerMode,
-  AcExViewState
+  AcExHtmlBackground,
+  AcExHtmlInitialViewMode,
+  AcExHtmlViewerMode,
+  AcExHtmlViewState
 } from '@mlightcad/cad-html-core'
-import { ACEX_DEFAULT_CHUNK_MAX_BYTES } from '@mlightcad/cad-html-core'
+import {
+  ACEX_DEFAULT_CHUNK_MAX_BYTES,
+  acexHtmlResolveBackground
+} from '@mlightcad/cad-html-core'
 import type { AcTrView2d } from '@mlightcad/cad-simple-viewer'
 
-export type { AcApHtmlExpiryDays } from '@mlightcad/cad-html-core'
+export type { AcExHtmlExpiryDays } from '@mlightcad/cad-html-core'
 
 /** Matches the offline HTML viewer orthographic half-height in world units. */
 const HTML_VIEWER_CAMERA_FRUSTUM = 400
@@ -53,20 +57,31 @@ export interface AcApHtmlExportOptions {
    */
   exportLayouts?: boolean
   /**
+   * Canvas background written into the exported HTML.
+   * `'black'` (default), `'white'`, or `'space'`.
+   *
+   * `'black'` and `'white'` apply to every layout. A paper-space sheet still
+   * exports on black unless `'white'` or `'space'` is selected. `'space'`
+   * uses a black canvas in model space and a white canvas in paper space.
+   * Near-black and near-white ink (ACI 7, wipeouts) is remapped so it stays
+   * visible on each canvas.
+   */
+  background?: AcExHtmlBackground
+  /**
    * Initial framing when the exported HTML is opened. Defaults to `'fit'`.
    */
-  initialView?: AcExInitialViewMode
+  initialView?: AcExHtmlInitialViewMode
   /**
    * Offline viewer capability profile. `'view'` omits OSNAP data, measurement,
    * and markup UI for a smaller, faster HTML file. Defaults to `'measure'`.
    */
-  viewerMode?: AcExViewerMode
+  viewerMode?: AcExHtmlViewerMode
   /**
    * How long the exported HTML remains valid. Defaults to `'never'`.
    * Use `'custom'` with {@link AcApHtmlExportOptions.expiresAt} for an absolute time.
    * Ignored when {@link AcApHtmlExportOptions.exportFormat} is `'multi'`.
    */
-  expiryDays?: AcApHtmlExpiryDays
+  expiryDays?: AcExHtmlExpiryDays
   /**
    * Absolute expiry timestamp (Unix ms). Used when {@link AcApHtmlExportOptions.expiryDays}
    * is `'custom'`. Ignored for relative periods and `'never'`.
@@ -104,10 +119,7 @@ export function acexChunkSizeMiBToBytes(miB: number): number {
  * Converts an uncompressed byte budget to a mebibyte setting for prompts/UI.
  */
 export function acexChunkSizeBytesToMiB(bytes: number): number {
-  return Math.max(
-    ACEX_MIN_CHUNK_SIZE_MIB,
-    Math.round(bytes / (1024 * 1024))
-  )
+  return Math.max(ACEX_MIN_CHUNK_SIZE_MIB, Math.round(bytes / (1024 * 1024)))
 }
 
 /**
@@ -131,7 +143,7 @@ export function resolveAcApHtmlExportOptions(
 ): Required<
   Omit<AcApHtmlExportOptions, 'password' | 'expiryDays' | 'expiresAt'>
 > & {
-  expiryDays: AcApHtmlExpiryDays
+  expiryDays: AcExHtmlExpiryDays
   expiresAt: number | null
   password: string
 } {
@@ -151,9 +163,11 @@ export function resolveAcApHtmlExportOptions(
     exportFormat,
     exportInvisibleLayers: options.exportInvisibleLayers !== false,
     exportLayouts: options.exportLayouts !== false,
+    background: acexHtmlResolveBackground(options.background),
     initialView: options.initialView ?? 'fit',
     viewerMode: options.viewerMode ?? 'measure',
-    expiryDays: exportFormat === 'multi' ? 'never' : (options.expiryDays ?? 'never'),
+    expiryDays:
+      exportFormat === 'multi' ? 'never' : (options.expiryDays ?? 'never'),
     expiresAt: exportFormat === 'multi' ? null : (options.expiresAt ?? null),
     password: exportFormat === 'multi' ? '' : (options.password?.trim() ?? ''),
     maxChunkBytes,
@@ -174,7 +188,8 @@ export function resolveAcApHtmlPackageBuildOptions(
   compressChunks: boolean
 } {
   const maxChunkBytes =
-    options.maxChunkBytes ?? acexChunkSizeMiBToBytes(ACEX_DEFAULT_CHUNK_SIZE_MIB)
+    options.maxChunkBytes ??
+    acexChunkSizeMiBToBytes(ACEX_DEFAULT_CHUNK_SIZE_MIB)
   const compressChunks = options.compressChunks !== false
   return {
     maxChunkBytes,
@@ -190,7 +205,7 @@ export function resolveAcApHtmlPackageBuildOptions(
 /**
  * Captures the active 2D view as camera state understood by the offline viewer.
  */
-export function captureAcApHtmlViewState(view: AcTrView2d): AcExViewState {
+export function captureAcApHtmlViewState(view: AcTrView2d): AcExHtmlViewState {
   const layoutView = view.activeLayoutView
   const center = layoutView.center
   const zoomMain = layoutView.trCamera.zoom

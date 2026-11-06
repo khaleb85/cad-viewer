@@ -5,6 +5,7 @@
  */
 
 import { installNodeSnapshotCompressor } from './nodeGzip'
+import { installNodeRasterCodec } from './nodeRaster'
 
 export {
   exportDatabaseToHtml
@@ -19,7 +20,15 @@ export {
   packSnapshot
 } from './packSnapshot'
 export {
+  extractDrawingPreviewJpeg
+} from './extractPreviewJpeg'
+export {
+  ensureDwgParserRegistered,
   ensureLibreDwgRegistered
+} from './registerDwg'
+export type {
+  AcExDwgParser,
+  AcExDwgParserRegisterOptions
 } from './registerDwg'
 export {
   loadViewerRuntime
@@ -36,4 +45,5 @@ export type {
   AcExHtmlExportResult
 } from './exportOptions'
 
+installNodeRasterCodec()
 installNodeSnapshotCompressor()

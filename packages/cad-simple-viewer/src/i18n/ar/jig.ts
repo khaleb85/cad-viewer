@@ -174,6 +174,14 @@ export default {
     dimLinePoint:
       'حدد موقع خط البُعد'
   },
+  dimaligned: { ...enJig.dimaligned },
+  dimradius: { ...enJig.dimradius },
+  dimdiameter: { ...enJig.dimdiameter },
+  dimangular: { ...enJig.dimangular },
+  dimarc: { ...enJig.dimarc },
+  dimordinate: { ...enJig.dimordinate },
+  dimcontinue: { ...enJig.dimcontinue },
+  dimbaseline: { ...enJig.dimbaseline },
 
   ellipse: {
     ...enJig.ellipse,
@@ -2016,6 +2024,9 @@ export default {
     exportLayouts:
       'تصدير المخططات',
 
+    background:
+      'لون الخلفية',
+
     initialView:
       'العرض الأولي عند فتح HTML',
 
@@ -2070,6 +2081,21 @@ export default {
         local: 'قياس',
         global: 'Measure'
       },
+      black: {
+        display: 'أسود(B)',
+        local: 'أسود',
+        global: 'Black'
+      },
+      white: {
+        display: 'أبيض(W)',
+        local: 'أبيض',
+        global: 'White'
+      },
+      space: {
+        display: 'حسب المساحة(S)',
+        local: 'حسب المساحة',
+        global: 'Space'
+      },
     },
   },
 
@@ -2079,6 +2105,7 @@ export default {
       'إطار مساحة النموذج',
     exportLayouts: 'تصدير المخططات',
     textMode: 'عرض النص',
+    colorMode: 'وضع الألوان',
     keywords: {
       ...enJig.cpdf.keywords,
       extents: {
@@ -2100,6 +2127,16 @@ export default {
         display: 'لا(N)',
         local: 'لا',
         global: 'No'
+      },
+      color: {
+        display: 'ملون(C)',
+        local: 'ملون',
+        global: 'Color'
+      },
+      monochrome: {
+        display: 'أحادي اللون(M)',
+        local: 'أحادي اللون',
+        global: 'Monochrome'
       }
     }
   }

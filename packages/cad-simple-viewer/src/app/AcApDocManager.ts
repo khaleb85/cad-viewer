@@ -5,6 +5,7 @@ import {
   AcDbFileType,
   acdbHostApplicationServices,
   AcDbOpenDatabaseOptions,
+  AcDbSystemVariables,
   AcDbSysVarManager,
   log
 } from '@mlightcad/data-model'
@@ -23,7 +24,15 @@ import {
   AcApConvertToJpgCmd,
   AcApConvertToPngCmd,
   AcApCopyCmd,
+  AcApDimAlignedCmd,
+  AcApDimAngularCmd,
+  AcApDimArcCmd,
+  AcApDimBaselineCmd,
+  AcApDimContinueCmd,
+  AcApDimDiameterCmd,
   AcApDimLinearCmd,
+  AcApDimOrdinateCmd,
+  AcApDimRadiusCmd,
   acapDisposeMarkupSession,
   AcApEllipseCmd,
   AcApEntityPreviewCmd,
@@ -50,6 +59,7 @@ import {
   AcApMLineCmd,
   AcApMoveCmd,
   AcApMTextCmd,
+  AcApObjectScaleCmd,
   AcApOffsetCmd,
   AcApOpenCmd,
   AcApPanCmd,
@@ -90,6 +100,10 @@ import {
   eventBus
 } from '../editor'
 import { AcApPluginManager } from '../plugin/AcApPluginManager'
+import {
+  acapCollectPaperViewportsBox,
+  acapResolveLayoutFrameBox
+} from '../util/AcApLayoutViewFraming'
 import { isScriptQuitCommand, parseScriptLines } from '../util/AcApScriptParser'
 import { acapWithSecondaryDatabase } from '../util/AcApSecondaryDatabase'
 import { AcTrView2d } from '../view'
@@ -157,6 +171,14 @@ const DEFAULT_COMMAND_ALIASES: Record<string, string[]> = {
   ELLIPSE: ['EL'],
   ERASE: ['E'],
   DIMLINEAR: ['DLI'],
+  DIMALIGNED: ['DAL', 'DIMALI'],
+  DIMRADIUS: ['DRA', 'DIMRAD'],
+  DIMDIAMETER: ['DDI', 'DIMDIA'],
+  DIMANGULAR: ['DAN', 'DIMANG'],
+  DIMARC: ['DAR'],
+  DIMORDINATE: ['DOR'],
+  DIMCONTINUE: ['DCO'],
+  DIMBASELINE: ['DBA'],
   MEASUREDISTANCE: ['DI', 'DIST'],
   MEASUREAREA: ['AA', 'AREA'],
   MEASUREANGLE: ['ANG'],
@@ -612,6 +634,17 @@ export class AcApDocManager {
 
     this._commandManager = new AcEdCommandStack()
     this.registerCommands()
+    // Annotative display depends on CANNOSCALE / ANNOALLVISIBLE; redraw when
+    // either changes (status bar, command line, or script).
+    AcDbSysVarManager.instance().events.sysVarChanged.addEventListener(args => {
+      const name = args.name.toUpperCase()
+      if (
+        name === AcDbSystemVariables.CANNOSCALE ||
+        name === AcDbSystemVariables.ANNOALLVISIBLE
+      ) {
+        this.regen()
+      }
+    })
     this._pluginManager = new AcApPluginManager(
       this.context,
       this._commandManager
@@ -1912,6 +1945,14 @@ export class AcApDocManager {
     addSystemCommand('erase', 'erase', new AcApEraseCmd())
     addSystemCommand('hideobjects', 'hideobjects', new AcApHideObjectsCmd())
     addSystemCommand('dimlinear', 'dimlinear', new AcApDimLinearCmd())
+    addSystemCommand('dimaligned', 'dimaligned', new AcApDimAlignedCmd())
+    addSystemCommand('dimradius', 'dimradius', new AcApDimRadiusCmd())
+    addSystemCommand('dimdiameter', 'dimdiameter', new AcApDimDiameterCmd())
+    addSystemCommand('dimangular', 'dimangular', new AcApDimAngularCmd())
+    addSystemCommand('dimarc', 'dimarc', new AcApDimArcCmd())
+    addSystemCommand('dimordinate', 'dimordinate', new AcApDimOrdinateCmd())
+    addSystemCommand('dimcontinue', 'dimcontinue', new AcApDimContinueCmd())
+    addSystemCommand('dimbaseline', 'dimbaseline', new AcApDimBaselineCmd())
     registerMeasureCommands(addSystemCommand, {
       view: this._mainView,
       commandManager: this._commandManager
@@ -1941,6 +1982,7 @@ export class AcApDocManager {
     addSystemCommand('offset', 'offset', new AcApOffsetCmd())
     addSystemCommand('rotate', 'rotate', new AcApRotateCmd())
     addSystemCommand('log', 'log', new AcApLogCmd())
+    addSystemCommand('objectscale', 'objectscale', new AcApObjectScaleCmd())
     addSystemCommand('open', 'open', new AcApOpenCmd())
     addSystemCommand('pan', 'pan', new AcApPanCmd())
     addSystemCommand('point', 'point', new AcApPointCmd())
@@ -2342,61 +2384,66 @@ export class AcApDocManager {
         mode: this.getDocumentEventMode(options)
       })
 
-      // View framing at document open time (see `openViewMode`):
+      // View framing at document open time (see `openViewMode`). The same
+      // preference is stored on the view so the **first visit** to every
+      // other layout (not yet operated by the user) follows it too.
       //
-      // 1. **Paper space**: same heuristic as a first tab visit
-      //    (`AcTrView2d.zoomToInitialLayoutView`): LIMMIN/LIMMAX only when
-      //    they contain the layout's viewports, else the viewports box,
-      //    evaluated after the layout's entities convert. Raw limits are
-      //    often template garbage, and the entity bounding box is
-      //    dominated by mixed-scale outliers (title block in mm alongside
-      //    viewports in m).
-      //
-      // 2. **Extents** (Read/Review default): poll `zoomToFitDrawing`
-      //    and frame batch-derived geometry bounds once entities land.
-      //
-      // 3. **Saved** (Write default) in model space: restore VPORT
-      //    `*ACTIVE` via `getActiveVportBox(aspect)` (structural / max-span
-      //    checks only — not vs header EXTMIN/EXTMAX, which often span
-      //    outliers and reject a valid tight saved view). When missing or
-      //    implausible, poll `zoomToFitDrawing`.
-      //
-      // 4. **Fallback** (paper without limits, or model with empty
-      //    extents 鈥?typically DXF): poll `zoomToFitDrawing` and frame
-      //    the populated layout bounding box once entities land.
+      // - **Saved + paper**: {@link acapResolveLayoutFrameBox} with DB
+      //   viewport borders; LIMMIN/LIMMAX only when they contain those
+      //   viewports (rejects unused template `(0,0)-(12,9)`).
+      // - **Saved + model**: VPORT `*ACTIVE` via `getActiveVportBox`.
+      // - **Extents** (any space): poll `zoomToFitDrawing` once geometry
+      //   lands.
       //
       // The pre-fix code used `db.extmin/db.extmax` (always model-space
-      // EXTMIN/EXTMAX sysvars) even when opening into paper, landing on
-      // coordinates that don't exist in paper WCS. Paper layout would
-      // render zoomed into a random quadrant 鈥?title block looking
-      // giant, viewport collapsed to pixels. See
+      // EXTMIN/EXTMAX sysvars) even when opening into paper. See
       // `next_14_viewports_full.md` Bug C-open.
       const modelSpaceId = db.tables.blockTable.modelSpace.objectId
       const isPaperSpaceActive = db.currentSpaceId !== modelSpaceId
       const activeLayout =
         acdbHostApplicationServices().layoutManager.getActiveLayout(db)
+      const layoutLimits = activeLayout?.limits
       const openViewMode = this.resolveOpenViewMode(options)
+      view.setOpenViewMode(openViewMode)
 
       const progressiveRendering = options?.progressiveRendering ?? false
       let framedSynchronously = false
-      let framedAsFirstVisit = false
-      if (isPaperSpaceActive && activeLayout) {
-        view.zoomToInitialLayoutView(db.currentSpaceId, activeLayout)
-        framedAsFirstVisit = true
-      } else if (openViewMode === AcApOpenViewMode.Extents) {
+      const startExtentsFit = () => {
         if (progressiveRendering) {
           view.beginProgressiveOpenFit()
         }
         view.zoomToFitDrawing()
         view.requestOpenLineworkFrame()
-      } else if (!isPaperSpaceActive) {
+      }
+
+      if (
+        isPaperSpaceActive &&
+        openViewMode === AcApOpenViewMode.Saved
+      ) {
+        const layoutExtents = activeLayout?.extents
+        const paperFrame = acapResolveLayoutFrameBox({
+          limits: layoutLimits,
+          viewportsBox: acapCollectPaperViewportsBox(db, db.currentSpaceId),
+          layoutExtents:
+            layoutExtents && !layoutExtents.isEmpty()
+              ? {
+                  min: { x: layoutExtents.min.x, y: layoutExtents.min.y },
+                  max: { x: layoutExtents.max.x, y: layoutExtents.max.y }
+                }
+              : undefined
+        })
+        if (paperFrame) {
+          view.zoomTo(paperFrame.box)
+          framedSynchronously = true
+        } else {
+          startExtentsFit()
+        }
+      } else if (
+        !isPaperSpaceActive &&
+        openViewMode === AcApOpenViewMode.Saved
+      ) {
         const canvasAspect = view.width / Math.max(view.height, 1)
         // Restore *ACTIVE without comparing to header EXTMIN/EXTMAX.
-        // Extents-relative heuristics reject valid saved views that sit in a
-        // dense island while $EXTMAX still spans a mirrored/outlier wing
-        // (center offset fails). Raw `modelViewBox` alone still accepts
-        // stale zoomed-out saves; `getActiveVportBox` without extents keeps
-        // structural checks + a max-span guard for those.
         const activeModelViewBox =
           db.tables.viewportTable.getActiveVportBox(canvasAspect)
 
@@ -2404,21 +2451,11 @@ export class AcApDocManager {
           view.zoomTo(activeModelViewBox)
           framedSynchronously = true
         } else {
-          // No plausible saved view (missing VPORT or zoomed absurdly far).
-          // Frame converted scene bounds — do not trust header extents alone
-          // (often a title-block island while model content sits far away).
-          if (progressiveRendering) {
-            view.beginProgressiveOpenFit()
-          }
-          view.zoomToFitDrawing()
-          view.requestOpenLineworkFrame()
+          startExtentsFit()
         }
       } else {
-        if (progressiveRendering) {
-          view.beginProgressiveOpenFit()
-        }
-        view.zoomToFitDrawing()
-        view.requestOpenLineworkFrame()
+        // Extents (paper or model), or Auto→Extents.
+        startExtentsFit()
       }
 
       // Tell the view we've already framed the startup layout, so that
@@ -2427,9 +2464,7 @@ export class AcApDocManager {
       // state on this layout. Cast is intentional: `setActiveLayout`
       // above relies on `curView` being an `AcTrView2d`, and the
       // markLayoutAsInitialized method is part of that contract.
-      if (!framedAsFirstVisit) {
-        view.markLayoutAsInitialized(db.currentSpaceId)
-      }
+      view.markLayoutAsInitialized(db.currentSpaceId)
       // `zoomToFitDrawing` frames asynchronously; capture original view in
       // its completion callback instead of here (pre-fit camera is wrong).
       if (framedSynchronously) {

@@ -10,6 +10,7 @@ import {
 
 import { AcPdfEntity } from '../renderer/AcPdfEntity'
 import type { AcPdfRenderer } from '../renderer/AcPdfRenderer'
+import { acPdfApplyDatabaseLayerVisibility } from './AcPdfLayerVisibility'
 import {
   buildModelToPaperMatrix,
   isDefaultPaperSpaceViewport,
@@ -65,6 +66,9 @@ function walkBlockDrawables(
   return roots
 }
 
+/** Max rebuilds while async glyph/font/image work keeps appearing. */
+const COLLECT_DEFERRED_PASSES = 8
+
 /**
  * Walks a block until INSERT cache templates capture filled text ops.
  *
@@ -79,34 +83,59 @@ function walkBlockDrawables(
  * cache after fonts/glyphs are warm lets leaf text paint synchronously, so
  * parents clone already-filled children. Loop until a pass schedules no
  * deferred work.
+ *
+ * When the deferred budget is exhausted, up to two settle rebuilds still run
+ * after the last `awaitPending`. Glyphs that land only on that await must not
+ * be returned as the pre-await INSERT clones (empty `_ops`) — a final sync
+ * walk captures filled leaf ops (elevation labels inside INSERTs, etc.).
  */
 export async function collectBlockRoots(
   block: AcDbBlockTableRecord,
   renderer: AcPdfRenderer
 ): Promise<AcPdfEntity[]> {
   let roots: AcPdfEntity[] = []
-  for (let pass = 0; pass < 4; pass++) {
-    AcDbRenderingCache.instance.clear()
-    renderer.resetCollected()
-    renderer.beginCollectPass()
-    roots = walkBlockDrawables(block, renderer)
-    const hadDeferred = renderer.endCollectPass()
+  let hadDeferred = false
+  const maxPasses = COLLECT_DEFERRED_PASSES + 2
+  for (let pass = 0; pass < maxPasses; pass++) {
+    roots = walkCollectPass(block, renderer)
+    hadDeferred = renderer.endCollectPass()
     await renderer.awaitPending()
     if (!hadDeferred) {
       return roots
     }
   }
-  return roots
+  // Last await may have filled glyph/font caches while `roots` still hold
+  // empty pre-await clones. One more sync walk so INSERT clones capture
+  // already-warm leaf ops.
+  return walkCollectPass(block, renderer)
+}
+
+function walkCollectPass(
+  block: AcDbBlockTableRecord,
+  renderer: AcPdfRenderer
+): AcPdfEntity[] {
+  AcDbRenderingCache.instance.clear()
+  renderer.resetCollected()
+  renderer.beginCollectPass()
+  return walkBlockDrawables(block, renderer)
 }
 
 /**
  * Walks model space and returns PDF drawables for viewport reuse.
+ *
+ * Applies database Off / Frozen layer visibility so shared model trees used by
+ * paper-space viewports omit closed layers (matching AutoCAD plot).
  */
 export async function collectModelSpaceRoots(
   db: AcDbDatabase,
   renderer: AcPdfRenderer
 ): Promise<AcPdfEntity[]> {
-  return collectBlockRoots(db.tables.blockTable.modelSpace, renderer)
+  const roots = await collectBlockRoots(
+    db.tables.blockTable.modelSpace,
+    renderer
+  )
+  acPdfApplyDatabaseLayerVisibility(roots, db)
+  return roots
 }
 
 /**

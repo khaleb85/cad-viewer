@@ -1,5 +1,199 @@
 # @mlightcad/cad-simple-viewer-cli
 
+## 1.8.0-preview.1
+
+### Patch Changes
+
+- feat: adds a lightweight `@mlightcad/cad-simple-viewer/file-open-panel` landing entry so demos can pick a drawing before loading the full viewer, and fuzzy layer-name search in the simple UI layer panel. PDF and HTML export now respect Off, Frozen, and no-plot layers; HTML keeps OLE/IMAGE layer toggles working after geometry release and skips baking selection overlays into the offline scene
+- Updated dependencies [a6b5042]
+- Updated dependencies [7399150]
+- Updated dependencies
+- Updated dependencies [66328f6]
+- Updated dependencies
+  - @mlightcad/cad-simple-viewer@1.8.0-preview.1
+  - @mlightcad/cad-html-plugin@1.8.0-preview.1
+  - @mlightcad/pdf-renderer@1.8.0-preview.1
+  - @mlightcad/cad-pdf-core@1.8.0-preview.1
+  - @mlightcad/cad-pdf-plugin@1.8.0-preview.1
+  - @mlightcad/cad-svg-plugin@1.8.0-preview.1
+
+## 1.8.0-preview.0
+
+### Minor Changes
+
+- c525fa8: feat: headless PDF exporter and a monochrome PDF color mode
+
+  PDF export logic moved into the new `@mlightcad/cad-pdf-core` package (option
+  model, glyph provider, database → PDF pipeline), which does not depend on
+  `cad-simple-viewer` or the DOM. `@mlightcad/cad-pdf-plugin` now builds on it,
+  and the new `@mlightcad/cad-pdf-exporter` uses it to export DXF/DWG to PDF in
+  Node without a browser (`exportFileToPdf`, `convertDatabaseToPdf`), mirroring
+  `cad-html-core` / `cad-html-exporter`.
+
+  PDF export gains a `colorMode` option: `color` (default, unchanged output) or
+  `monochrome` — white paper with black linework and text, and solid/gradient
+  fills in grey by luminance so linework on top of them stays readable.
+  Wipeouts still mask in white. The option is available in the `cpdf` dialog,
+  as a new last `-cpdf` prompt (`Color` / `Monochrome`, default `Color`), in
+  `pdf-renderer` (`AcPdfExportOptions.colorMode`) and in the exporter
+  (`--color-mode`). The CLI ships `export-pdf-monochrome.scr` and
+  `batch-export-pdf.mjs`; existing `-cpdf` scripts should add a `Color` or empty
+  line after the text-mode answer.
+
+- feat: renames `@mlightcad/cad-viewer` to `@mlightcad/cad-editor`, adds headless PDF export with monochrome mode plus script savePdf/saveHtml APIs, and ships richer entity snapshots for drawing analysis. Agent settings move to a multi-provider model catalog with collapsible tool-call groups. Canvas typing starts commands with Space to confirm or repeat, and coordinate entry matches AutoCAD syntax. Public HTML/PDF core exports use AcExHtml/AcExPdf prefixes; hatch, wipeout, and PDF-export hangs are fixed
+
+### Patch Changes
+
+- Updated dependencies [c525fa8]
+- Updated dependencies [c525fa8]
+- Updated dependencies
+- Updated dependencies [c06985d]
+  - @mlightcad/cad-pdf-core@1.8.0-preview.0
+  - @mlightcad/cad-pdf-plugin@1.8.0-preview.0
+  - @mlightcad/pdf-renderer@1.8.0-preview.0
+  - @mlightcad/cad-simple-viewer@1.8.0-preview.0
+  - @mlightcad/cad-html-plugin@1.8.0-preview.0
+  - @mlightcad/cad-svg-plugin@1.8.0-preview.0
+
+## 1.7.8
+
+### Patch Changes
+
+- feat: adds dimension drawing commands with an annotation scale selector, rebuilds the Dimension Style Manager with AutoCAD-style tabs, and moves the ribbon dimension tools into the Annotation dropdown. Adds a script-first MCP server with headed/idle session control and `cad.file.saveDxf`, and splits the script runtime into `@mlightcad/cad-script-core`. Fixes repeated redo and redone-entity rendering, box selection through paper-space viewports, offline HTML layout framing, coordinate-bubble drift, embedded raster images, ACI-7 block colours on layer 0, and large-coordinate glyph precision.
+- Updated dependencies
+  - @mlightcad/cad-html-plugin@1.7.8
+  - @mlightcad/cad-pdf-plugin@1.7.8
+  - @mlightcad/cad-simple-viewer@1.7.8
+  - @mlightcad/cad-svg-plugin@1.7.8
+  - @mlightcad/pdf-renderer@1.7.8
+
+## 1.7.8-preview.6
+
+### Patch Changes
+
+- fix: box selection in paper-space viewports now reaches model entities, offline HTML exports frame every layout with its own export-time extents, and the coordinate bubble stays anchored to its point while zooming. Explicit ACI-7 block colours on layer 0 keep their colour instead of inheriting the INSERT layer, and the layer-material cache no longer leaks ByLayer provenance between entities.
+- Updated dependencies [4e7ed11]
+- Updated dependencies [9220b20]
+- Updated dependencies [42351f3]
+- Updated dependencies [57c330c]
+- Updated dependencies
+  - @mlightcad/cad-html-plugin@1.7.8-preview.6
+  - @mlightcad/cad-simple-viewer@1.7.8-preview.6
+  - @mlightcad/cad-pdf-plugin@1.7.8-preview.6
+  - @mlightcad/cad-svg-plugin@1.7.8-preview.6
+  - @mlightcad/pdf-renderer@1.7.8-preview.6
+
+## 1.7.8-preview.5
+
+### Patch Changes
+
+- 1020d4d: fix: leader entities now expose their properties in the properties palette with localized labels, and TrueType text glyphs are parented to the layout that owns them, so model-space text no longer disappears inside paper-space viewports or headless HTML exports. Dependencies move to data-model 1.15.19 and libredwg-converter 3.15.19.
+- Updated dependencies [1020d4d]
+  - @mlightcad/cad-html-plugin@1.7.8-preview.5
+  - @mlightcad/cad-pdf-plugin@1.7.8-preview.5
+  - @mlightcad/cad-simple-viewer@1.7.8-preview.5
+  - @mlightcad/cad-svg-plugin@1.7.8-preview.5
+  - @mlightcad/pdf-renderer@1.7.8-preview.5
+
+## 1.7.8-preview.4
+
+### Patch Changes
+
+- fix: headless HTML export now embeds raster and OLE images. Node has no canvas, so IMAGE and OLE textures were omitted from offline HTML. The exporter decodes PNG, JPEG, and BMP and writes those pixels back into the snapshot as PNG, so pictures in paper drawings survive a headless export.
+- Updated dependencies
+  - @mlightcad/cad-html-plugin@1.7.8-preview.4
+  - @mlightcad/cad-pdf-plugin@1.7.8-preview.4
+  - @mlightcad/cad-simple-viewer@1.7.8-preview.4
+  - @mlightcad/cad-svg-plugin@1.7.8-preview.4
+  - @mlightcad/pdf-renderer@1.7.8-preview.4
+
+## 1.7.8-preview.3
+
+### Patch Changes
+
+- fix: HTML export now includes instanced block geometry from a hidden model layout, so paper viewports keep walls, fills, and borders. ACI color 7 is remapped onto the selected canvas background, and gradient hatch endpoints flip when the offline viewer changes that background. This preview also upgrades realdwg-web to 1.15.18.
+- Updated dependencies
+  - @mlightcad/cad-html-plugin@1.7.8-preview.3
+  - @mlightcad/cad-pdf-plugin@1.7.8-preview.3
+  - @mlightcad/cad-simple-viewer@1.7.8-preview.3
+  - @mlightcad/cad-svg-plugin@1.7.8-preview.3
+  - @mlightcad/pdf-renderer@1.7.8-preview.3
+
+## 1.7.8-preview.2
+
+### Patch Changes
+
+- feat: adds dimension drawing commands and annotation scale UI, rebuilds the Dimension Style Manager tabs to follow AutoCAD layouts for lines, symbols, text, fit, units, and tolerances, and moves the ribbon dimension commands into the Annotation panel dropdown. Undo/redo is fixed so repeated redo steps work and redone entities reappear, and the proprietary parser document now describes pricing as a one-time payment with an annual license fee.
+- Updated dependencies [8a2d140]
+- Updated dependencies [07ef40e]
+- Updated dependencies [07ef40e]
+- Updated dependencies
+  - @mlightcad/cad-simple-viewer@1.7.8-preview.2
+  - @mlightcad/cad-html-plugin@1.7.8-preview.2
+  - @mlightcad/cad-pdf-plugin@1.7.8-preview.2
+  - @mlightcad/cad-svg-plugin@1.7.8-preview.2
+  - @mlightcad/pdf-renderer@1.7.8-preview.2
+
+## 1.7.8-preview.1
+
+### Patch Changes
+
+- fix: include the Node-safe cad-agent-core script-api Vite bundle in the Nx CI build so npm packages ship dist/cad-agent-core-script-api.js. Without it, @mlightcad/cad-mcp-server failed to resolve @mlightcad/cad-agent-core/script-api after install because the project build only ran the main lib Vite step and skipped vite.script-api.config.ts
+- Updated dependencies
+  - @mlightcad/cad-html-plugin@1.7.8-preview.1
+  - @mlightcad/cad-pdf-plugin@1.7.8-preview.1
+  - @mlightcad/cad-simple-viewer@1.7.8-preview.1
+  - @mlightcad/cad-svg-plugin@1.7.8-preview.1
+  - @mlightcad/pdf-renderer@1.7.8-preview.1
+
+## 1.7.8-preview.0
+
+### Patch Changes
+
+- feat: adds a script-first cad-mcp-server for third-party agents, batches TrueType mesh glyphs with harder MTEXT editing, keeps INSERT block TEXT when PDF glyphs settle late, and updates the demo gallery landing page plus plugin documentation
+- Updated dependencies
+  - @mlightcad/cad-html-plugin@1.7.8-preview.0
+  - @mlightcad/cad-pdf-plugin@1.7.8-preview.0
+  - @mlightcad/cad-simple-viewer@1.7.8-preview.0
+  - @mlightcad/cad-svg-plugin@1.7.8-preview.0
+  - @mlightcad/pdf-renderer@1.7.8-preview.0
+
+## 1.7.7
+
+### Patch Changes
+
+- feat: adds Node HTML export with thumbnails and complex linetype SVG previews, plus a script-first CAD agent with measure APIs, searchable built-in scripts, and a Vue-free script console. Fixes layout framing via openViewMode, locked-layer edits, INSERT highlight/pan stability, agent tool streaming, and MTEXT ribbon hangs in production. Externalizes data-model in the HTML exporter Node build, pins @mlightcad packages to exact releases, and upgrades data-model/libredwg-converter and three.js rendering deps
+- Updated dependencies
+  - @mlightcad/cad-html-plugin@1.7.7
+  - @mlightcad/cad-pdf-plugin@1.7.7
+  - @mlightcad/cad-simple-viewer@1.7.7
+  - @mlightcad/cad-svg-plugin@1.7.7
+  - @mlightcad/pdf-renderer@1.7.7
+
+## 1.7.7-preview.1
+
+### Patch Changes
+
+- fix: stops the MTEXT ribbon from hanging in production builds and externalizes data-model in the HTML exporter Node build so Node consumers resolve correctly. Pins @mlightcad package versions to exact releases for reproducible installs, and adds a development guide for contributors
+- Updated dependencies
+  - @mlightcad/cad-html-plugin@1.7.7-preview.1
+  - @mlightcad/cad-pdf-plugin@1.7.7-preview.1
+  - @mlightcad/cad-simple-viewer@1.7.7-preview.1
+  - @mlightcad/cad-svg-plugin@1.7.7-preview.1
+  - @mlightcad/pdf-renderer@1.7.7-preview.1
+
+## 1.7.7-preview.0
+
+### Patch Changes
+
+- feat: adds Node HTML export with thumbnails and complex linetype SVG previews, plus a script-first CAD agent with measure APIs, searchable built-in scripts, and a Vue-free script console. Fixes layout framing via openViewMode, locked-layer edits, INSERT highlight/pan stability, and agent tool streaming. Also upgrades data-model/libredwg-converter and three.js rendering deps
+- Updated dependencies
+  - @mlightcad/cad-html-plugin@1.7.7-preview.0
+  - @mlightcad/cad-pdf-plugin@1.7.7-preview.0
+  - @mlightcad/cad-simple-viewer@1.7.7-preview.0
+  - @mlightcad/cad-svg-plugin@1.7.7-preview.0
+  - @mlightcad/pdf-renderer@1.7.7-preview.0
+
 ## 1.7.6
 
 ### Patch Changes

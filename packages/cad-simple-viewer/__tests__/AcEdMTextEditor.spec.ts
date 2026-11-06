@@ -185,6 +185,80 @@ describe('AcEdMTextEditor', () => {
     mockSysVarChanged.addEventListener.mockClear()
     mockSysVarChanged.removeEventListener.mockClear()
     AcEdMTextEditor.setDefaultToolbarEnabled(true)
+    ;(globalThis as { __mlightcadAcEdMTextActiveInputBox__?: unknown })[
+      '__mlightcadAcEdMTextActiveInputBox__'
+    ] = null
+  })
+
+  it('notifies shared global listeners across module-instance boundaries', async () => {
+    const view = createView()
+    const seen: unknown[] = []
+    const listener = (inputBox: unknown) => {
+      seen.push(inputBox)
+    }
+    // Simulate a host that registered on a different module copy by writing
+    // only into the shared global listener set.
+    const globalListeners = (
+      globalThis as {
+        __mlightcadAcEdMTextActiveInputBoxListeners__?: Set<
+          (inputBox: unknown) => void
+        >
+      }
+    ).__mlightcadAcEdMTextActiveInputBoxListeners__ ??
+      new Set<(inputBox: unknown) => void>()
+    ;(
+      globalThis as {
+        __mlightcadAcEdMTextActiveInputBoxListeners__?: Set<
+          (inputBox: unknown) => void
+        >
+      }
+    ).__mlightcadAcEdMTextActiveInputBoxListeners__ = globalListeners
+    globalListeners.add(listener)
+
+    const resultPromise = new AcEdMTextEditor().open({
+      view: view as never,
+      location: { x: 0, y: 0, z: 0 },
+      width: 10,
+      textHeight: 2,
+      toolbarEnabled: false
+    })
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toBe(mockMTextInputBoxInstances[0])
+    expect(AcEdMTextEditor.getActiveInputBox()).toBe(
+      mockMTextInputBoxInstances[0]
+    )
+
+    mockMTextInputBoxInstances[0].emit('close')
+    await resultPromise
+
+    expect(seen).toHaveLength(2)
+    expect(seen[1]).toBeNull()
+    expect(AcEdMTextEditor.getActiveInputBox()).toBeNull()
+    globalListeners.delete(listener)
+  })
+
+  it('marks the view dirty on each render frame so the caret WebGL overlay paints', async () => {
+    const view = createView()
+    const resultPromise = new AcEdMTextEditor().open({
+      view: view as never,
+      location: { x: 0, y: 0, z: 0 },
+      width: 10,
+      textHeight: 2,
+      toolbarEnabled: false
+    })
+
+    const onRenderFrame = view.events.renderFrame.addEventListener.mock
+      .calls[0]?.[0] as (() => void) | undefined
+    expect(onRenderFrame).toEqual(expect.any(Function))
+
+    view.isDirty = false
+    onRenderFrame?.()
+    expect(mockMTextInputBoxInstances[0].update).toHaveBeenCalled()
+    expect(view.isDirty).toBe(true)
+
+    mockMTextInputBoxInstances[0].emit('close')
+    await resultPromise
   })
 
   it('keeps the input box toolbar object alive in a hidden host when disabled', async () => {

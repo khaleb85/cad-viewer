@@ -1,0 +1,290 @@
+import { existsSync } from 'fs'
+import { dirname, resolve } from 'path'
+import { fileURLToPath } from 'url'
+import { Alias, defineConfig } from 'vite'
+import { viteStaticCopy } from 'vite-plugin-static-copy'
+import svgLoader from 'vite-svg-loader'
+import { visualizer } from 'rollup-plugin-visualizer'
+import vue from '@vitejs/plugin-vue'
+import { examplePeerPackageAliases, exampleRollupOutput } from '../vite-config/pluginRollupOutput'
+import {
+  LIBREDWG_CONVERTER_PACKAGE,
+  LIBREDWG_PARSER_WASM_FILE,
+  LIBREDWG_PARSER_WORKER_FILE,
+  MTEXT_RENDERER_WORKER_FILE
+} from '../../tools/worker-assets.mjs'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const VIEWER_RUNTIME_SRC = '../cad-html-plugin/dist/viewer-runtime.iife.js'
+const LOCAL_DATA_MODEL_LIB = resolve(
+  __dirname,
+  '../../../realdwg-web/packages/data-model/lib'
+)
+const LOCAL_DATA_MODEL_ENTRY = resolve(LOCAL_DATA_MODEL_LIB, 'index.js')
+const LOCAL_UI_COMPONENTS_SRC = resolve(
+  __dirname,
+  '../../../ui-components/packages/ui-components/src'
+)
+const LOCAL_UI_COMPONENTS_ROOT = resolve(
+  __dirname,
+  '../../../ui-components'
+)
+const LOCAL_MTEXT_RENDERER_ROOT = resolve(
+  __dirname,
+  '../../../mtext-renderer/packages/mtext-renderer'
+)
+const LOCAL_MTEXT_RENDERER_DIST = resolve(LOCAL_MTEXT_RENDERER_ROOT, 'dist')
+const LOCAL_MTEXT_RENDERER_ENTRY = resolve(LOCAL_MTEXT_RENDERER_DIST, 'index.js')
+const LOCAL_MTEXT_RENDERER_WORKER = resolve(
+  LOCAL_MTEXT_RENDERER_DIST,
+  MTEXT_RENDERER_WORKER_FILE
+)
+
+function isEnvFlagEnabled(name: string): boolean {
+  const flag = process.env[name]
+  return flag === '1' || flag?.toLowerCase() === 'true'
+}
+
+function useLocalDataModel(mode: string): boolean {
+  return (
+    mode === 'local-data-model' ||
+    isEnvFlagEnabled('CAD_VIEWER_USE_LOCAL_DATA_MODEL')
+  )
+}
+
+function useLocalUiComponents(mode: string): boolean {
+  return (
+    mode === 'local-ui-components' ||
+    isEnvFlagEnabled('CAD_VIEWER_USE_LOCAL_UI_COMPONENTS')
+  )
+}
+
+function useLocalMtextRenderer(mode: string): boolean {
+  return (
+    mode === 'local-mtext-renderer' ||
+    isEnvFlagEnabled('CAD_VIEWER_USE_LOCAL_MTEXT_RENDERER')
+  )
+}
+
+export default defineConfig(({ command, mode }) => {
+  const hasViewerRuntime = existsSync(resolve(__dirname, VIEWER_RUNTIME_SRC))
+  if (!hasViewerRuntime) {
+    console.warn(
+      '[cad-editor-demo] viewer-runtime.iife.js not found — HTML export will be unavailable. ' +
+        'Build @mlightcad/cad-html-plugin to enable it. Opening DXF/DWG does not require this file.'
+    )
+  }
+  const aliases: Alias[] = []
+  const devSourcePackages = [
+    'cad-svg-plugin',
+    'cad-pdf-plugin',
+    'cad-pdf-core',
+    'pdf-renderer',
+    'three-renderer',
+    'cad-simple-viewer',
+    'cad-editor'
+  ]
+  const linkLocalDataModel =
+    command === 'serve' &&
+    useLocalDataModel(mode) &&
+    existsSync(LOCAL_DATA_MODEL_ENTRY)
+  const linkLocalUiComponents =
+    command === 'serve' &&
+    useLocalUiComponents(mode) &&
+    existsSync(LOCAL_UI_COMPONENTS_SRC)
+  const linkLocalMtextRenderer =
+    command === 'serve' &&
+    useLocalMtextRenderer(mode) &&
+    existsSync(LOCAL_MTEXT_RENDERER_ENTRY)
+  // Light landing subpaths — always source so demo builds do not depend on a
+  // prior `cad-simple-viewer` dist chunk graph for the file-open panel.
+  aliases.push({
+    find: /^@mlightcad\/cad-simple-viewer\/file-open-panel$/,
+    replacement: resolve(
+      __dirname,
+      '../cad-simple-viewer/src/file-open-panel.ts'
+    )
+  })
+  aliases.push({
+    find: /^@mlightcad\/cad-editor\/locale$/,
+    replacement: resolve(__dirname, '../cad-editor/src/locale/i18n.ts')
+  })
+
+  if (command === 'serve') {
+    aliases.push({
+      find: /^@mlightcad\/cad-pdf-plugin\/register$/,
+      replacement: resolve(__dirname, '../cad-pdf-plugin/src/register.ts')
+    })
+    // Package name is @mlightcad/cad-editor; the repo itself is still cad-viewer.
+    aliases.push({
+      find: /^@mlightcad\/cad-editor$/,
+      replacement: resolve(__dirname, '../cad-editor/src')
+    })
+    aliases.push({
+      find: /^@mlightcad\/(cad-svg-plugin|cad-pdf-plugin|cad-pdf-core|pdf-renderer|three-renderer|cad-simple-viewer)$/,
+      replacement: resolve(__dirname, '../$1/src')
+    })
+    if (linkLocalMtextRenderer) {
+      console.info(
+        '[cad-editor-demo] Aliasing @mlightcad/mtext-renderer to local dist:',
+        LOCAL_MTEXT_RENDERER_DIST
+      )
+      aliases.push({
+        find: '@mlightcad/mtext-renderer',
+        replacement: LOCAL_MTEXT_RENDERER_DIST
+      })
+    } else if (
+      useLocalMtextRenderer(mode) &&
+      !existsSync(LOCAL_MTEXT_RENDERER_ENTRY)
+    ) {
+      console.warn(
+        '[cad-editor-demo] Local mtext-renderer alias requested but not found at:',
+        LOCAL_MTEXT_RENDERER_ENTRY
+      )
+    }
+    if (linkLocalDataModel) {
+      aliases.push({
+        find: '@mlightcad/data-model',
+        replacement: LOCAL_DATA_MODEL_LIB
+      })
+    } else if (useLocalDataModel(mode) && !existsSync(LOCAL_DATA_MODEL_ENTRY)) {
+      console.warn(
+        '[cad-editor-demo] Local data-model alias requested but not found at:',
+        LOCAL_DATA_MODEL_ENTRY
+      )
+    }
+    if (linkLocalUiComponents) {
+      console.info(
+        '[cad-editor-demo] Aliasing @mlightcad/ui-components to local source:',
+        LOCAL_UI_COMPONENTS_SRC
+      )
+      aliases.push({
+        find: '@mlightcad/ui-components',
+        replacement: LOCAL_UI_COMPONENTS_SRC
+      })
+    } else if (
+      useLocalUiComponents(mode) &&
+      !existsSync(LOCAL_UI_COMPONENTS_SRC)
+    ) {
+      console.warn(
+        '[cad-editor-demo] Local ui-components alias requested but not found at:',
+        LOCAL_UI_COMPONENTS_SRC
+      )
+    }
+  }
+
+  aliases.push(
+    ...examplePeerPackageAliases(__dirname).filter(
+      alias =>
+        !linkLocalMtextRenderer || alias.find !== '@mlightcad/mtext-renderer'
+    )
+  )
+
+  const libredwgDist = `./node_modules/${LIBREDWG_CONVERTER_PACKAGE}/dist`
+  const libredwgWasmSrc = resolve(
+    __dirname,
+    'node_modules',
+    LIBREDWG_CONVERTER_PACKAGE,
+    'dist',
+    LIBREDWG_PARSER_WASM_FILE
+  )
+  const mtextWorkerSrc = linkLocalMtextRenderer
+    ? LOCAL_MTEXT_RENDERER_WORKER
+    : `./node_modules/@mlightcad/cad-simple-viewer/dist/${MTEXT_RENDERER_WORKER_FILE}`
+
+  const plugins = [
+    vue(),
+    svgLoader(),
+    viteStaticCopy({
+      targets: [
+        {
+          src: mtextWorkerSrc,
+          dest: 'assets',
+          rename: { stripBase: true }
+        },
+        {
+          src: `${libredwgDist}/${LIBREDWG_PARSER_WORKER_FILE}`,
+          dest: 'assets',
+          rename: { stripBase: true }
+        },
+        ...(existsSync(libredwgWasmSrc)
+          ? [
+              {
+                src: `${libredwgDist}/${LIBREDWG_PARSER_WASM_FILE}`,
+                dest: 'assets',
+                rename: { stripBase: true }
+              }
+            ]
+          : []),
+        ...(hasViewerRuntime
+          ? [
+              {
+                src: VIEWER_RUNTIME_SRC,
+                dest: 'assets',
+                rename: { stripBase: true }
+              }
+            ]
+          : [])
+      ]
+    })
+  ]
+
+  if (mode === 'analyze') {
+    plugins.push(visualizer())
+  }
+
+  return {
+    base: './',
+    resolve: {
+      alias: aliases
+    },
+    optimizeDeps: {
+      force: command === 'serve',
+      // Pre-bundle the PDF stack so the first lazy `cpdf` import does not
+      // trigger a Vite optimizeDeps full-page reload in the example app.
+      // pnpm keeps these out of this package's node_modules, so they are
+      // addressed through the workspace package that depends on them.
+      include:
+        command === 'serve'
+          ? [
+              '@mlightcad/pdf-renderer > pdf-lib',
+              '@mlightcad/pdf-renderer > @pdf-lib/fontkit',
+              '@mlightcad/pdf-renderer > pdf-lib > @pdf-lib/standard-fonts',
+              '@mlightcad/pdf-renderer > pdf-lib > @pdf-lib/upng',
+              '@mlightcad/pdf-renderer > pako',
+              '@mlightcad/cad-pdf-plugin > pdfjs-dist'
+            ]
+          : [],
+      exclude:
+        command === 'serve'
+          ? [
+              ...devSourcePackages.map(name => `@mlightcad/${name}`),
+              ...(linkLocalDataModel ? ['@mlightcad/data-model'] : []),
+              ...(linkLocalUiComponents ? ['@mlightcad/ui-components'] : []),
+              ...(linkLocalMtextRenderer ? ['@mlightcad/mtext-renderer'] : [])
+            ]
+          : []
+    },
+    server: {
+      fs: {
+        allow: [
+          resolve(__dirname, '../..'),
+          ...(linkLocalUiComponents ? [LOCAL_UI_COMPONENTS_ROOT] : []),
+          ...(linkLocalMtextRenderer ? [LOCAL_MTEXT_RENDERER_ROOT] : [])
+        ]
+      }
+    },
+    build: {
+      outDir: 'dist',
+      modulePreload: false,
+      minify: true,
+      rollupOptions: {
+        input: {
+          main: resolve(__dirname, 'index.html')
+        },
+        output: exampleRollupOutput
+      }
+    },
+    plugins: plugins
+  }
+})

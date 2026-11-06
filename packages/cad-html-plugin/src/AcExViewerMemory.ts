@@ -1,10 +1,15 @@
-import type { AcExLayoutSnapshot, AcExSnapshot } from '@mlightcad/cad-html-core'
+import type {
+  AcExHtmlLayoutSnapshot,
+  AcExHtmlSnapshot
+} from '@mlightcad/cad-html-core'
 import * as THREE from 'three'
 
 /**
  * True when a layout still holds tessellated CPU batches.
  */
-export function layoutHasBatchGeometry(layout: AcExLayoutSnapshot): boolean {
+export function layoutHasBatchGeometry(
+  layout: AcExHtmlLayoutSnapshot
+): boolean {
   return layout.lineBatches.length > 0 || layout.meshBatches.length > 0
 }
 
@@ -13,8 +18,8 @@ export function layoutHasBatchGeometry(layout: AcExLayoutSnapshot): boolean {
  * skeleton / previously released layout (same `btrId`).
  */
 export function assignLayoutGeometryFrom(
-  target: AcExLayoutSnapshot,
-  source: AcExLayoutSnapshot
+  target: AcExHtmlLayoutSnapshot,
+  source: AcExHtmlLayoutSnapshot
 ): void {
   target.lineBatches = source.lineBatches
   target.meshBatches = source.meshBatches
@@ -25,7 +30,9 @@ export function assignLayoutGeometryFrom(
  * Clears tessellated batch typed arrays on one layout so inactive package
  * layouts can be unloaded and re-fetched later.
  */
-export function releaseLayoutBatchBuffers(layout: AcExLayoutSnapshot): void {
+export function releaseLayoutBatchBuffers(
+  layout: AcExHtmlLayoutSnapshot
+): void {
   clearLayoutBatchBuffers(layout)
 }
 
@@ -35,7 +42,7 @@ export function releaseLayoutBatchBuffers(layout: AcExLayoutSnapshot): void {
  * Call only after the THREE scene has uploaded geometry to the GPU and any
  * OSNAP index has been built from analytic primitives or tessellated segments.
  */
-export function releaseSnapshotBatchBuffers(snapshot: AcExSnapshot): void {
+export function releaseSnapshotBatchBuffers(snapshot: AcExHtmlSnapshot): void {
   for (const layout of snapshot.layouts) {
     clearLayoutBatchBuffers(layout)
   }
@@ -47,7 +54,7 @@ export function releaseSnapshotBatchBuffers(snapshot: AcExSnapshot): void {
  * model space when paper viewports need it).
  */
 export function releaseInactiveLayoutBatchBuffers(
-  snapshot: AcExSnapshot,
+  snapshot: AcExHtmlSnapshot,
   keepBtrIds: ReadonlySet<string>
 ): void {
   for (const layout of snapshot.layouts) {
@@ -58,7 +65,7 @@ export function releaseInactiveLayoutBatchBuffers(
 }
 
 /**
- * Drops {@link AcExLayoutSnapshot.osnap} from every layout after
+ * Drops {@link AcExHtmlLayoutSnapshot.osnap} from every layout after
  * {@link AcExOsnapIndex.rebuild}.
  *
  * Call only after the index has copied or retained the catalog's
@@ -67,7 +74,7 @@ export function releaseInactiveLayoutBatchBuffers(
  * catalog wrapper is removed from the snapshot while primitive data
  * remains alive for nearest / intersection snap queries.
  */
-export function releaseSnapshotOsnapCatalogs(snapshot: AcExSnapshot): void {
+export function releaseSnapshotOsnapCatalogs(snapshot: AcExHtmlSnapshot): void {
   for (const layout of snapshot.layouts) {
     layout.osnap = undefined
   }
@@ -84,29 +91,71 @@ export function removeSnapshotElement(element: HTMLElement): void {
 }
 
 /**
+ * Runs `fn` with every layer group forced visible, then restores prior flags.
+ *
+ * THREE skips invisible objects during `render()`, so geometry on layers that
+ * start off never reaches the GPU. Call this around the upload render that
+ * precedes {@link releaseLayerGroupsGeometryCpuArrays}.
+ */
+export function acexHtmlWithAllLayerGroupsVisible(
+  layerGroupMaps: Iterable<Map<string, THREE.Group>>,
+  fn: () => void
+): void {
+  const restored: Array<[THREE.Group, boolean]> = []
+  for (const groups of layerGroupMaps) {
+    for (const group of groups.values()) {
+      restored.push([group, group.visible])
+      group.visible = true
+    }
+  }
+  try {
+    fn()
+  } finally {
+    for (const [group, visible] of restored) {
+      group.visible = visible
+    }
+  }
+}
+
+/**
  * Drops CPU-side typed arrays for static CAD geometry after the first GPU upload.
  *
  * Only traverses layer groups (not measurement overlays). WebGL buffer objects
  * retain the uploaded data; static display geometry never updates CPU buffers again.
+ *
+ * Callers must GPU-upload geometry for layers that start invisible (see
+ * {@link acexHtmlWithAllLayerGroupsVisible}) before invoking this — otherwise
+ * toggling those layers on later shows empty meshes.
  */
 export function releaseLayerGroupsGeometryCpuArrays(
   layerGroups: Map<string, THREE.Group>
 ): void {
   for (const group of layerGroups.values()) {
     group.traverse(object => {
+      // Use Three.js type flags instead of instanceof: objects created by a
+      // second copy of Three.js (or by the Jest LineSegments2 mock) may not
+      // share constructors with the copy imported in this module.
+      const drawable = object as THREE.Object3D & {
+        isMesh?: boolean
+        isLineSegments?: boolean
+        isLine?: boolean
+        isPoints?: boolean
+        geometry?: THREE.BufferGeometry
+      }
       if (
-        object instanceof THREE.Mesh ||
-        object instanceof THREE.LineSegments ||
-        object instanceof THREE.Line ||
-        object instanceof THREE.Points
+        (drawable.isMesh ||
+          drawable.isLineSegments ||
+          drawable.isLine ||
+          drawable.isPoints) &&
+        drawable.geometry?.isBufferGeometry === true
       ) {
-        releaseBufferGeometryCpuArrays(object.geometry)
+        releaseBufferGeometryCpuArrays(drawable.geometry)
       }
     })
   }
 }
 
-function clearLayoutBatchBuffers(layout: AcExLayoutSnapshot): void {
+function clearLayoutBatchBuffers(layout: AcExHtmlLayoutSnapshot): void {
   for (const batch of layout.lineBatches) {
     batch.positions = new Float32Array(0)
     if (batch.indices) batch.indices = new Uint32Array(0)
@@ -119,7 +168,8 @@ function clearLayoutBatchBuffers(layout: AcExLayoutSnapshot): void {
     if (batch.indices) batch.indices = new Uint32Array(0)
     if (batch.gradientPositions) batch.gradientPositions = new Float32Array(0)
     if (batch.uvs) batch.uvs = new Float32Array(0)
-    if (batch.texture) batch.texture = { mimeType: '', bytes: new Uint8Array(0) }
+    if (batch.texture)
+      batch.texture = { mimeType: '', bytes: new Uint8Array(0) }
   }
   layout.meshBatches.length = 0
 }

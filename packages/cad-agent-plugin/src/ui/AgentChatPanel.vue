@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import '../ui/agent-panel.css'
 
-import { AcApI18n } from '@mlightcad/cad-simple-viewer'
 import type { UIMessage } from 'ai'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
@@ -13,21 +12,20 @@ import {
   saveAgentMode
 } from '../storage/AgentModeStore'
 import {
-  getProviderDefaults,
-  type LlmProviderId,
-  type LlmSettings,
-  loadLlmSettings,
-  saveLlmSettings
+  activeModelSupportsVision,
+  createDefaultLlmConfig,
+  effectiveModels,
+  findProvider,
+  type LlmConfig,
+  loadLlmConfig,
+  resolveActiveSettings,
+  saveLlmConfig
 } from '../storage/LlmSettingsStore'
-import {
-  CUSTOM_MODEL_VALUE,
-  type LlmModelOption,
-  modelOptionsForProvider,
-  modelSupportsVision,
-  resolveModelSelection
-} from '../storage/modelCatalog'
-import { areLlmSettingsEqual } from '../storage/settingsEquality'
+import { modelLabel } from '../storage/modelCatalog'
+import AgentModelSettings from './AgentModelSettings.vue'
 import { formatChatError } from './formatChatError'
+import { prepareImageAttachments } from './prepareImageAttachments'
+import { providerLabel } from './providerLabels'
 import { createAgentChatOptions, useAgentChatRef } from './useAgentChat'
 
 /** Image file part on a {@link UIMessage} from the AI SDK. */
@@ -63,48 +61,21 @@ const emit = defineEmits<{
 
 const { labels } = useAgentI18n()
 
-const settings = ref<LlmSettings>({
-  provider: 'openai-compatible',
-  apiKey: '',
-  baseUrl: '',
-  model: ''
-})
-const activeSettings = ref<LlmSettings>({
-  provider: 'openai-compatible',
-  apiKey: '',
-  baseUrl: '',
-  model: ''
-})
+/** Saved provider configuration; the settings card edits a copy. */
+const config = ref<LlmConfig>(createDefaultLlmConfig())
+const activeSettings = computed(() => resolveActiveSettings(config.value))
 const settingsReady = ref(false)
 const showSettings = ref(false)
+/** Whether the open settings card holds unsaved edits. */
+const settingsDirty = ref(false)
 const input = ref('')
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const pendingImages = ref<File[]>([])
 const pendingPreviewUrls = ref<string[]>([])
-const modelSelection = ref(
-  resolveModelSelection(settings.value.provider, settings.value.model)
-)
 const agentMode = ref<AgentMode>('simple')
 
-watch(
-  () => settings.value.provider,
-  (provider: LlmProviderId, previous: LlmProviderId | undefined) => {
-    // Skip hydration / same-value updates so a saved custom baseUrl is not
-    // overwritten by provider defaults after loadLlmSettings().
-    if (!settingsReady.value || previous === undefined || previous === provider) {
-      return
-    }
-    const defaults = getProviderDefaults(provider)
-    settings.value.baseUrl = defaults.baseUrl
-    settings.value.model = defaults.model
-    modelSelection.value = resolveModelSelection(provider, defaults.model)
-  }
-)
-
-watch(modelSelection, selection => {
-  if (selection !== CUSTOM_MODEL_VALUE) {
-    settings.value.model = selection
-  }
+watch(showSettings, open => {
+  if (!open) settingsDirty.value = false
 })
 
 /** Recently copied tool row keys for brief “copied” feedback. */
@@ -132,19 +103,12 @@ const { chat, resetChat } = useAgentChatRef(() => ({
 }))
 
 onMounted(async () => {
-  const loaded = await loadLlmSettings()
-  settings.value = { ...loaded }
-  activeSettings.value = { ...loaded }
+  config.value = await loadLlmConfig()
   agentMode.value = loadAgentMode()
-  modelSelection.value = resolveModelSelection(loaded.provider, loaded.model)
   // Do not resetChat() here: getConfig() is live, and replacing the Chat while
   // a first Enter send is in flight orphans that request (no UI response).
   settingsReady.value = true
 })
-
-const settingsDirty = computed(
-  () => !areLlmSettingsEqual(settings.value, activeSettings.value)
-)
 
 const messages = computed(() => chat.value.messages)
 const status = computed(() => chat.value.status)
@@ -153,28 +117,73 @@ const errorMessage = computed(() =>
   error.value ? formatChatError(error.value) : ''
 )
 
-const visionModelOptions = computed(() =>
-  modelOptionsForProvider(settings.value.provider, true)
+/** Local send-prep error when chat.error is not set yet (e.g. image resize). */
+const sendPrepError = ref('')
+
+watch(error, value => {
+  if (value) sendPrepError.value = ''
+})
+
+const displayErrorMessage = computed(() => {
+  if (errorMessage.value) return errorMessage.value
+  return sendPrepError.value
+})
+
+const hasDisplayError = computed(
+  () => !!error.value || sendPrepError.value.length > 0
 )
-const textModelOptions = computed(() =>
-  modelOptionsForProvider(settings.value.provider, false)
-)
-const activeVisionModelOptions = computed(() =>
-  modelOptionsForProvider(activeSettings.value.provider, true)
-)
-const activeTextModelOptions = computed(() =>
-  modelOptionsForProvider(activeSettings.value.provider, false)
-)
-const isActiveCustomModel = computed(
+
+/** Separates provider id and model id in input-bar option values. */
+const MODEL_VALUE_SEPARATOR = '|'
+
+interface ModelOptionGroup {
+  providerId: string
+  label: string
+  options: { value: string; label: string }[]
+}
+
+/**
+ * Input-bar model choices: every model of every provider that has a key, plus
+ * the active provider, grouped by provider. The active model is listed even
+ * when its catalog no longer names it.
+ */
+const modelOptionGroups = computed<ModelOptionGroup[]>(() => {
+  const { activeProviderId, activeModel } = config.value
+  const ids = config.value.providers
+    .filter(provider => provider.apiKey.trim())
+    .map(provider => provider.id)
+  if (!ids.includes(activeProviderId)) ids.unshift(activeProviderId)
+
+  return ids.flatMap(id => {
+    const provider = findProvider(config.value, id)
+    if (!provider) return []
+    const models = [...effectiveModels(provider)]
+    if (
+      id === activeProviderId &&
+      activeModel &&
+      !models.some(model => model.id === activeModel)
+    ) {
+      models.push({ id: activeModel, vision: false })
+    }
+    return [
+      {
+        providerId: id,
+        label: providerDisplayName(id),
+        options: models.map(model => ({
+          value: `${id}${MODEL_VALUE_SEPARATOR}${model.id}`,
+          label: modelLabel(model)
+        }))
+      }
+    ]
+  })
+})
+
+const activeModelValue = computed(
   () =>
-    resolveModelSelection(
-      activeSettings.value.provider,
-      activeSettings.value.model
-    ) === CUSTOM_MODEL_VALUE
+    `${config.value.activeProviderId}${MODEL_VALUE_SEPARATOR}${config.value.activeModel}`
 )
-const supportsVision = computed(() =>
-  modelSupportsVision(activeSettings.value.provider, activeSettings.value.model)
-)
+
+const supportsVision = computed(() => activeModelSupportsVision(config.value))
 
 const highInferenceActive = computed(() => agentMode.value === 'high-inference')
 
@@ -233,38 +242,37 @@ const inputHint = computed(() => {
   return ''
 })
 
-/** Returns the localized display label for a model dropdown option. */
-function modelLabel(option: LlmModelOption): string {
-  return AcApI18n.currentLocale === 'zh' ? option.labelZh : option.labelEn
+/** Returns the label of a provider for the input-bar model groups. */
+function providerDisplayName(id: string): string {
+  const provider = findProvider(config.value, id)
+  return provider ? providerLabel(provider, labels.value) : id
 }
 
 /** Clears the current chat error state without removing messages. */
 function dismissError() {
+  sendPrepError.value = ''
   chat.value.clearError()
 }
 
-/** Persists LLM settings, hides the form, and resets the chat session. */
-async function applySettings() {
-  await saveLlmSettings(settings.value)
-  activeSettings.value = { ...settings.value }
+/** Persists the config saved by the settings card and resets the chat. */
+async function applySettings(next: LlmConfig) {
+  config.value = next
   showSettings.value = false
+  await saveLlmConfig(next)
   resetChat()
 }
 
-/** Switches the active model from the input bar and persists the change. */
-async function applyActiveModel(model: string) {
-  if (!model || model === activeSettings.value.model) return
-
-  settings.value = { ...settings.value, model }
-  modelSelection.value = resolveModelSelection(settings.value.provider, model)
-  activeSettings.value = { ...activeSettings.value, model }
-  await saveLlmSettings(activeSettings.value)
-}
-
-/** Handles model selection changes in the input bar dropdown. */
+/** Switches the active provider/model from the input bar and persists it. */
 async function onInputModelChange(event: Event) {
-  const model = (event.target as HTMLSelectElement).value
-  await applyActiveModel(model)
+  const value = (event.target as HTMLSelectElement).value
+  const separator = value.indexOf(MODEL_VALUE_SEPARATOR)
+  if (separator < 0 || value === activeModelValue.value) return
+  config.value = {
+    ...config.value,
+    activeProviderId: value.slice(0, separator),
+    activeModel: value.slice(separator + 1)
+  }
+  await saveLlmConfig(config.value)
 }
 
 /** Persists agent mode when the input bar dropdown changes. */
@@ -350,33 +358,51 @@ function clearPendingImages() {
   pendingImages.value = []
 }
 
-/** Builds a {@link FileList} so the AI SDK can convert attachments to file UI parts. */
-function toFileList(files: File[]): FileList {
-  const dataTransfer = new DataTransfer()
-  for (const file of files) {
-    dataTransfer.items.add(file)
-  }
-  return dataTransfer.files
-}
-
 /** Sends the current text and optional images to the CAD agent. */
 async function sendMessage() {
   // Align with the send button: Enter must not bypass settingsReady / canSend.
   if (!canSend.value) return
 
   const text = input.value.trim()
-  const files = supportsVision.value ? pendingImages.value : []
+  const files = supportsVision.value ? [...pendingImages.value] : []
+  sendPrepError.value = ''
 
+  let fileParts: Awaited<ReturnType<typeof prepareImageAttachments>> = []
+  if (files.length > 0) {
+    try {
+      fileParts = await prepareImageAttachments(files)
+    } catch (prepError) {
+      sendPrepError.value =
+        prepError instanceof Error && prepError.message.trim()
+          ? prepError.message
+          : labels.value.prepareImageFailed
+      return
+    }
+  }
+
+  const requestText =
+    text || (fileParts.length > 0 ? labels.value.imageOnlyRequest : '')
+  if (!requestText && fileParts.length === 0) return
+
+  // Clear only after attachments are ready so a prep failure keeps the draft.
   input.value = ''
   clearPendingImages()
 
   try {
     await chat.value.sendMessage({
-      ...(text ? { text } : {}),
-      ...(files.length > 0 ? { files: toFileList(files) } : {})
+      text: requestText,
+      ...(fileParts.length > 0 ? { files: fileParts } : {})
     })
-  } catch {
-    // error surfaced via chat.error
+  } catch (sendError) {
+    // makeRequest errors land on chat.error; restore the draft for the rest.
+    if (!chat.value.error) {
+      sendPrepError.value =
+        sendError instanceof Error
+          ? formatChatError(sendError)
+          : labels.value.prepareImageFailed
+    }
+    input.value = text
+    if (files.length) pendingImages.value = files
   }
 }
 
@@ -397,6 +423,7 @@ function clearChat() {
   clearPendingImages()
   dismissError()
   showSettings.value = false
+  toolGroupOverrides.value = new Map()
   resetChat()
 }
 
@@ -463,7 +490,8 @@ function scriptToolDetail(output: unknown): string | undefined {
     data?: unknown
   }
   const bits: string[] = []
-  if (typeof record.message === 'string' && record.message) bits.push(record.message)
+  if (typeof record.message === 'string' && record.message)
+    bits.push(record.message)
   if (typeof record.error === 'string' && record.error) bits.push(record.error)
   if (record.data !== undefined) {
     try {
@@ -577,6 +605,50 @@ function isToolCopied(messageId: string, toolIndex: number): boolean {
   return copiedToolKeys.value.has(`${messageId}-${toolIndex}`)
 }
 
+/**
+ * Tool groups the user opened or closed by hand, keyed by message id. Groups
+ * without an entry follow {@link isMessageInFlight}: open while the response
+ * streams so progress stays visible, collapsed once the turn completes.
+ */
+const toolGroupOverrides = ref(new Map<string, boolean>())
+
+/** True for the assistant message the agent is still producing. */
+function isMessageInFlight(message: UIMessage): boolean {
+  const list = messages.value
+  return (
+    isBusy.value &&
+    message.role === 'assistant' &&
+    list[list.length - 1]?.id === message.id
+  )
+}
+
+/** Whether a message's tool-call list is expanded. */
+function isToolGroupOpen(message: UIMessage): boolean {
+  return toolGroupOverrides.value.get(message.id) ?? isMessageInFlight(message)
+}
+
+/** Expands or collapses a message's tool-call list. */
+function toggleToolGroup(message: UIMessage) {
+  const next = new Map(toolGroupOverrides.value)
+  next.set(message.id, !isToolGroupOpen(message))
+  toolGroupOverrides.value = next
+}
+
+/** One-line header of a tool group, e.g. "Tool calls: 3 · 1 failed". */
+function toolGroupSummary(message: UIMessage): string {
+  const tools = toolParts(message)
+  const count = String(tools.length)
+  const summary = (
+    isMessageInFlight(message)
+      ? labels.value.toolsRunning
+      : labels.value.toolsSummary
+  ).replace('{count}', count)
+  const failed = tools.filter(tool => tool.state === 'output-error').length
+  return failed
+    ? `${summary} · ${labels.value.toolsFailed.replace('{count}', String(failed))}`
+    : summary
+}
+
 /** True when the message contains a high-inference verification review block. */
 function isVerificationMessage(message: UIMessage): boolean {
   return (
@@ -621,10 +693,7 @@ function isVerificationMessage(message: UIMessage): boolean {
           @click="clearChat"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              fill="currentColor"
-              d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"
-            />
+            <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
           </svg>
         </button>
         <button
@@ -660,83 +729,24 @@ function isVerificationMessage(message: UIMessage): boolean {
         @click="clearChat"
       >
         <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path
-            fill="currentColor"
-            d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"
-          />
+          <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
         </svg>
       </button>
     </div>
 
-    <div v-if="showSettings" class="cad-agent-settings">
-      <label>
-        {{ labels.provider }}
-        <select v-model="settings.provider">
-          <option value="deepseek">{{ labels.providerDeepseek }}</option>
-          <option value="deepseek-vl">{{ labels.providerDeepseekVl }}</option>
-          <option value="openai">{{ labels.providerOpenai }}</option>
-          <option value="anthropic">{{ labels.providerAnthropic }}</option>
-          <option value="openai-compatible">
-            {{ labels.providerOpenaiCompatible }}
-          </option>
-        </select>
-      </label>
-      <label>
-        {{ labels.baseUrl }}
-        <input v-model="settings.baseUrl" type="text" />
-      </label>
-      <p class="cad-agent-model-hint">{{ labels.baseUrlHint }}</p>
-      <p
-        v-if="settings.provider === 'deepseek-vl'"
-        class="cad-agent-model-hint"
-      >
-        {{ labels.providerDeepseekVlHint }}
-      </p>
-      <label>
-        {{ labels.model }}
-        <select v-model="modelSelection">
-          <optgroup
-            v-if="visionModelOptions.length"
-            :label="labels.visionModels"
-          >
-            <option
-              v-for="option in visionModelOptions"
-              :key="option.value"
-              :value="option.value"
-            >
-              {{ modelLabel(option) }}
-            </option>
-          </optgroup>
-          <optgroup v-if="textModelOptions.length" :label="labels.textModels">
-            <option
-              v-for="option in textModelOptions"
-              :key="option.value"
-              :value="option.value"
-            >
-              {{ modelLabel(option) }}
-            </option>
-          </optgroup>
-          <option :value="CUSTOM_MODEL_VALUE">{{ labels.customModel }}</option>
-        </select>
-      </label>
-      <label v-if="modelSelection === CUSTOM_MODEL_VALUE">
-        {{ labels.customModelName }}
-        <input v-model="settings.model" type="text" />
-      </label>
-      <p class="cad-agent-model-hint">
-        {{ supportsVision ? labels.modelSupportsVision : labels.modelTextOnly }}
-      </p>
-      <label>
-        {{ labels.apiKey }}
-        <input v-model="settings.apiKey" type="password" autocomplete="off" />
-      </label>
-      <button type="button" class="cad-agent-panel-btn" @click="applySettings">
-        {{ labels.saveSettings }}
-      </button>
-    </div>
+    <AgentModelSettings
+      v-if="showSettings && settingsReady"
+      :config="config"
+      @save="applySettings"
+      @cancel="showSettings = false"
+      @dirty-change="settingsDirty = $event"
+    />
 
-    <div class="cad-agent-panel-messages">
-      <div v-if="messages.length === 0 && !error" class="cad-agent-panel-empty">
+    <div v-show="!showSettings" class="cad-agent-panel-messages">
+      <div
+        v-if="messages.length === 0 && !hasDisplayError"
+        class="cad-agent-panel-empty"
+      >
         {{ labels.emptyHint }}
       </div>
       <div
@@ -769,58 +779,86 @@ function isVerificationMessage(message: UIMessage): boolean {
           </figure>
         </div>
         <div
-          v-for="(toolCall, toolIndex) in toolParts(message)"
-          :key="`${message.id}-tool-${toolIndex}`"
-          class="cad-agent-tool"
+          v-if="toolParts(message).length"
+          class="cad-agent-tool-group"
+          :class="{ 'is-open': isToolGroupOpen(message) }"
         >
-          <div class="cad-agent-tool-body">
-            {{ `${labels.toolPrefix}: ${toolCall.name}` }}
-            <span
-              v-if="toolCall.state && toolCall.state !== 'output-available'"
-              class="cad-agent-tool-detail"
-            >
-              {{ toolCall.state }}
-            </span>
-            <span v-if="toolCall.detail" class="cad-agent-tool-detail">
-              {{ toolCall.detail }}
-            </span>
-          </div>
           <button
             type="button"
-            class="cad-agent-tool-copy"
-            :class="{ 'is-copied': isToolCopied(message.id, toolIndex) }"
-            :title="
-              isToolCopied(message.id, toolIndex)
-                ? labels.toolCopied
-                : labels.copyTool
-            "
-            :aria-label="
-              isToolCopied(message.id, toolIndex)
-                ? labels.toolCopied
-                : labels.copyTool
-            "
-            @click="copyToolCall(message.id, toolIndex, toolCall)"
+            class="cad-agent-tool-summary"
+            :aria-expanded="isToolGroupOpen(message)"
+            @click="toggleToolGroup(message)"
           >
             <svg
-              v-if="isToolCopied(message.id, toolIndex)"
+              class="cad-agent-tool-chevron"
               viewBox="0 0 24 24"
               aria-hidden="true"
             >
               <path
                 fill="currentColor"
-                d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
+                d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"
               />
             </svg>
-            <svg v-else viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                fill="currentColor"
-                d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"
-              />
-            </svg>
+            <span class="cad-agent-tool-summary-text">
+              {{ toolGroupSummary(message) }}
+            </span>
           </button>
+          <template v-if="isToolGroupOpen(message)">
+            <div
+              v-for="(toolCall, toolIndex) in toolParts(message)"
+              :key="`${message.id}-tool-${toolIndex}`"
+              class="cad-agent-tool"
+            >
+              <div class="cad-agent-tool-body">
+                {{ `${labels.toolPrefix}: ${toolCall.name}` }}
+                <span
+                  v-if="toolCall.state && toolCall.state !== 'output-available'"
+                  class="cad-agent-tool-detail"
+                >
+                  {{ toolCall.state }}
+                </span>
+                <span v-if="toolCall.detail" class="cad-agent-tool-detail">
+                  {{ toolCall.detail }}
+                </span>
+              </div>
+              <button
+                type="button"
+                class="cad-agent-tool-copy"
+                :class="{ 'is-copied': isToolCopied(message.id, toolIndex) }"
+                :title="
+                  isToolCopied(message.id, toolIndex)
+                    ? labels.toolCopied
+                    : labels.copyTool
+                "
+                :aria-label="
+                  isToolCopied(message.id, toolIndex)
+                    ? labels.toolCopied
+                    : labels.copyTool
+                "
+                @click="copyToolCall(message.id, toolIndex, toolCall)"
+              >
+                <svg
+                  v-if="isToolCopied(message.id, toolIndex)"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    fill="currentColor"
+                    d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
+                  />
+                </svg>
+                <svg v-else viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"
+                  />
+                </svg>
+              </button>
+            </div>
+          </template>
         </div>
       </div>
-      <div v-if="error" class="cad-agent-msg error">
+      <div v-if="hasDisplayError" class="cad-agent-msg error">
         <div class="cad-agent-error-card">
           <svg
             class="cad-agent-error-icon"
@@ -834,7 +872,7 @@ function isVerificationMessage(message: UIMessage): boolean {
           </svg>
           <div class="cad-agent-error-body">
             <div class="cad-agent-error-title">{{ labels.errorTitle }}</div>
-            <div class="cad-agent-error-message">{{ errorMessage }}</div>
+            <div class="cad-agent-error-message">{{ displayErrorMessage }}</div>
           </div>
           <button
             type="button"
@@ -913,38 +951,24 @@ function isVerificationMessage(message: UIMessage): boolean {
           </select>
           <select
             class="cad-agent-model-select"
-            :value="activeSettings.model"
+            :value="activeModelValue"
             :disabled="modelSelectDisabled"
             :title="modelSelectTitle"
             @change="onInputModelChange"
           >
             <optgroup
-              v-if="activeVisionModelOptions.length"
-              :label="labels.visionModels"
+              v-for="group in modelOptionGroups"
+              :key="group.providerId"
+              :label="group.label"
             >
               <option
-                v-for="option in activeVisionModelOptions"
+                v-for="option in group.options"
                 :key="option.value"
                 :value="option.value"
               >
-                {{ modelLabel(option) }}
+                {{ option.label }}
               </option>
             </optgroup>
-            <optgroup
-              v-if="activeTextModelOptions.length"
-              :label="labels.textModels"
-            >
-              <option
-                v-for="option in activeTextModelOptions"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ modelLabel(option) }}
-              </option>
-            </optgroup>
-            <option v-if="isActiveCustomModel" :value="activeSettings.model">
-              {{ activeSettings.model }}
-            </option>
           </select>
         </div>
         <div class="cad-agent-panel-input-right">

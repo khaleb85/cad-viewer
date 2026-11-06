@@ -197,3 +197,19 @@ const styles = cad.tables.textStyleTable.records.map(record => ({
 }))
 return { layers, styles }
 ```
+
+## 将图纸保存为 DXF
+
+脚本成功后执行。应用内 Agent 会下载文件；`cad-mcp-server` 会把文件写到指定路径。
+
+```javascript
+cad.file.saveDxf('./plan-out.dxf')
+return { saved: true }
+```
+
+## Save the drawing as PDF or HTML
+
+```javascript
+cad.file.savePdf('./plan.pdf')
+cad.file.saveHtml('./plan.html')
+```

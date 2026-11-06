@@ -86,10 +86,10 @@ jobs:
       # Use system Google Chrome (preinstalled on ubuntu-latest) via channel "chrome".
       # Avoids playwright install chromium, which often hangs at zip extraction on CI.
       - name: Install Playwright system dependencies
-        run: pnpm --filter @mlightcad/cad-viewer-example exec playwright install-deps chromium
+        run: pnpm --filter @mlightcad/cad-editor-demo exec playwright install-deps chromium
 
       - name: Run E2E tests
-        run: pnpm --filter @mlightcad/cad-viewer-example test:e2e
+        run: pnpm --filter @mlightcad/cad-editor-demo test:e2e
         env:
           PLAYWRIGHT_BROWSER_CHANNEL: chrome
 
@@ -99,8 +99,8 @@ jobs:
         with:
           name: playwright-artifacts
           path: |
-            packages/cad-viewer-example/playwright-report/
-            packages/cad-viewer-example/test-results/
+            packages/cad-editor-demo/playwright-report/
+            packages/cad-editor-demo/test-results/
           if-no-files-found: ignore
 
       # GitHub Pages hosts the VitePress user guide only. The TypeDoc API
@@ -116,16 +116,16 @@ jobs:
       # GitHub Pages can serve progressive chunk loading without a zip download.
       - name: Export self-contained HTML demos
         if: github.ref == 'refs/heads/main'
-        run: node packages/examples/exportDemoHtml.js
+        run: node packages/cad-demo-gallery/exportDemoHtml.js
         env:
           PLAYWRIGHT_BROWSER_CHANNEL: chrome
 
       - name: Verify progressive package extracted for Pages
         if: github.ref == 'refs/heads/main'
         run: |
-          test -f packages/examples/public/self-contained-html/canteen.html
-          test -f packages/examples/public/self-contained-html/canteen.zip
-          test -f packages/examples/public/self-contained-html/canteen-progressive/viewer.html
+          test -f packages/cad-demo-gallery/public/self-contained-html/canteen.html
+          test -f packages/cad-demo-gallery/public/self-contained-html/canteen.zip
+          test -f packages/cad-demo-gallery/public/self-contained-html/canteen-progressive/viewer.html
 
       # Keep release/pages-only actions out of this job so PR builds do not
       # download softprops/action-gh-release or upload-pages-artifact (GitHub
@@ -135,7 +135,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: pages-source
-          path: packages/examples/public/
+          path: packages/cad-demo-gallery/public/
           retention-days: 1
 
   # Authenticates via npm Trusted Publishing (OIDC); no NPM_TOKEN needed.
@@ -209,12 +209,12 @@ jobs:
         uses: actions/download-artifact@v6
         with:
           name: pages-source
-          path: packages/examples/public/
+          path: packages/cad-demo-gallery/public/
 
       - name: Upload github pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: './packages/examples/public/'
+          path: './packages/cad-demo-gallery/public/'
 
   deploy-pages:
     needs: upload-pages

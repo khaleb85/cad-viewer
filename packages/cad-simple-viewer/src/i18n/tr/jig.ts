@@ -1,3 +1,5 @@
+import enJig from '../en/jig'
+
 export default {
   arc: {
     startPointOrCenter: 'Yayın başlangıç noktasını belirtin veya',
@@ -129,10 +131,19 @@ export default {
     }
   },
   dimlinear: {
+    ...enJig.dimlinear,
     xLine1Point: 'İlk uzatma çizgisinin başlangıç noktasını belirtin',
     xLine2Point: 'İkinci uzatma çizgisinin başlangıç noktasını belirtin',
     dimLinePoint: 'Ölçü çizgisi konumunu belirtin'
   },
+  dimaligned: { ...enJig.dimaligned },
+  dimradius: { ...enJig.dimradius },
+  dimdiameter: { ...enJig.dimdiameter },
+  dimangular: { ...enJig.dimangular },
+  dimarc: { ...enJig.dimarc },
+  dimordinate: { ...enJig.dimordinate },
+  dimcontinue: { ...enJig.dimcontinue },
+  dimbaseline: { ...enJig.dimbaseline },
   ellipse: {
     axisEndpointOrOptions: 'Elipsin eksen uç noktasını belirtin veya',
     arcAxisEndpointOrCenter: 'Eliptik yayın eksen uç noktasını belirtin veya',
@@ -1239,6 +1250,7 @@ export default {
     exportFormat: 'Dışa aktarma biçimi',
     exportInvisibleLayers: 'Görünmez katmanları dışa aktar',
     exportLayouts: 'Yerleşimleri dışa aktar',
+    background: 'Arka plan rengi',
     initialView: 'HTML açılırken başlangıç görünümü',
     viewerMode: 'Çevrimdışı görüntüleyici modu',
     chunkSizeMiB: 'Parça boyutu (MiB, çok dosyalı paket)',
@@ -1283,6 +1295,21 @@ export default {
         display: 'Ölçüm ve İnceleme(Ö)',
         local: 'Ölçüm ve İnceleme',
         global: 'Measure'
+      },
+      black: {
+        display: 'Siyah(B)',
+        local: 'Siyah',
+        global: 'Black'
+      },
+      white: {
+        display: 'Beyaz(W)',
+        local: 'Beyaz',
+        global: 'White'
+      },
+      space: {
+        display: 'Alan(S)',
+        local: 'Alan',
+        global: 'Space'
       }
     }
   },
@@ -1290,6 +1317,7 @@ export default {
     modelSpaceFit: 'Model alanı çerçevesi',
     exportLayouts: 'Yerleşimleri dışa aktar',
     textMode: 'Metin işleme',
+    colorMode: 'Renk modu',
     keywords: {
       extents: {
         display: 'Kapsam(K)',
@@ -1320,6 +1348,16 @@ export default {
         display: 'Hayır(H)',
         local: 'Hayır',
         global: 'No'
+      },
+      color: {
+        display: 'Renkli(R)',
+        local: 'Renkli',
+        global: 'Color'
+      },
+      monochrome: {
+        display: 'Siyah-beyaz(S)',
+        local: 'Siyah-beyaz',
+        global: 'Monochrome'
       }
     }
   }

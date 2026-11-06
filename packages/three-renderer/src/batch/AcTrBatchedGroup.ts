@@ -571,9 +571,7 @@ export class AcTrBatchedGroup extends THREE.Group {
   ): Map<string, THREE.Box3> {
     const scratch = new THREE.Box3()
 
-    const absorbBatch = (
-      batch: AcTrBatchedLine | AcTrBatchedPoint
-    ) => {
+    const absorbBatch = (batch: AcTrBatchedLine | AcTrBatchedPoint) => {
       batch.updateMatrixWorld(true)
       for (let i = 0; i < batch.geometryCount; i++) {
         let info: { objectId?: string; vertexCount: number }
@@ -737,10 +735,7 @@ export class AcTrBatchedGroup extends THREE.Group {
       if (!('material' in object)) return
       const drawableUserData = getSceneDrawableUserData(object)
       if (drawableUserData.styleMaterialId === oldId) {
-        const drawable = object as
-          | THREE.Mesh
-          | THREE.Line
-          | THREE.LineSegments
+        const drawable = object as THREE.Mesh | THREE.Line | THREE.LineSegments
         drawable.material = material
         drawableUserData.styleMaterialId = material.id
         // Same arming as the batched path above: a cache-push rebind may swap
@@ -1295,6 +1290,27 @@ export class AcTrBatchedGroup extends THREE.Group {
     const styleManager = entity.styleManager
 
     entity.updateMatrixWorld(true)
+
+    // Annotative drawables (Dimension / MLeader / Hatch / INSERT / …) carry
+    // annotationScale on the entity root. Keep them as one unbatched subtree
+    // so paper viewports can rescale without tearing multi-leaf geometry.
+    // Groups never call finalizeLeafDrawables, so this early path is required.
+    // Use a plain Object3D shell — AcTrGroup/AcTrEntity.clone() re-enters
+    // constructors that expect conversion-time arguments.
+    const annotationScale = entity.userData.annotationScale
+    if (annotationScale) {
+      const shell = this.cloneEntityAsPlainShell(entity)
+      shell.visible = entityVisible
+      this._unbatchedObjects.add(shell)
+      unbatchedObjects.push(shell)
+      if (!this._entitiesMap.has(objectId)) {
+        this._entitiesMap.set(objectId, null)
+      }
+      this._unbatchedEntities.set(objectId, unbatchedObjects)
+      this.syncCompareRoleForEntity(objectId)
+      return
+    }
+
     const visitDrawable = (object: THREE.Object3D) => {
       // traverse() visits descendants even when an intermediate AcTrEntity is invisible.
       if (!isObjectHierarchyVisible(object)) {
@@ -1328,6 +1344,9 @@ export class AcTrBatchedGroup extends THREE.Group {
             cloned.matrixWorld.elements[14] += drawOrderZ
           }
         }
+        // IMAGE / OLE materials are created without layer metadata. Stamp the
+        // entity layer onto the clone so HTML export and layer sync see it.
+        this.stampUnbatchedDrawableLayer(cloned, entity.layerName)
         getSceneDrawableUserData(cloned).bboxIntersectionCheck =
           bboxIntersectionCheck
         this._unbatchedObjects.add(cloned)
@@ -2656,7 +2675,11 @@ export class AcTrBatchedGroup extends THREE.Group {
       kind,
       translation
     )
-    const batchId = batch.addInstance(matrixWorld, objectId, bboxIntersectionCheck)
+    const batchId = batch.addInstance(
+      matrixWorld,
+      objectId,
+      bboxIntersectionCheck
+    )
     return { batchedObjectId: batch.id, batchId }
   }
 
@@ -3398,6 +3421,34 @@ export class AcTrBatchedGroup extends THREE.Group {
   }
 
   /**
+   * Copies the entity layer onto an unbatched clone and its materials when
+   * they lack layer metadata (typical for {@link AcTrImage} / OLE frames).
+   */
+  private stampUnbatchedDrawableLayer(
+    object: THREE.Object3D,
+    layerName: string | undefined
+  ): void {
+    if (!layerName) {
+      return
+    }
+    const objectData = getObjectUserData(object)
+    if (objectData.layerName == null || objectData.layerName === '') {
+      objectData.layerName = layerName
+    }
+    if (!this.hasMaterial(object)) {
+      return
+    }
+    const material = object.material
+    const materials = Array.isArray(material) ? material : [material]
+    for (const entry of materials) {
+      if (!entry) continue
+      if (getMaterialMetadata(entry).layer == null) {
+        setMaterialMetadata(entry, { layer: layerName })
+      }
+    }
+  }
+
+  /**
    * Applies line-specific setup so unbatched wide/basic lines render reliably
    * at large world coordinates (matches batched line frustum-culling behavior).
    */
@@ -3439,7 +3490,59 @@ export class AcTrBatchedGroup extends THREE.Group {
    * Returns true when an unbatched source is a placement root with child drawables.
    */
   private shouldCloneUnbatchedSubtree(source: THREE.Object3D) {
-    return source.children.length > 0 && !this.hasGeometry(source)
+    if (source.children.length === 0) return false
+    // AcTrLine / similar containers store a geometry handle for bounds while
+    // render leaves live in children — still clone the full subtree.
+    if (source instanceof AcTrEntity) return true
+    return !this.hasGeometry(source)
+  }
+
+  /**
+   * Clones an {@link AcTrEntity} into a plain Object3D shell.
+   *
+   * `AcTrGroup` / `AcTrEntity.clone()` re-enter typed constructors that expect
+   * conversion-time arguments, so unbatched annotative roots must use a plain
+   * THREE container while preserving world matrix + annotationScale metadata.
+   */
+  private cloneEntityAsPlainShell(entity: AcTrEntity) {
+    const shell = new THREE.Object3D()
+    this.copyWorldMatrixOntoClone(entity, shell)
+    shell.userData = { ...entity.userData }
+    const sourceDrawable = getSceneDrawableUserData(entity)
+    const shellDrawable = getSceneDrawableUserData(shell)
+    shellDrawable.noBatch = true
+    shellDrawable.bboxIntersectionCheck = sourceDrawable.bboxIntersectionCheck
+    shellDrawable.bakedWorldMatrix = entity.matrixWorld.toArray(
+      new Array<number>(16)
+    )
+    if (sourceDrawable.textEntityTraits) {
+      shellDrawable.textEntityTraits = AcTrMTextColorUtil.cloneEntityTraits(
+        sourceDrawable.textEntityTraits
+      )
+    }
+
+    for (const child of entity.children) {
+      // After flatten, children are Mesh/Line leaves. Nested AcTrEntity shells
+      // (rare pre-flatten) contribute their drawable children instead.
+      if (child instanceof AcTrEntity) {
+        for (const leaf of child.children) {
+          shell.add(leaf.clone(true))
+        }
+      } else {
+        shell.add(child.clone(true))
+      }
+    }
+
+    shell.traverse(node => {
+      if (!this.hasMaterial(node)) return
+      const drawable = getSceneDrawableUserData(node)
+      if (drawable.styleMaterialId == null) {
+        drawable.styleMaterialId = this.getMaterialId(
+          (node as THREE.Mesh).material as THREE.Material
+        )
+      }
+    })
+    return shell
   }
 
   /**
@@ -3447,6 +3550,11 @@ export class AcTrBatchedGroup extends THREE.Group {
    * keeps merged glyph geometry in local space under one insertion transform.
    */
   private cloneUnbatchedSubtree(source: THREE.Object3D) {
+    // AcTr* .clone() re-enters typed constructors; use a plain Object3D shell.
+    if (source instanceof AcTrEntity) {
+      return this.cloneEntityAsPlainShell(source)
+    }
+
     const cloned = source.clone(true) as THREE.Object3D
     this.copyWorldMatrixOntoClone(source, cloned)
 

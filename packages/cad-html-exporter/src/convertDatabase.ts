@@ -1,12 +1,16 @@
 import { availableParallelism } from 'node:os'
 
 import {
-  type AcExExportLayoutInput,
-  type AcExExportSceneInput,
-  type AcExSnapshot,
-  buildSnapshotFromExportScene,
-  listDatabaseLayouts
-} from '@mlightcad/cad-html-core'
+  ACEX_HTML_BACKGROUND_BLACK,
+  ACEX_HTML_BACKGROUND_WHITE,
+  acexHtmlApplyBackground,
+  type AcExHtmlBackground,
+  acexHtmlBuildSnapshotFromExportScene,
+  type AcExHtmlExportLayoutInput,
+  type AcExHtmlExportSceneInput,
+  acexHtmlListDatabaseLayouts,
+  acexHtmlResolveBackground,
+  type AcExHtmlSnapshot} from '@mlightcad/cad-html-core'
 import {
   type AcDbDatabase,
   type AcDbEntity,
@@ -16,6 +20,7 @@ import {
   AcTrBatchedGroup,
   type AcTrDirectEntityMeta,
   AcTrEntity,
+  AcTrMTextRenderer,
   AcTrRenderer,
   AcTrViewportView,
   tryBuildDirectEntityMeta
@@ -50,21 +55,49 @@ interface PendingDraw {
 const ASYNC_DRAW_CONCURRENCY = Math.max(8, Math.min(32, availableParallelism()))
 
 /**
+ * Applies {@link AcExHtmlExporterOptions.drawNoPlotLayers} for the duration of
+ * `fn`, then restores the previous policy.
+ *
+ * `AcDbDatabase` only sets the flag through `read()` options and exposes no
+ * public setter; headless callers that already hold a database still need the
+ * same no-plot default as {@link exportFileToHtml} / cad-editor.
+ */
+async function withDrawNoPlotLayers<T>(
+  database: AcDbDatabase,
+  drawNoPlotLayers: boolean,
+  fn: () => Promise<T>
+): Promise<T> {
+  const host = database as unknown as { _drawNoPlotLayers: boolean }
+  const previous = host._drawNoPlotLayers
+  host._drawNoPlotLayers = drawNoPlotLayers
+  try {
+    return await fn()
+  } finally {
+    host._drawNoPlotLayers = previous
+  }
+}
+
+/**
  * Converts an open database into an ACEX snapshot without a browser view.
  */
 export async function convertDatabaseToSnapshot(
   database: AcDbDatabase,
   options: AcExHtmlExporterOptions = {}
-): Promise<AcExSnapshot> {
+): Promise<AcExHtmlSnapshot> {
+  // Default false: match cad-editor open policy and AutoCAD plot (omit no-plot
+  // layers). Callers can pass `drawNoPlotLayers: true` for editor-screen extras.
+  const drawNoPlotLayers = options.drawNoPlotLayers === true
   return withWorkingDatabase(database, () =>
-    convertOpenDatabaseToSnapshot(database, options)
+    withDrawNoPlotLayers(database, drawNoPlotLayers, () =>
+      convertOpenDatabaseToSnapshot(database, options)
+    )
   )
 }
 
 async function convertOpenDatabaseToSnapshot(
   database: AcDbDatabase,
   options: AcExHtmlExporterOptions
-): Promise<AcExSnapshot> {
+): Promise<AcExHtmlSnapshot> {
   const exportInvisibleLayers = options.exportInvisibleLayers !== false
   const exportLayouts = options.exportLayouts !== false
   const width = options.width ?? 1920
@@ -82,13 +115,24 @@ async function convertOpenDatabaseToSnapshot(
 
   const renderer = AcTrRenderer.createForExport({ width, height })
   renderer.context.database = database
+  // Bake ACI 7 against one known canvas, then remap. `'space'` is drawn on
+  // black and paper layouts are remapped to white afterwards — changing the
+  // renderer background mid-draw would repaint geometry already captured.
+  const backgroundMode: AcExHtmlBackground = acexHtmlResolveBackground(
+    options.background
+  )
+  const background =
+    backgroundMode === 'white'
+      ? ACEX_HTML_BACKGROUND_WHITE
+      : ACEX_HTML_BACKGROUND_BLACK
+  renderer.currentBackgroundColor = background
   // Browser glyph draws yield every 32ms so the UI can paint. That timer
   // delay only slows a headless export.
   renderer.context.yieldDuringAsyncDraw = false
 
   const modelSpace = database.tables.blockTable.modelSpace
   const modelSpaceBtrId = modelSpace.objectId
-  const tableLayouts = listDatabaseLayouts(database)
+  const tableLayouts = acexHtmlListDatabaseLayouts(database)
 
   const layoutBtrIds: string[] = []
   if (!exportLayouts) {
@@ -152,6 +196,9 @@ async function convertOpenDatabaseToSnapshot(
 
       const drawn = entity.worldDraw(renderer) as AcTrEntity | null
       if (!drawn) continue
+      // Glyph InstancedMeshes are parented by layout owner. Set it before
+      // asyncDraw so nested block text walks out to this layout.
+      drawn.ownerId = btrId
       // Defer asyncDraw so glyph/INSERT finalize runs with bounded concurrency
       // (serial await was multi-minute on text-heavy DWGs).
       pendingDraws.push({ drawn, group: layerBucket.group })
@@ -163,8 +210,12 @@ async function convertOpenDatabaseToSnapshot(
   await settlePendingDraws(pendingDraws, ASYNC_DRAW_CONCURRENCY)
   const asyncDrawMs = performance.now() - tAsyncDraw
 
+  // setupExportTextRendering disables mesh-glyph InstancedMesh; if that ever
+  // changes, flush pending placements into layer groups before snapshot.
+  flushMeshGlyphInstancesIntoLayouts(layoutBuckets)
+
   const layerMeta = collectLayerMeta(database)
-  const layouts: AcExExportLayoutInput[] = []
+  const layouts: AcExHtmlExportLayoutInput[] = []
   for (const btrId of layoutBtrIds) {
     const bucket = layoutBuckets.get(btrId)
     layouts.push({
@@ -179,7 +230,7 @@ async function convertOpenDatabaseToSnapshot(
     })
   }
 
-  const scene: AcExExportSceneInput = {
+  const scene: AcExHtmlExportSceneInput = {
     layers: layerMeta,
     layouts,
     activeLayoutBtrId: modelSpaceBtrId,
@@ -187,8 +238,9 @@ async function convertOpenDatabaseToSnapshot(
   }
 
   const tSnapshot = performance.now()
-  const snapshot = buildSnapshotFromExportScene(database, scene, {
+  const snapshot = acexHtmlBuildSnapshotFromExportScene(database, scene, {
     title: options.title,
+    background,
     locale: options.locale ?? 'en',
     exportInvisibleLayers,
     exportLayouts,
@@ -196,6 +248,7 @@ async function convertOpenDatabaseToSnapshot(
     viewerMode: options.viewerMode ?? 'measure',
     canvasAspectRatio: width / height
   })
+  acexHtmlApplyBackground(snapshot, background, backgroundMode)
   const snapshotMs = performance.now() - tSnapshot
 
   console.info(
@@ -203,6 +256,55 @@ async function convertOpenDatabaseToSnapshot(
   )
 
   return snapshot
+}
+
+/**
+ * Parents any pending mesh-glyph InstancedMeshes under export layer groups.
+ * Normally a no-op because {@link setupExportTextRendering} disables
+ * instancing; kept as a safety net if that default changes.
+ */
+function flushMeshGlyphInstancesIntoLayouts(
+  layoutBuckets: Map<string, LayoutBucket>
+): void {
+  const mtext = AcTrMTextRenderer.getInstance()
+  if (!mtext.getMeshGlyphInstancing()) {
+    return
+  }
+  const layerGroups = new Map<string, THREE.Object3D>()
+  // Prefer model-space when the same layer name exists in multiple layouts.
+  const ordered = [...layoutBuckets.values()].sort(
+    (a, b) => Number(b.isModelSpace) - Number(a.isModelSpace)
+  )
+  for (const bucket of ordered) {
+    for (const [name, layer] of bucket.layers) {
+      if (!layerGroups.has(name)) {
+        layerGroups.set(name, layer.group as unknown as THREE.Object3D)
+      }
+    }
+  }
+  const fallback = new THREE.Group()
+  const { placements } = mtext.flushMeshGlyphInstances(
+    fallback,
+    (name, ownerId) => {
+      const owner = ownerId?.trim()
+      if (owner) {
+        const layout = layoutBuckets.get(owner)
+        const layer = layout?.layers.get(name)
+        if (layer) {
+          return layer.group as unknown as THREE.Object3D
+        }
+        if (layout) {
+          return null
+        }
+      }
+      return layerGroups.get(name)
+    }
+  )
+  if (placements > 0) {
+    console.info(
+      `[cad-html-exporter] mesh glyph InstancedMesh flush: placements=${placements}`
+    )
+  }
 }
 
 /**

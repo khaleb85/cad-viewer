@@ -15,6 +15,7 @@ import {
   AcDbRay,
   AcDbRenderingCache,
   AcDbSysVarManager,
+  AcDbText,
   AcDbViewport,
   AcDbXline,
   AcGeBox2d,
@@ -22,7 +23,9 @@ import {
   AcGeMatrix3d,
   AcGePoint2d,
   AcGePoint2dLike,
+  AcGePoint3d,
   acgiForegroundColorForBackground,
+  AcGiMTextAttachmentPoint,
   AcGiViewport,
   log
 } from '@mlightcad/data-model'
@@ -33,8 +36,10 @@ import {
   AcTrGlyphEntity,
   AcTrGroup,
   AcTrHtmlTransientManager,
+  AcTrMText,
   AcTrMTextRenderer,
   AcTrRenderer,
+  AcTrShape,
   AcTrViewportView,
   hasPendingComplexLineTypeGlyphs,
   setAcTrDrawOrderZAllocator
@@ -49,6 +54,7 @@ import {
   AcApSettingManager,
   DEFAULT_FONT_MAPPING
 } from '../app'
+import { AcApOpenViewMode } from '../app/AcApOpenDatabaseOptions'
 import { AcApZoomCmd } from '../command/AcApZoomCmd'
 import { isMarkupHtmlTextEditing } from '../command/markup/AcApMarkupTextEdit'
 import { notifyMeasurementLayoutChanged } from '../command/measure/AcApMeasurementStore'
@@ -56,6 +62,7 @@ import {
   acedAttachMobileBoxGesture,
   AcEdBaseView,
   AcEdCalculateSizeCallback,
+  acedCollectViewportBoxSelectionIds,
   AcEdConditionWaiter,
   AcEdCorsorType,
   AcEdGripManager,
@@ -65,11 +72,13 @@ import {
   AcEdMTextEditor,
   AcEdOpenMode,
   AcEdSelectionAction,
+  AcEdSelectionMode,
   acedShouldIgnoreCompatMouse,
   AcEdSnapLoupeViewState,
   AcEdSpatialQueryResultItem,
   AcEdSpatialQueryResultItemEx,
   AcEdViewMode,
+  AcEdViewportBoxProjection,
   AcEdViewportCoordinateMapper,
   eventBus,
   resolvePointerSelectionAction
@@ -89,6 +98,7 @@ import type { AcTrLazySpatialChildren } from '../spatialIndex'
 import type { AcTrSpatialSearchOptions } from '../spatialIndex/AcTrSpatialIndex'
 import { AcTrGeometryUtil } from '../util'
 import { acapRunDatabaseEdit } from '../util/AcApDatabaseEdit'
+import { acapResolveLayoutFrameBox } from '../util/AcApLayoutViewFraming'
 import {
   collectTextStyleFontNames,
   planTextStyleFontPreload
@@ -247,6 +257,12 @@ export class AcTrView2d extends AcEdBaseView {
    * race during document open.
    */
   private _externallyFramedLayouts: Set<AcDbObjectId> = new Set()
+  /**
+   * Open options → Initial view (`Extents` / `Saved`) for this document.
+   * Applied at document open for the startup layout, and again on the
+   * **first visit** to every other layout the user has not framed yet.
+   */
+  private _openViewMode: AcApOpenViewMode = AcApOpenViewMode.Extents
   /** Progressive camera framing while entities batch-convert at document open. */
   private readonly _progressiveOpenFit: AcTrProgressiveOpenFitController
   /** Entity display policy for layer-aware conversion skipping. */
@@ -317,6 +333,20 @@ export class AcTrView2d extends AcEdBaseView {
    * document open.
    */
   private _convertEpoch = 0
+  /**
+   * Per-objectId generation for transient overlay draws. Each
+   * {@link addTransientEntity} / {@link removeTransientEntity} bumps the
+   * counter so a stale `asyncDraw` cannot publish an older jig frame after a
+   * newer cursor update already started.
+   */
+  private _transientDrawGeneration = new Map<string, number>()
+  /**
+   * Nested count of in-flight transient convert/asyncDraw passes that need
+   * {@link AcTrRenderContext.skipMeshGlyphInstancing}. Kept elevated until
+   * every jig `asyncDraw` finishes so nested MTEXT cannot enqueue world
+   * InstancedMesh slots mid-preview.
+   */
+  private _transientSkipMeshGlyphDepth = 0
   /** Last time progressive open actually painted mid-convert. */
   private _lastProgressivePaintAt = 0
   /**
@@ -352,6 +382,7 @@ export class AcTrView2d extends AcEdBaseView {
   private _deferredGeometryQueue: Array<{
     run: () => Promise<void>
     epoch: number
+    enqueuedAt: number
   }> = []
   /** Currently executing deferred geometry runners. */
   private _deferredGeometryActive = 0
@@ -424,9 +455,17 @@ export class AcTrView2d extends AcEdBaseView {
   /** Convert-phase wall timers (ms) for OPENPERF diagnostics. */
   private _convertPhaseMs = {
     finishGeometry: 0,
+    /** Cumulative `asyncDraw` work inside finishEntityGeometry (excludes awaitFonts). */
+    finishGeometryAsyncDraw: 0,
+    /** Cumulative deferred-queue wait (enqueue → job start). */
+    finishGeometryQueueWait: 0,
     handleGroup: 0,
     addEntity: 0,
-    awaitFonts: 0
+    awaitFonts: 0,
+    glyphEntityCount: 0,
+    mtextCount: 0,
+    shapeCount: 0,
+    sharedGlyphDrawCount: 0
   }
 
   /** Last text-style font preload plan (for OPENPERF). */
@@ -487,9 +526,15 @@ export class AcTrView2d extends AcEdBaseView {
     }
     this._convertPhaseMs = {
       finishGeometry: 0,
+      finishGeometryAsyncDraw: 0,
+      finishGeometryQueueWait: 0,
       handleGroup: 0,
       addEntity: 0,
-      awaitFonts: 0
+      awaitFonts: 0,
+      glyphEntityCount: 0,
+      mtextCount: 0,
+      shapeCount: 0,
+      sharedGlyphDrawCount: 0
     }
     this._fontPreloadDiag = null
     return snapshot
@@ -854,7 +899,11 @@ export class AcTrView2d extends AcEdBaseView {
     this.canvas.addEventListener(
       'mousemove',
       e => {
-        if (!selectionStartWcs || !selectionPreviewEl || !selectionStartCanvas) {
+        if (
+          !selectionStartWcs ||
+          !selectionPreviewEl ||
+          !selectionStartCanvas
+        ) {
           return
         }
         if (acedIsTouchDerivedMouseEvent(e) || acedShouldIgnoreCompatMouse()) {
@@ -1782,6 +1831,11 @@ export class AcTrView2d extends AcEdBaseView {
         '[AcTrView2d] Timed out waiting for deferred geometry before export'
       )
     }
+
+    // Mesh-glyph InstancedMeshes are coalesced on a 16ms timer after idle.
+    // HTML snapshot walks layer roots and must see those meshes; do not rely
+    // on racing waitUntilIdle against the timer.
+    this.flushMeshGlyphWorldBatch()
   }
 
   /**
@@ -2036,10 +2090,16 @@ export class AcTrView2d extends AcEdBaseView {
       return
     }
 
-    if (!(entity instanceof AcDbMText)) return
+    if (entity instanceof AcDbMText) {
+      e.preventDefault()
+      await this.editMTextEntity(entity)
+      return
+    }
 
-    e.preventDefault()
-    await this.editMTextEntity(entity)
+    if (entity instanceof AcDbText) {
+      e.preventDefault()
+      await this.editTextEntity(entity)
+    }
   }
 
   /**
@@ -2076,29 +2136,74 @@ export class AcTrView2d extends AcEdBaseView {
   private async editMTextEntity(mtext: AcDbMText) {
     const db = mtext.database
 
-    if (mtext.lineSpacingFactor !== AcEdMTextEditor.defaultLineSpacingFactor) {
-      acapRunDatabaseEdit(db, 'Edit MText', () => {
-        const opened = db.openEntityForWrite(mtext)
-        if (!(opened instanceof AcDbMText)) return
-        opened.lineSpacingFactor = AcEdMTextEditor.defaultLineSpacingFactor
-      })
-    }
-
-    // Hide the in-scene MTEXT while the inline editor renders its own copy; otherwise
-    // both draw at once (double text) when the user double-clicks to edit.
-    // this.removeEntity(mtext)
+    // Hide the in-scene MTEXT while the inline editor renders its own copy;
+    // otherwise both draw at once when the user double-clicks to edit.
+    this.setEntitySceneVisible(mtext.objectId, false)
     this._isDirty = true
+
+    // Prefer the same presentation AcDbMText.subWorldDraw uses (annotative
+    // scale may override height/width/insertion/attachment). Not on the
+    // published .d.ts surface, so call through an unknown cast.
+    type MTextPresentation = {
+      height: number
+      width: number
+      position: { x: number; y: number; z?: number }
+      direction: { x: number; y: number; z: number }
+      attachmentPoint: AcDbMText['attachmentPoint']
+    }
+    const resolvePresentation = (
+      mtext as unknown as {
+        resolveAnnotativePresentation?: () => MTextPresentation
+      }
+    ).resolveAnnotativePresentation
+    const presentation =
+      typeof resolvePresentation === 'function'
+        ? resolvePresentation.call(mtext)
+        : null
+    const rawLocation = presentation?.position ?? mtext.location
+    const location = {
+      x: rawLocation.x,
+      y: rawLocation.y,
+      z: rawLocation.z ?? 0
+    }
+    const direction = presentation?.direction ?? mtext.direction
+    const attachmentPoint =
+      presentation?.attachmentPoint ?? mtext.attachmentPoint
+    const editorWidth =
+      presentation &&
+      Number.isFinite(presentation.width) &&
+      presentation.width > 0
+        ? presentation.width
+        : this.resolveMTextEditorWidth(mtext)
+    const textHeight =
+      presentation &&
+      Number.isFinite(presentation.height) &&
+      presentation.height > 0
+        ? presentation.height
+        : this.resolveMTextEditorTextHeight(mtext)
 
     const editor = new AcEdMTextEditor()
     let applied = false
     try {
       const result = await editor.open({
         view: this,
-        location: mtext.location,
-        width: this.resolveMTextEditorWidth(mtext),
-        textHeight: this.resolveMTextEditorTextHeight(mtext),
+        location,
+        width: editorWidth,
+        textHeight,
         initialText: mtext.contents,
-        initialAttachmentPoint: mtext.attachmentPoint,
+        initialAttachmentPoint: attachmentPoint,
+        initialDrawingDirection: mtext.drawingDirection,
+        rotation: mtext.rotation,
+        directionVector: {
+          x: direction.x,
+          y: direction.y,
+          z: direction.z
+        },
+        // Match the entity's DXF style (group 7), not the drawing's current TEXTSTYLE.
+        textStyleName: mtext.styleName,
+        // Keep DXF group 44 so vertical layout matches the drawing (do not
+        // rewrite to the ribbon default before the editor opens).
+        initialLineSpaceFactor: mtext.lineSpacingFactor,
         toolbarFontFamilies: await this.getMTextToolbarFontFamilies()
       })
       if (!result) return
@@ -2115,17 +2220,80 @@ export class AcTrView2d extends AcEdBaseView {
       })
       applied = true
     } finally {
+      // Successful DB edits rebuild the drawable via update listeners; cancel
+      // paths must restore visibility and refresh the original mesh.
+      this.setEntitySceneVisible(mtext.objectId, true)
       if (!applied) {
         this.updateEntity(mtext)
-        this._isDirty = true
       }
+      this._isDirty = true
+    }
+  }
+
+  /**
+   * Opens the shared inline editor for a single-line TEXT entity.
+   *
+   * Uses the MTEXT input box so the contextual Text Editor ribbon appears the
+   * same way as double-click MTEXT editing. Formatting codes are written back
+   * as the TEXT string content.
+   */
+  private async editTextEntity(text: AcDbText) {
+    const db = text.database
+    this.setEntitySceneVisible(text.objectId, false)
+    this._isDirty = true
+
+    const height = Number(text.height)
+    const textHeight =
+      Number.isFinite(height) && height > 0 ? height : this.pixelsToWorldY(24)
+    const content = text.textString ?? ''
+    const width = Math.max(
+      textHeight * Math.max(content.length, 1) * 0.6,
+      textHeight
+    )
+    const rotation = Number(text.rotation)
+
+    const editor = new AcEdMTextEditor()
+    let applied = false
+    try {
+      const result = await editor.open({
+        view: this,
+        location: text.position,
+        width,
+        textHeight,
+        initialText: content,
+        // Single-line TEXT inserts on the baseline by default.
+        initialAttachmentPoint: AcGiMTextAttachmentPoint.BaselineLeft,
+        ...(Number.isFinite(rotation) ? { rotation } : {}),
+        toolbarFontFamilies: await this.getMTextToolbarFontFamilies()
+      })
+      if (!result) return
+
+      acapRunDatabaseEdit(db, 'Edit Text', () => {
+        const opened = db.openEntityForWrite(text)
+        if (!(opened instanceof AcDbText)) return
+        opened.position = new AcGePoint3d(result.location)
+        opened.textString = result.contents
+        if (Number.isFinite(result.height) && result.height > 0) {
+          opened.height = result.height
+        }
+      })
+      applied = true
+    } finally {
+      this.setEntitySceneVisible(text.objectId, true)
+      if (!applied) {
+        this.updateEntity(text)
+      }
+      this._isDirty = true
     }
   }
 
   private resolveMTextEditorWidth(mtext: AcDbMText) {
     const width = Number(mtext.width)
+    // DXF group 41 <= 0 means no defined wrap column (AutoCAD / mtext-renderer).
+    // Pass 0 through so the input box can match renderer no-wrap layout instead
+    // of clamping to a tiny positive width that forces mid-string wrapping.
     if (Number.isFinite(width) && width > 0) return width
-    return 1e-4
+    return 0
   }
 
   private resolveMTextEditorTextHeight(mtext: AcDbMText) {
@@ -2218,13 +2386,50 @@ export class AcTrView2d extends AcEdBaseView {
     //    region) and selection feels "stuck on the frame".
     const firstQueryResults = this._scene.search(paperBox)
     const raycaster = activeLayoutView.resetRaycaster(point, threshold)
+    const mtextRenderer = AcTrMTextRenderer.getInstance()
+    const seenPickIds = new Set<string>()
     firstQueryResults.forEach(item => {
       if (drillThroughViewportIds.has(item.id)) return
-      if (!isEffectiveSpatialQueryHit(item)) return
-      if (activeLayout.isIntersectWith(item.id, raycaster)) {
+      const meshGlyphHit = mtextRenderer.intersectMeshGlyphObjectId(
+        item.id,
+        raycaster
+      )
+      // Hierarchical hits with empty children are normally filtered (stale
+      // coarse root). Mesh-glyph InstancedMeshes are not in child boxes, so
+      // allow the root through when the glyph batch itself is hit.
+      if (!isEffectiveSpatialQueryHit(item) && !meshGlyphHit) return
+      if (activeLayout.isIntersectWith(item.id, raycaster) || meshGlyphHit) {
         results.push(item)
+        seenPickIds.add(item.id)
       }
     })
+
+    // Mesh-glyph text may sit outside the INSERT spatial child union (placements
+    // stolen before child boxes were refreshed). Query the batch pick boxes
+    // directly so clicks on that text still select the entity.
+    const meshGlyphIds = mtextRenderer.queryMeshGlyphObjectIdsIntersectingBox({
+      minX: paperBox.min.x,
+      minY: paperBox.min.y,
+      maxX: paperBox.max.x,
+      maxY: paperBox.max.y
+    })
+    for (const objectId of meshGlyphIds) {
+      if (seenPickIds.has(objectId) || drillThroughViewportIds.has(objectId)) {
+        continue
+      }
+      if (!mtextRenderer.intersectMeshGlyphObjectId(objectId, raycaster)) {
+        continue
+      }
+      const pickBox = mtextRenderer.getMeshGlyphWorldPickBoxes().get(objectId)
+      results.push({
+        id: objectId,
+        minX: pickBox?.min.x ?? paperBox.min.x,
+        minY: pickBox?.min.y ?? paperBox.min.y,
+        maxX: pickBox?.max.x ?? paperBox.max.x,
+        maxY: pickBox?.max.y ?? paperBox.max.y
+      })
+      seenPickIds.add(objectId)
+    }
 
     // 2) For each drill-through viewport, resolve hits against the
     //    model-space layout using the viewport's own camera/raycaster.
@@ -2336,6 +2541,48 @@ export class AcTrView2d extends AcEdBaseView {
   }
 
   /**
+   * Collects model-space entities selected through the active layout's paper
+   * viewports.
+   *
+   * Box selection used to query only the active layout's spatial index, so
+   * model-space content rendered inside a viewport could be clicked (pick
+   * drills through) but never box-selected — reported for LEADER entities in
+   * `布局1`. Each viewport's visible slice of the pick rectangle is mapped to
+   * model WCS, queried, and mapped back so window / crossing keeps its exact
+   * AutoCAD meaning.
+   */
+  protected override collectViewportDrillThroughSelectionIds(
+    box: AcGeBox2d,
+    mode: AcEdSelectionMode
+  ): AcDbObjectId[] {
+    const activeLayoutView = this.activeLayoutView
+    const modelLayout = this._scene.modelSpaceLayout
+    if (!activeLayoutView || !modelLayout) return []
+    if (activeLayoutView.layoutBtrId === this._scene.modelSpaceBtrId) return []
+
+    const viewports: AcEdViewportBoxProjection[] = []
+    for (const vpView of activeLayoutView.viewportViews) {
+      viewports.push({
+        paperBox: vpView.viewport.box,
+        frozenLayers: vpView.viewport.frozenLayers,
+        paperPointToModel: point => vpView.paperPointToModel(point),
+        modelPointToPaper: point => vpView.modelPointToPaper(point)
+      })
+    }
+    if (viewports.length === 0) return []
+
+    const database = AcApDocManager.tryGetInstance()?.curDocument?.database
+    return acedCollectViewportBoxSelectionIds({
+      selectionBox: box,
+      mode,
+      viewports,
+      searchModel: (modelBox, selectionMode) =>
+        modelLayout.search(modelBox, { selectionMode }),
+      entityOf: id => database?.tables.blockTable.getEntityById(id) ?? undefined
+    })
+  }
+
+  /**
    * Drops crossing spatial hits whose curve geometry misses the pick box.
    *
    * Large closed polylines (site boundaries, frames) have AABBs that cover
@@ -2429,31 +2676,69 @@ export class AcTrView2d extends AcEdBaseView {
     // lineweight even when LWDISPLAY is off; otherwise ribbon style is a no-op.
     const previousForce = this._renderer.forceShowLineWeight
     this._renderer.forceShowLineWeight = true
+    // Force merge-mode glyphs on the transient tree (see AcTrMText). Keep the
+    // context flag raised for the whole sync convert so nested MTEXT never
+    // enqueue world InstancedMesh placements that flush after the command.
+    const renderContext = this._renderer.context
+    this._transientSkipMeshGlyphDepth++
+    renderContext.skipMeshGlyphInstancing = true
+    const releaseSkipMeshGlyph = () => {
+      this._transientSkipMeshGlyphDepth = Math.max(
+        0,
+        this._transientSkipMeshGlyphDepth - 1
+      )
+      if (this._transientSkipMeshGlyphDepth === 0) {
+        renderContext.skipMeshGlyphInstancing = false
+      }
+    }
     try {
       for (let i = 0; i < entities.length; ++i) {
         const entity = entities[i]
+        const objectId = String(entity.objectId ?? '')
+        const generation = objectId
+          ? (this._transientDrawGeneration.get(objectId) ?? 0) + 1
+          : 0
+        if (objectId) {
+          this._transientDrawGeneration.set(objectId, generation)
+          // Drop live InstancedMesh slots and any not-yet-flushed placements
+          // left by a previous jig frame under the same id.
+          AcTrMTextRenderer.getInstance().removeMeshGlyphInstances(objectId)
+        }
         const threeEntity: AcTrEntity | null = this.drawEntity(entity, true)
         if (threeEntity) {
           threeEntity.objectId = entity.objectId
-          void threeEntity
-            .asyncDraw()
-            .then(() => {
-              // Drop stale transients started before clear()/regen invalidated the view.
-              if (epoch !== this._convertEpoch) {
-                threeEntity.dispose()
-                return
-              }
-              this._scene.addTransientEntity(threeEntity)
-              this._isDirty = true
-            })
-            .catch(error => {
-              log.error('[AcTrView2d] Transient entity geometry failed:', error)
-              threeEntity.dispose()
-            })
+          // Grip/jig clones reuse the live entity objectId. Keep mesh glyphs on
+          // the transient tree (merge) so preview cannot enqueue duplicate
+          // world InstancedMesh instances that outlive the transient.
+          threeEntity.userData.skipMeshGlyphInstancing = true
+          // Sync draw: asyncDraw + generation discard left previews blank while
+          // the mouse moved, then flushed every enqueued sample when the
+          // command ended. Jig blocks are small enough to bake synchronously.
+          try {
+            threeEntity.syncDraw()
+          } catch (error) {
+            log.error('[AcTrView2d] Transient entity geometry failed:', error)
+            threeEntity.dispose()
+            continue
+          }
+          if (epoch !== this._convertEpoch) {
+            threeEntity.dispose()
+            continue
+          }
+          if (
+            objectId &&
+            this._transientDrawGeneration.get(objectId) !== generation
+          ) {
+            threeEntity.dispose()
+            continue
+          }
+          this._scene.addTransientEntity(threeEntity)
+          this._isDirty = true
         }
       }
     } finally {
       this._renderer.forceShowLineWeight = previousForce
+      releaseSkipMeshGlyph()
     }
   }
 
@@ -2462,6 +2747,13 @@ export class AcTrView2d extends AcEdBaseView {
    * @param objectId Input the object id of the transient entity to remove
    */
   removeTransientEntity(objectId: AcDbObjectId) {
+    const id = String(objectId ?? '')
+    if (id) {
+      this._transientDrawGeneration.set(
+        id,
+        (this._transientDrawGeneration.get(id) ?? 0) + 1
+      )
+    }
     this._scene.removeTransientEntity(objectId)
     this._isDirty = true
   }
@@ -2572,8 +2864,34 @@ export class AcTrView2d extends AcEdBaseView {
    */
   removeEntity(entity: AcDbEntity | AcDbEntity[]) {
     const entities = Array.isArray(entity) ? entity : [entity]
-    entities.forEach(entity => this._scene.removeEntity(entity.objectId))
+    entities.forEach(entity => {
+      this.releaseConvertClaim(entity.objectId)
+      this._scene.removeEntity(entity.objectId)
+    })
     this._isDirty = true
+  }
+
+  /**
+   * Drops convert bookkeeping for an object id that left the scene.
+   *
+   * {@link batchConvert} claims an id before committing geometry and never
+   * releases it while the entity stays in the scene. An undo erases the entity
+   * from the database and calls {@link removeEntity}, but the stale claim made
+   * the follow-up redo pass hit the "already scheduled" skip in
+   * {@link batchConvert}, so the redone entity never reappeared. The generation
+   * bump also prevents an in-flight convert or deferred glyph commit for the
+   * same id from re-adding geometry after the erase.
+   *
+   * @param objectId - Object id leaving the scene
+   */
+  private releaseConvertClaim(objectId: AcDbObjectId) {
+    const id = String(objectId ?? '')
+    if (!id) return
+    this._claimedConvertObjectIds.delete(id)
+    this._entityConvertGeneration.set(
+      id,
+      (this._entityConvertGeneration.get(id) ?? 0) + 1
+    )
   }
 
   /**
@@ -2667,6 +2985,9 @@ export class AcTrView2d extends AcEdBaseView {
         // duplicate progressive slots. updateEntity must release that claim or
         // batchConvert skips the entity (scene already cleared → blank RasterImage).
         this._claimedConvertObjectIds.delete(objectId)
+        // Always drop world mesh-glyph instances first (even if layout remove
+        // fails). Grip preview may have enqueued extras under this objectId.
+        AcTrMTextRenderer.getInstance().removeMeshGlyphInstances(objectId)
       }
       if (this._scene.hasEntity(item.objectId)) {
         this._scene.removeEntity(item.objectId)
@@ -2747,6 +3068,16 @@ export class AcTrView2d extends AcEdBaseView {
   }
 
   /**
+   * Records the Open options → Initial view choice for this document.
+   *
+   * Used by {@link applyInitialZoom} on the first visit to any layout that
+   * was not already framed at open time.
+   */
+  setOpenViewMode(mode: AcApOpenViewMode) {
+    this._openViewMode = mode
+  }
+
+  /**
    * Whether the layout has already been visited (or framed by the
    * application layer), i.e. a switch to it will not run the first-visit
    * auto zoom. Lets callers that frame a layout themselves (FIND) call
@@ -2756,19 +3087,6 @@ export class AcTrView2d extends AcEdBaseView {
    */
   isLayoutInitialized(layoutBtrId: AcDbObjectId) {
     return this._initializedLayouts.has(layoutBtrId)
-  }
-
-  /**
-   * Frames the paper layout a document opens into with the same heuristic
-   * as a first tab visit (see {@link applyInitialZoom}), so raw `limits`
-   * are not trusted before the layout's viewports are converted.
-   *
-   * @param layoutBtrId Input the block table record id of the layout
-   * @param layout Input the layout to frame
-   */
-  zoomToInitialLayoutView(layoutBtrId: AcDbObjectId, layout: AcDbLayout) {
-    this._initializedLayouts.add(layoutBtrId)
-    this.applyInitialZoom(layoutBtrId, layout)
   }
 
   /**
@@ -2788,41 +3106,18 @@ export class AcTrView2d extends AcEdBaseView {
   }
 
   /**
-   * Applies the initial zoom-to-fit for a layout the user just switched
-   * into for the first time. Picks the best available "what should the
-   * camera frame?" signal in this order:
+   * Applies Open options → Initial view for a layout the user just switched
+   * into for the **first** time ({@link setOpenViewMode}).
    *
-   * 1. **`AcDbLayout.limits`** (LIMMIN/LIMMAX) — only when it actually
-   *    contains the layout's viewports. Many real DWGs ship with garbage
-   *    limits (e.g. `(0,0)-(12,9)` from a legacy template setup) that
-   *    don't reflect the actual paper sheet. We reject those by
-   *    checking containment against `viewportsBoundingBox`.
+   * - **Saved + model**: VPORT `*ACTIVE`, else geometry fallback.
+   * - **Saved + paper**: {@link acapResolveLayoutFrameBox} with limits
+   *   trusted only when they contain real viewports (rejects template
+   *   `(0,0)-(12,9)`), then viewports → layout extents → entity box.
+   * - **Extents**: frame converted geometry (and paper viewports as a
+   *   content proxy). Does not prefer LIMMIN/LIMMAX over drawable bounds.
    *
-   * 2. **`AcTrLayoutView.viewportsBoundingBox`** — bounding box of all
-   *    real user viewports in the layout. In production sheets viewports
-   *    typically span 70-90% of the paper, so this is a great proxy for
-   *    the printable area and (crucially) ignores outliers like title
-   *    blocks authored in a different unit/scale.
-   *
-   * 3. **`AcDbLayout.extents`** — the layout's own EXTMIN/EXTMAX, if
-   *    populated. Many parsers leave this empty (we've seen `(0,0)-(0,0)`),
-   *    so it sits below the viewport-based heuristic.
-   *
-   * 4. **`getDrawingExtents`** (entity extents from batch geometry) —
-   *    last-resort fallback for layouts with no viewports and no
-   *    sensible limits/extents (e.g. a freshly created empty paper).
-   *    Vulnerable to scale-mismatch outliers, but better than no zoom.
-   *
-   * **Critically, this runs through `AcEdConditionWaiter`**: at the
-   * moment `layoutSwitched` fires, the layout's entities (including its
-   * `AcDbViewport`s) have not yet been batch-converted into the scene
-   * — `loadLayoutEntitiesIfNeeded` chunked-converts via the progressive
-   * convert queue (or direct `batchConvert`).
-   * Without the waiter, `viewportsBoundingBox` returns undefined and
-   * the strategy degrades into (1) zooming to garbage `limits`, or
-   * (4) zooming to an empty scene box. The waiter polls
-   * {@link isProcessingEntities} (convert queue + deferred glyph jobs)
-   * and only fires the heuristic once conversion and text geometry finish.
+   * Runs through {@link AcEdConditionWaiter} so viewport / entity convert
+   * finishes before framing.
    */
   private applyInitialZoom(btrId: AcDbObjectId, layout: AcDbLayout) {
     const waiter = new AcEdConditionWaiter(
@@ -2832,51 +3127,9 @@ export class AcTrView2d extends AcEdBaseView {
           return
         }
 
-        // Model space has no viewports to validate LIMMIN/LIMMAX against, and
-        // its limits are drawing-area settings, not a sheet: frame the
-        // geometry like a document opened on Model.
-        if (btrId === this.modelSpaceBtrId) {
-          const box = this.getDrawingExtents()
-          if (box) {
-            this.zoomTo(box)
-          }
-          this._isDirty = true
-          AcApZoomCmd.rememberOriginalView(this, btrId)
-          return
-        }
-
-        const limits = layout.limits
-        const layoutView = this._layoutViewManager.getAt(btrId)
-        const vpsBox = layoutView?.viewportsBoundingBox
-
-        const limitsContainsViewports = (() => {
-          if (!limits || limits.isEmpty()) return false
-          if (!vpsBox) return true
-          return (
-            limits.min.x <= vpsBox.min.x &&
-            limits.min.y <= vpsBox.min.y &&
-            limits.max.x >= vpsBox.max.x &&
-            limits.max.y >= vpsBox.max.y
-          )
-        })()
-
-        if (limits && !limits.isEmpty() && limitsContainsViewports) {
-          this.zoomTo(limits)
-        } else if (vpsBox) {
-          this.zoomTo(vpsBox)
-        } else if (layout.extents && !layout.extents.isEmpty()) {
-          const extents = layout.extents
-          this.zoomTo(
-            new AcGeBox2d(
-              { x: extents.min.x, y: extents.min.y },
-              { x: extents.max.x, y: extents.max.y }
-            )
-          )
-        } else {
-          const box = this.getDrawingExtents()
-          if (box) {
-            this.zoomTo(box)
-          }
+        const box = this.resolveFirstVisitFrameBox(btrId, layout)
+        if (box) {
+          this.zoomTo(box)
         }
         this._isDirty = true
         AcApZoomCmd.rememberOriginalView(this, btrId)
@@ -2885,6 +3138,56 @@ export class AcTrView2d extends AcEdBaseView {
       0
     )
     waiter.start()
+  }
+
+  /**
+   * Resolves the camera box for a layout's first visit from
+   * {@link _openViewMode}.
+   */
+  private resolveFirstVisitFrameBox(
+    btrId: AcDbObjectId,
+    layout: AcDbLayout
+  ): AcGeBox2d | undefined {
+    const isModelSpace = btrId === this.modelSpaceBtrId
+    const wantSaved = this._openViewMode === AcApOpenViewMode.Saved
+
+    if (wantSaved && isModelSpace) {
+      const db = AcApDocManager.instance.curDocument.database
+      const aspect = this.width / Math.max(this.height, 1)
+      const savedBox = db.tables.viewportTable.getActiveVportBox(aspect)
+      if (savedBox) return savedBox
+    }
+
+    const layoutView = this._layoutViewManager.getAt(btrId)
+    const extents = layout.extents
+    const layoutExtents =
+      extents && !extents.isEmpty()
+        ? {
+            min: { x: extents.min.x, y: extents.min.y },
+            max: { x: extents.max.x, y: extents.max.y }
+          }
+        : undefined
+    const entityBox = this.getDrawingExtents()
+    const viewportsBox = layoutView?.viewportsBoundingBox
+
+    if (wantSaved && !isModelSpace) {
+      // Paper Saved: trust LIMMIN/LIMMAX only when they contain viewports.
+      return acapResolveLayoutFrameBox({
+        limits: layout.limits,
+        viewportsBox,
+        layoutExtents,
+        entityBox
+      })?.box
+    }
+
+    // Extents (any layout), or Saved model fallback without *ACTIVE:
+    // prefer drawable content; never lead with template model/paper limits.
+    return acapResolveLayoutFrameBox({
+      limits: undefined,
+      viewportsBox: isModelSpace ? undefined : viewportsBox,
+      layoutExtents,
+      entityBox
+    })?.box
   }
 
   /**
@@ -2899,6 +3202,7 @@ export class AcTrView2d extends AcEdBaseView {
     // the cleared scene nor double-decrements the processing counter.
     this._convertEpoch++
     this.clearFontLoadedRedrawTimer()
+    this.clearMeshGlyphFlushTimer()
     this._convertQueue.length = 0
     this._viewportRepairOwnerIds.clear()
     this._numOfEntitiesToProcess = 0
@@ -2915,11 +3219,14 @@ export class AcTrView2d extends AcEdBaseView {
   clear() {
     this.abortConversion()
     this._scene.clear()
+    // Scene teardown orphans InstancedMeshes — drop singleton slot maps too.
+    AcTrMTextRenderer.getInstance().resetMeshGlyphBatch()
     this._renderer.resetDrawOrderZ()
     this._isDirty = true
     this._missedImages.clear()
     this._initializedLayouts.clear()
     this._externallyFramedLayouts.clear()
+    this._openViewMode = AcApOpenViewMode.Extents
     this._loadingLayouts.clear()
     this._renderer.dispose()
     // Drop block templates when the scene is torn down (next open / close).
@@ -2933,15 +3240,19 @@ export class AcTrView2d extends AcEdBaseView {
    * @returns Parked state owned by {@link AcApDocSession} until restore.
    */
   captureSessionState(): AcTrViewSessionState {
+    this.clearMeshGlyphFlushTimer()
     return {
       scene: this._scene,
       layoutViewManager: this._layoutViewManager,
       initializedLayouts: this._initializedLayouts,
       externallyFramedLayouts: this._externallyFramedLayouts,
+      openViewMode: this._openViewMode,
       loadingLayouts: this._loadingLayouts,
       missedImages: this._missedImages,
       missedFonts: this._renderer.snapshotMissedFonts(),
-      selectionIds: this.selectionSet.ids
+      selectionIds: this.selectionSet.ids,
+      // Detach so the next document cannot pick/highlight this one's glyphs.
+      meshGlyphBatch: AcTrMTextRenderer.getInstance().detachMeshGlyphBatch()
     }
   }
 
@@ -2953,6 +3264,7 @@ export class AcTrView2d extends AcEdBaseView {
   restoreSessionState(state: AcTrViewSessionState): void {
     this._convertEpoch++
     this.clearFontLoadedRedrawTimer()
+    this.clearMeshGlyphFlushTimer()
     this.cancelOpenLineworkFrame()
     this._convertQueue.length = 0
     this._viewportRepairOwnerIds.clear()
@@ -2965,9 +3277,11 @@ export class AcTrView2d extends AcEdBaseView {
     this._layoutViewManager = state.layoutViewManager
     this._initializedLayouts = state.initializedLayouts
     this._externallyFramedLayouts = state.externallyFramedLayouts
+    this._openViewMode = state.openViewMode ?? AcApOpenViewMode.Extents
     this._loadingLayouts = state.loadingLayouts
     this._missedImages = state.missedImages
     this._renderer.replaceMissedFonts(state.missedFonts ?? {})
+    AcTrMTextRenderer.getInstance().attachMeshGlyphBatch(state.meshGlyphBatch)
     this.rebindLayerAppearance()
     this._layoutViewManager.resize(this.width, this.height)
     this.selectionSet.clear()
@@ -2999,6 +3313,7 @@ export class AcTrView2d extends AcEdBaseView {
     this._layoutViewManager = new AcTrLayoutViewManager()
     this._initializedLayouts = new Set()
     this._externallyFramedLayouts = new Set()
+    this._openViewMode = AcApOpenViewMode.Extents
     this._loadingLayouts = new Set()
     this._missedImages = new Map()
     this._renderer.clearMissedFonts()
@@ -3015,6 +3330,7 @@ export class AcTrView2d extends AcEdBaseView {
    * @param state - Parked snapshot to discard.
    */
   disposeSessionState(state: AcTrViewSessionState): void {
+    state.meshGlyphBatch.dispose()
     state.scene.clear()
     state.layoutViewManager = new AcTrLayoutViewManager()
     state.initializedLayouts.clear()
@@ -3825,10 +4141,9 @@ export class AcTrView2d extends AcEdBaseView {
     const singleton = AcApDocManager as unknown as {
       _instance?: AcApDocManager
     }
-    const preset =
-      singleton._instance?.lastPresetFontsForOpen?.length
-        ? [...singleton._instance.lastPresetFontsForOpen]
-        : [...fallbackFonts]
+    const preset = singleton._instance?.lastPresetFontsForOpen?.length
+      ? [...singleton._instance.lastPresetFontsForOpen]
+      : [...fallbackFonts]
     this._fontPreloadDiag = {
       critical: [...plan.critical],
       workerWarm: [],
@@ -3912,25 +4227,43 @@ export class AcTrView2d extends AcEdBaseView {
         await this.ensureDeferredFontsReady()
       }
 
+      const noteGlyphCounts = () => {
+        this._convertPhaseMs.glyphEntityCount++
+        if (threeEntity instanceof AcTrMText) {
+          this._convertPhaseMs.mtextCount++
+        } else if (threeEntity instanceof AcTrShape) {
+          this._convertPhaseMs.shapeCount++
+        }
+      }
+
       if (isGroup) {
         // Linework-only INSERTs (no empty glyph shells) skip asyncDraw; spatial
         // boxes are refreshed by syncGroupSpatialBoundsForIndexing after commit.
         if (!groupPending) {
           return
         }
+        noteGlyphCounts()
+        const td = performance.now()
         await threeEntity.asyncDraw()
+        this._convertPhaseMs.finishGeometryAsyncDraw += performance.now() - td
         return
       }
       // Complex TEXT/SHAPE linetypes attach stroke children immediately while
       // glyph shells still need asyncDraw — do not treat stroke children as done.
       if (hasPendingComplexLineTypeGlyphs(threeEntity)) {
+        noteGlyphCounts()
+        const td = performance.now()
         await threeEntity.asyncDraw()
+        this._convertPhaseMs.finishGeometryAsyncDraw += performance.now() - td
         return
       }
       if (threeEntity.hasDrawableGeometry()) {
         return
       }
+      noteGlyphCounts()
+      const td = performance.now()
       await threeEntity.asyncDraw()
+      this._convertPhaseMs.finishGeometryAsyncDraw += performance.now() - td
     } finally {
       this._convertPhaseMs.finishGeometry += performance.now() - t0
     }
@@ -4137,7 +4470,11 @@ export class AcTrView2d extends AcEdBaseView {
       return
     }
     this._pendingGeometryJobs++
-    this._deferredGeometryQueue.push({ run, epoch })
+    this._deferredGeometryQueue.push({
+      run,
+      epoch,
+      enqueuedAt: performance.now()
+    })
     this.pumpDeferredGeometryQueue()
   }
 
@@ -4156,6 +4493,8 @@ export class AcTrView2d extends AcEdBaseView {
         continue
       }
 
+      this._convertPhaseMs.finishGeometryQueueWait +=
+        performance.now() - job.enqueuedAt
       this._deferredGeometryActive++
       void job
         .run()
@@ -4745,7 +5084,8 @@ export class AcTrView2d extends AcEdBaseView {
       for (const [layerName, objects] of objectsGroupByLayer) {
         // Nested layer-0 may already be resolved to an inner INSERT layer during
         // flatten. Remaining "0" buckets inherit this (outermost) INSERT layer.
-        const effectiveLayerName = layerName === '0' ? groupLayerName : layerName
+        const effectiveLayerName =
+          layerName === '0' ? groupLayerName : layerName
 
         // Material remap must still treat authored layer-0 drawables as layer-0
         // ByLayer even when nest resolution already rewrote layerName.
@@ -4885,11 +5225,109 @@ export class AcTrView2d extends AcEdBaseView {
   private stampEntityProcessingIdle() {
     if (this._numOfEntitiesToProcess === 0 && this._pendingGeometryJobs === 0) {
       this._entityProcessingIdleAt = performance.now()
+      // Coalesce: deferred waves can briefly hit 0 pending before the next
+      // enqueue; delay flush so one open prefers a single InstancedMesh build.
+      this.scheduleMeshGlyphWorldBatchFlush()
       // Release block templates after INSERT convert/glyph work finishes.
       // Clearing at converter END was too early (convert still draining);
       // keeping templates until the next open kept baked shells in memory and
       // OOMed large drawings.
       AcDbRenderingCache.instance.clear()
     }
+  }
+
+  private _meshGlyphFlushTimer: ReturnType<typeof setTimeout> | null = null
+
+  private clearMeshGlyphFlushTimer(): void {
+    if (this._meshGlyphFlushTimer != null) {
+      clearTimeout(this._meshGlyphFlushTimer)
+      this._meshGlyphFlushTimer = null
+    }
+  }
+
+  /**
+   * Schedules {@link flushMeshGlyphWorldBatch} on the next macrotask if the
+   * convert/glyph pools are still idle.
+   */
+  private scheduleMeshGlyphWorldBatchFlush(): void {
+    const mtextRenderer = AcTrMTextRenderer.getInstance()
+    if (!mtextRenderer.getMeshGlyphInstancing()) {
+      return
+    }
+    this.clearMeshGlyphFlushTimer()
+    const epoch = this._convertEpoch
+    this._meshGlyphFlushTimer = setTimeout(() => {
+      this._meshGlyphFlushTimer = null
+      if (epoch !== this._convertEpoch) {
+        return
+      }
+      if (this._numOfEntitiesToProcess > 0 || this._pendingGeometryJobs > 0) {
+        return
+      }
+      this.flushMeshGlyphWorldBatch()
+    }, 16)
+  }
+
+  /**
+   * Builds scene-level mesh-glyph InstancedMeshes after deferred asyncDraw
+   * drains. No-op unless {@link AcTrMTextRenderer.setMeshGlyphInstancing}.
+   *
+   * Cancels any pending coalesce timer so callers (HTML export) can flush
+   * synchronously without waiting for the 16ms delay.
+   */
+  flushMeshGlyphWorldBatch(): void {
+    this.clearMeshGlyphFlushTimer()
+    const mtextRenderer = AcTrMTextRenderer.getInstance()
+    if (!mtextRenderer.getMeshGlyphInstancing()) {
+      return
+    }
+    const { placements, buckets } = mtextRenderer.flushMeshGlyphInstances(
+      this._scene.internalScene,
+      (layerName, ownerId) =>
+        this.resolveMeshGlyphLayerParent(layerName, ownerId)
+    )
+    if (placements > 0) {
+      // Prefix for headless CLI console forwarding.
+      console.log(
+        `[cad-simple-viewer-cli] mesh glyph InstancedMesh flush: placements=${placements} buckets=${buckets}`
+      )
+      // Flush can run while `_isDirty` was already cleared after the last
+      // paint; without this, InstancedMesh text stays invisible until pan.
+      this._isDirty = true
+    }
+  }
+
+  /**
+   * Parents mesh glyphs under the layout that owns the entity.
+   *
+   * Every layout has a layer group for each layer name. Preferring the active
+   * layout puts model-space TrueType text into the paper-space group while a
+   * paper layout is current, so viewports (which draw model space) never see
+   * it. When `ownerId` names a layout, only that layout's layer is used.
+   * Glyphs with no layout owner still follow the active layout.
+   */
+  private resolveMeshGlyphLayerParent(
+    layerName: string,
+    ownerId?: string
+  ): THREE.Object3D | undefined | null {
+    const owner = ownerId?.trim()
+    if (owner) {
+      const layout = this._scene.layouts.get(owner)
+      if (!layout) {
+        return null
+      }
+      return layout.getLayer(layerName)?.internalObject ?? null
+    }
+    const active = this._scene.activeLayout?.getLayer(layerName)
+    if (active) {
+      return active.internalObject
+    }
+    for (const layout of this._scene.layouts.values()) {
+      const layer = layout.getLayer(layerName)
+      if (layer) {
+        return layer.internalObject
+      }
+    }
+    return null
   }
 }

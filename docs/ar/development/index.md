@@ -1,0 +1,34 @@
+---
+title: "دليل التطوير"
+---
+
+# دليل التطوير
+
+مرحبًا بك في **دليل تطوير MLightCAD**.  
+يساعد هذا القسم المستخدمين على فهم كيفية تضمين MLightCAD في تطبيق الويب الخاص بهم، وتوسيع قدراته، وتصحيح أخطاء المشروع محليًا.
+
+## المحتويات
+
+- [أساسيات MLightCAD](./cad-viewer-basics)
+- [دمج Simple Viewer](./integrate-simple-cad-viewer)
+- [دمج مكوّن Vue](./integrate-cad-viewer-component)
+- [تهيئة عناوين Worker](./configure-worker-urls)
+- [تثبيت واستخدام محوّل DWG الخاص](./install-and-use-proprietary-dwg-converter)
+- [الخطوط والقوالب المستضافة ذاتيًا](./self-hosted-fonts-and-templates)
+- [نظام Jig](./jig-system)
+- [إدخال المستخدم](./user-input)
+- [الأمر](./command)
+- [أفضل ممارسات تعديل الكيانات](./entity-modification-best-practices)
+- [نظام الألوان](./color-system)
+- [متغيرات النظام](./system-variables)
+- [التقاط الكائنات (OSNAP)](./object-snap)
+- [أوامر التعليقات التوضيحية](./annotation-commands)
+- [الترجمة المحلية](./localization)
+- [نظام الإضافات](./plugin-system)
+- [الإضافات المدمجة](./built-in-plugins)
+- [إضافة مصدر البيانات](./data-source-plugin)
+- [لوحة فتح الملفات (واجهة صفحة الهبوط)](./file-open-panel)
+- [تصحيح الأخطاء مع تغييرات متعددة للمستودعات](./debugging-with-multiple-repo-changes)
+- [دعم رسومات Tianzheng DWG](./supporting-tianzheng-dwg-drawings)
+- [إنشاء عارض ويب سحابي لملفات DWG (العرض المسبق + الاستضافة الثابتة)](./cloud-dwg-web-viewer)
+- [ترقية cad-simple-viewer و cad-editor](./upgrade-guide)

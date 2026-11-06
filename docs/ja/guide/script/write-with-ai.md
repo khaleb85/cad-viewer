@@ -90,6 +90,10 @@ DXF の BLOCKS セクションに相当します。*Model_Space と *Paper_Space
 - cad.view.zoomExtents() -> モデル空間の範囲にズーム
 - cad.view.capturePreview({ longSide? }) -> スクリプト終了後に PNG をキュー。戻り値は { queued: true, index }。視覚確認が必要なときに使用し、単純な編集では省略可
 
+### cad.file
+- cad.file.saveDxf(path?) -> スクリプト成功後に DXF を書き出す。パス文字列または { path?, fileName? }。アプリ内ではダウンロード、cad-mcp-server では path に保存（相対パスはサーバーの作業ディレクトリ）。戻り値は { queued: true, index, fileName }。DXF 本文は返さない。ツール結果に savedFiles が付く
+- cad.file.savePdf(path?) -> After a successful script, export PDF. Path string or { path?, fileName?, exportLayouts?, colorMode?, textMode?, modelSpaceFit? }. Bytes are not returned. The tool result includes savedFiles
+- cad.file.saveHtml(path?) -> After a successful script, export offline HTML (or multi zip). Path string or { path?, fileName?, exportFormat?, exportLayouts?, background? }. Requires a viewer host; skipped on headless sessions. Bytes are not returned. The tool result includes savedFiles
 
 ### cad.measure
 - cad.measure.distance(a, b) -> Distance between {x,y} points

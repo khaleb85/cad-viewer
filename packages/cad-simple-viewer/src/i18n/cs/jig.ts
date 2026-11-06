@@ -1,3 +1,5 @@
+import enJig from '../en/jig'
+
 export default {
   arc: {
     startPointOrCenter: 'Zadejte počáteční bod oblouku nebo',
@@ -129,10 +131,19 @@ export default {
     }
   },
   dimlinear: {
+    ...enJig.dimlinear,
     xLine1Point: 'Zadejte počátek první pomocné čáry',
     xLine2Point: 'Zadejte počátek druhé pomocné čáry',
     dimLinePoint: 'Zadejte umístění kótovací čáry'
   },
+  dimaligned: { ...enJig.dimaligned },
+  dimradius: { ...enJig.dimradius },
+  dimdiameter: { ...enJig.dimdiameter },
+  dimangular: { ...enJig.dimangular },
+  dimarc: { ...enJig.dimarc },
+  dimordinate: { ...enJig.dimordinate },
+  dimcontinue: { ...enJig.dimcontinue },
+  dimbaseline: { ...enJig.dimbaseline },
   ellipse: {
     axisEndpointOrOptions: 'Zadejte koncový bod osy elipsy nebo',
     arcAxisEndpointOrCenter: 'Zadejte koncový bod osy eliptického oblouku nebo',
@@ -1236,6 +1247,7 @@ export default {
     exportFormat: 'Formát exportu',
     exportInvisibleLayers: 'Exportovat neviditelné hladiny',
     exportLayouts: 'Exportovat rozvržení',
+    background: 'Barva pozadí',
     initialView: 'Počáteční pohled při otevření HTML',
     viewerMode: 'Režim offline prohlížeče',
     chunkSizeMiB: 'Velikost části v MiB (vícesouborový balíček)',
@@ -1280,6 +1292,21 @@ export default {
         display: 'Měření a kontrola(M)',
         local: 'Měření a kontrola',
         global: 'Measure'
+      },
+      black: {
+        display: 'Černá(B)',
+        local: 'Černá',
+        global: 'Black'
+      },
+      white: {
+        display: 'Bílá(W)',
+        local: 'Bílá',
+        global: 'White'
+      },
+      space: {
+        display: 'Prostor(S)',
+        local: 'Prostor',
+        global: 'Space'
       }
     }
   },
@@ -1287,6 +1314,7 @@ export default {
     modelSpaceFit: 'Rám modelového prostoru',
     exportLayouts: 'Exportovat rozvržení',
     textMode: 'Vykreslení textu',
+    colorMode: 'Barevný režim',
     keywords: {
       extents: {
         display: 'Rozsah(E)',
@@ -1317,6 +1345,16 @@ export default {
         display: 'Ne(N)',
         local: 'Ne',
         global: 'No'
+      },
+      color: {
+        display: 'Barevně(B)',
+        local: 'Barevně',
+        global: 'Color'
+      },
+      monochrome: {
+        display: 'Černobíle(C)',
+        local: 'Černobíle',
+        global: 'Monochrome'
       }
     }
   }

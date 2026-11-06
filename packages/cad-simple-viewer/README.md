@@ -39,9 +39,23 @@ Use `cad-simple-viewer` if you need **core CAD logic only** (document management
 npm install @mlightcad/cad-simple-viewer
 ```
 
+## File open landing entry
+
+Landing pages that only need the file picker / data-source registry can import the DocManager-free subpath so the full viewer stays lazy:
+
+```ts
+import {
+  AcUiFileOpenPanel,
+  AcApDataSourceManager,
+  acapInvokeDataSourceMenuAction
+} from '@mlightcad/cad-simple-viewer/file-open-panel'
+```
+
+Pass cloud sources via `manager` / `getSources`. Load `@mlightcad/cad-simple-viewer` (main entry) only when opening a drawing.
+
 ## Usage
 
-Please refer to [cad-simple-viewer-example](https://github.com/mlight-lee/cad-simple-viewer-example) on basic usage and advanced usage.
+Please refer to [cad-simple-viewer-demo](https://github.com/mlight-lee/cad-simple-viewer-demo) on basic usage and advanced usage.
 
 To learn about the built-in notification center (and how to replace the default bell UI while still receiving font-missing and unsupported-entity alerts), see [docs/notification-center.md](./docs/notification-center.md).
 
@@ -63,7 +77,7 @@ This capability makes `cad-simple-viewer` suitable for applications that need to
 
 **Important Note**: The usage patterns in `cad-simple-viewer` are **very similar to AutoCAD RealDWG**. If you're familiar with AutoCAD RealDWG development, you'll find the API structure and workflow nearly identical. The main difference is that we use the [**realdwg-web API**](https://mlight-lee.github.io/realdwg-web/) instead of the native RealDWG libraries.
 
-In [cad-simple-viewer-example](https://github.com/mlight-lee/cad-simple-viewer-example) it demonstrates how to create one drawing with [**realdwg-web API**](https://mlight-lee.github.io/realdwg-web/).
+In [cad-simple-viewer-demo](https://github.com/mlight-lee/cad-simple-viewer-demo) it demonstrates how to create one drawing with [**realdwg-web API**](https://mlight-lee.github.io/realdwg-web/).
 
 ## Layer services
 

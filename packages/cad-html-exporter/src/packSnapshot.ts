@@ -1,13 +1,12 @@
 import {
-  type AcExSnapshot,
-  buildAcExPackageAsync,
-  encodeSnapshot,
-  packHtml,
-  packHtmlEmbeddedPackage,
-  protectAcExHtmlEncodedSnapshot,
-  resolveAcApHtmlExpiresAt,
-  shouldEmbedAcExChunks
-} from '@mlightcad/cad-html-core'
+  acexHtmlBuildPackageAsync,
+  acexHtmlEncodeSnapshot,
+  acexHtmlPackHtml,
+  acexHtmlPackHtmlEmbeddedPackage,
+  acexHtmlProtectEncodedSnapshot,
+  acexHtmlResolveExpiresAt,
+  acexHtmlShouldEmbedChunks,
+  type AcExHtmlSnapshot} from '@mlightcad/cad-html-core'
 
 import {
   type AcExHtmlExporterOptions,
@@ -20,11 +19,15 @@ import { zipPackageEntries } from './nodeZip'
 
 /**
  * Packs a snapshot into HTML or a multi-file zip using the shared core APIs.
+ *
+ * @param previewJpeg - Optional drawing thumbnail JPEG for multi-file packages
+ *   (`preview.jpg` next to `viewer.html`). Ignored for single-file HTML.
  */
 export async function packSnapshot(
-  snapshot: AcExSnapshot,
+  snapshot: AcExHtmlSnapshot,
   options: AcExHtmlExporterOptions = {},
-  baseName = 'drawing'
+  baseName = 'drawing',
+  previewJpeg?: Uint8Array
 ): Promise<AcExHtmlExportResult> {
   installNodeSnapshotCompressor()
   const viewerRuntime = await loadViewerRuntime(options.viewerRuntimePath)
@@ -32,19 +35,23 @@ export async function packSnapshot(
 
   if (exportFormat === 'multi') {
     const packageBuild = resolveAcExHtmlPackageBuildOptions(options)
-    const pkg = await buildAcExPackageAsync(snapshot, {
+    const pkg = await acexHtmlBuildPackageAsync(snapshot, {
       viewerRuntime,
       baseName,
       ...packageBuild
     })
+    const files =
+      previewJpeg?.length
+        ? [...pkg.files, { path: 'preview.jpg', bytes: previewJpeg }]
+        : pkg.files
     if (options.zipPackage === false) {
       return {
         kind: 'directory',
-        files: pkg.files,
+        files,
         fileName: baseName
       }
     }
-    const zipBytes = await zipPackageEntries(pkg.files)
+    const zipBytes = await zipPackageEntries(files)
     return {
       kind: 'zip',
       zipBytes,
@@ -52,29 +59,29 @@ export async function packSnapshot(
     }
   }
 
-  const expiresAt = resolveAcApHtmlExpiresAt(
+  const expiresAt = acexHtmlResolveExpiresAt(
     options.expiryDays ?? 'never',
     Date.now(),
     options.expiresAt
   )
 
   let html: string
-  if (shouldEmbedAcExChunks(snapshot)) {
-    html = await packHtmlEmbeddedPackage(snapshot, {
+  if (acexHtmlShouldEmbedChunks(snapshot)) {
+    html = await acexHtmlPackHtmlEmbeddedPackage(snapshot, {
       title: snapshot.meta.title,
       viewerRuntime,
       expiresAt,
       password: options.password || undefined
     })
   } else {
-    const protectedSnapshot = await protectAcExHtmlEncodedSnapshot(
-      encodeSnapshot(snapshot),
+    const protectedSnapshot = await acexHtmlProtectEncodedSnapshot(
+      acexHtmlEncodeSnapshot(snapshot),
       {
         expiresAt,
         password: options.password || undefined
       }
     )
-    html = packHtml(snapshot, {
+    html = acexHtmlPackHtml(snapshot, {
       title: snapshot.meta.title,
       viewerRuntime,
       encoded: protectedSnapshot.encoded,

@@ -197,3 +197,19 @@ const styles = cad.tables.textStyleTable.records.map(record => ({
 }))
 return { layers, styles }
 ```
+
+## حفظ الرسم كملف DXF
+
+يُنفَّذ بعد نجاح السكربت. الوكيل داخل التطبيق يُنزّل الملف، و`cad-mcp-server` يكتبه إلى المسار المحدد.
+
+```javascript
+cad.file.saveDxf('./plan-out.dxf')
+return { saved: true }
+```
+
+## Save the drawing as PDF or HTML
+
+```javascript
+cad.file.savePdf('./plan.pdf')
+cad.file.saveHtml('./plan.html')
+```

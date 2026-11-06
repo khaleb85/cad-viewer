@@ -1,6 +1,7 @@
 import './types/three-material'
 
 export * from './batch/AcTrBatchedGroup'
+export { AcTrMeshGlyphWorldBatch } from './batch/AcTrMeshGlyphWorldBatch'
 export {
   isBatchGeometryActive,
   isBatchGeometryVisible
@@ -13,7 +14,14 @@ export { AcTrBatchedPoint } from './batch/AcTrBatchedPoint'
 export * from './linetype'
 export * from './object/AcTrObject'
 export * from './object/AcTrEntity'
+export {
+  setHeadlessRasterDecoder,
+  type AcTrHeadlessRasterDecoder,
+  type AcTrHeadlessRasterImage
+} from './object/AcTrImage'
 export * from './object/AcTrGlyphEntity'
+export * from './object/AcTrMText'
+export * from './object/AcTrShape'
 export * from './object/AcTrLineGeometryBuilder'
 export * from './object/AcTrGroup'
 export * from './html'
