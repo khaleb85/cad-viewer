@@ -3185,7 +3185,9 @@ export class AcTrView2d extends AcEdBaseView {
     return acapResolveLayoutFrameBox({
       limits: undefined,
       viewportsBox: isModelSpace ? undefined : viewportsBox,
-      layoutExtents,
+      // Model EXTMIN/EXTMAX is often stale after a paper-space open; frame the
+      // converted geometry like `zoomToFitDrawing` does when opening on Model.
+      layoutExtents: isModelSpace && entityBox ? undefined : layoutExtents,
       entityBox
     })?.box
   }
