@@ -137,9 +137,7 @@ export class AcTrLayout {
    * layers created after {@link setCompareDisplay} so late layer groups
    * still receive role tints.
    */
-  private _compareDisplayOptions?: Parameters<
-    AcTrLayer['setCompareDisplay']
-  >[0]
+  private _compareDisplayOptions?: Parameters<AcTrLayer['setCompareDisplay']>[0]
 
   /**
    * Creates a new layout instance.
@@ -532,6 +530,32 @@ export class AcTrLayout {
   }
 
   /**
+   * Removes many entities from this layout, compacting each layer's batches
+   * once instead of once per entity.
+   *
+   * @param objectIds - Object ids to remove.
+   * @returns Ids removed from at least one layer of this layout.
+   */
+  removeEntities(objectIds: AcDbObjectId[]): Set<AcDbObjectId> {
+    const removed = new Set<AcDbObjectId>()
+    if (objectIds.length === 0) return removed
+    for (const [_, layer] of this._layers) {
+      for (const objectId of layer.removeEntities(objectIds)) {
+        removed.add(objectId)
+      }
+    }
+    if (removed.size > 0) {
+      for (const objectId of removed) {
+        this._spatialIndex.removeById(objectId)
+        this._extentExcludedObjectIds.delete(objectId)
+        this._insertLayerByObjectId.delete(objectId)
+      }
+      this.invalidateBox()
+    }
+    return removed
+  }
+
+  /**
    * Update the specified entity in this layout.
    *
    * @param entity - Input the entity to update
@@ -754,6 +778,95 @@ export class AcTrLayout {
           disposePreviewSubset(previewRoot)
           return null
         }
+        continue
+      }
+      previewRoot.add(subset)
+    }
+
+    if (previewRoot.children.length === 0) {
+      return null
+    }
+    return previewRoot
+  }
+
+  /**
+   * Resolves CAD layer names to layer groups in this layout.
+   *
+   * Matching is case-insensitive (AutoCAD layer names are). Names without a
+   * layer group here — unknown layers, or layers with no geometry in this
+   * layout — are skipped. Each layer group is returned at most once.
+   *
+   * @param layerNames - CAD layer names to look up
+   * @returns Matching layer groups in request order
+   */
+  findLayers(layerNames: readonly string[]): AcTrLayer[] {
+    const byUpperName = new Map<string, AcTrLayer>()
+    for (const layer of this._layers.values()) {
+      byUpperName.set(layer.name.toUpperCase(), layer)
+    }
+
+    const found: AcTrLayer[] = []
+    for (const name of layerNames) {
+      const layer =
+        this._layers.get(name) ?? byUpperName.get(name.toUpperCase())
+      if (layer && !found.includes(layer)) {
+        found.push(layer)
+      }
+    }
+    return found
+  }
+
+  /**
+   * Computes the union of batch bounds of the given CAD layers in this layout.
+   *
+   * Only geometry bucketed on those layers counts — INSERT fragments that
+   * live on other layers are excluded. Layer on/off/frozen state is ignored
+   * so explicitly requested layers can always be framed.
+   *
+   * @param layerNames - CAD layer names (case-insensitive)
+   * @param target - Optional output box
+   * @returns Axis-aligned bounds, empty when no geometry matched
+   */
+  computeLayerPreviewBoundsBox(
+    layerNames: readonly string[],
+    target = new THREE.Box3()
+  ) {
+    target.makeEmpty()
+    const scratch = new THREE.Box3()
+    for (const layer of this.findLayers(layerNames)) {
+      layer.computeContentBoundingBox(scratch)
+      if (!scratch.isEmpty()) {
+        target.union(scratch)
+      }
+    }
+    return target
+  }
+
+  /**
+   * Builds one preview root containing all geometry of the given CAD layers.
+   *
+   * Unlike {@link createEntityPreviewRoot}, extraction is restricted to the
+   * requested layer groups, so an INSERT contributes only its fragments on
+   * those layers.
+   *
+   * @param layerNames - CAD layer names (case-insensitive)
+   * @returns Preview root group, or `null` when no geometry was extracted
+   */
+  createLayerPreviewRoot(layerNames: readonly string[]): THREE.Group | null {
+    const previewRoot = new THREE.Group()
+    previewRoot.name = 'LayerPreviewRoot'
+    for (const layer of this.findLayers(layerNames)) {
+      const ids = layer.getEntityIds()
+      if (ids.length === 0) {
+        continue
+      }
+      const subset = layer.createPreviewSubset(ids, {
+        // A finite cap makes createPreviewSubset drop the whole layer once
+        // exceeded; the caller asked for the full layer, so extract all slots.
+        maxSlots: Number.POSITIVE_INFINITY,
+        missingEntity: 'skip'
+      })
+      if (!subset || subset.children.length === 0) {
         continue
       }
       previewRoot.add(subset)

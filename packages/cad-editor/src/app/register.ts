@@ -5,6 +5,7 @@ import {
 import { registerLazyPdfPlugin } from '@mlightcad/cad-pdf-plugin/register'
 import {
   AcApDocManager,
+  AcApPaletteService,
   type AcApPluginManager,
   AcEdCommandStack,
   AcEdMTextEditor
@@ -15,6 +16,9 @@ import { markRaw } from 'vue'
 import {
   AcApAttDefCmd,
   AcApAttEditCmd,
+  AcApBDetectCmd,
+  AcApBSearchCmd,
+  AcApClassicGroupCmd,
   AcApCountListCmd,
   AcApDimStyleCmd,
   AcApDrawingUnitsCmd,
@@ -27,11 +31,15 @@ import {
   AcApMeasurementPanelCmd,
   AcApMemCmd,
   AcApMissedDataCmd,
+  AcApMLeaderStyleCmd,
+  AcApNewViewCmd,
   AcApOpenPerfCmd,
   AcApPointStyleCmd,
   AcApPropertiesCmd,
   AcApQSelectCmd,
   AcApTextStyleCmd,
+  AcApUcsManCmd,
+  AcApViewCmd,
   AcApXrefCmd,
   hatchRibbonCommand
 } from '../command'
@@ -39,16 +47,23 @@ import {
   createMlColorIndexPickerToolbarFactory,
   MlAttDefDlg,
   MlAttEditDlg,
+  MlBConvertDlg,
+  MlClassicGroupDlg,
   MlDimStyleDlg,
   MlDrawingUnitsDlg,
   MlExportHtmlDlg,
   MlExportPdfDlg,
+  MlMLeaderStyleDlg,
+  MlNewViewDlg,
   MlPointStyleDlg,
   MlQuickSelectDlg,
-  MlTextStyleDlg
+  MlTextStyleDlg,
+  MlUcsManagerDlg,
+  MlViewManagerDlg
 } from '../component'
 import { useDialogManager } from '../composable'
 import { i18n } from '../locale'
+import { mlPaletteHost } from './paletteHost'
 import { store } from './store'
 
 let isCommandRegistered = false
@@ -182,6 +197,39 @@ export const registerCmds = () => {
     )
     register.addCommand(
       AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
+      'mleaderstyle',
+      'mleaderstyle',
+      new AcApMLeaderStyleCmd(),
+      'mls'
+    )
+    register.addCommand(
+      AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
+      'view',
+      'view',
+      new AcApViewCmd(),
+      'ddview'
+    )
+    register.addCommand(
+      AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
+      'newview',
+      'newview',
+      new AcApNewViewCmd()
+    )
+    register.addCommand(
+      AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
+      'ucsman',
+      'ucsman',
+      new AcApUcsManCmd(),
+      'dducs'
+    )
+    register.addCommand(
+      AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
+      'classicgroup',
+      'classicgroup',
+      new AcApClassicGroupCmd()
+    )
+    register.addCommand(
+      AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
       'attedit',
       'attedit',
       new AcApAttEditCmd(),
@@ -194,6 +242,19 @@ export const registerCmds = () => {
       new AcApAttDefCmd(),
       'ddattdef'
     )
+    register.addCommand(
+      AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
+      'bsearch',
+      'bsearch',
+      new AcApBSearchCmd(),
+      'bconvert'
+    )
+    register.addCommand(
+      AcEdCommandStack.SYSTEMT_COMMAND_GROUP_NAME,
+      'bdetect',
+      'bdetect',
+      new AcApBDetectCmd()
+    )
     isCommandRegistered = true
   }
 }
@@ -202,6 +263,7 @@ let isDialogRegistered = false
 export const registerDialogs = () => {
   if (!isDialogRegistered) {
     const { registerDialog } = useDialogManager()
+    AcApPaletteService.setHost(mlPaletteHost)
     const disableExport = AcApDocManager.instance.disableExport
     registerDialog({
       name: 'PointStyleDlg',
@@ -241,6 +303,11 @@ export const registerDialogs = () => {
       props: {}
     })
     registerDialog({
+      name: 'MLeaderStyleDlg',
+      component: markRaw(MlMLeaderStyleDlg),
+      props: {}
+    })
+    registerDialog({
       name: 'AttEditDlg',
       component: markRaw(MlAttEditDlg),
       props: {}
@@ -248,6 +315,31 @@ export const registerDialogs = () => {
     registerDialog({
       name: 'AttDefDlg',
       component: markRaw(MlAttDefDlg),
+      props: {}
+    })
+    registerDialog({
+      name: 'BConvertDlg',
+      component: markRaw(MlBConvertDlg),
+      props: {}
+    })
+    registerDialog({
+      name: 'ViewManagerDlg',
+      component: markRaw(MlViewManagerDlg),
+      props: {}
+    })
+    registerDialog({
+      name: 'NewViewDlg',
+      component: markRaw(MlNewViewDlg),
+      props: {}
+    })
+    registerDialog({
+      name: 'UcsManagerDlg',
+      component: markRaw(MlUcsManagerDlg),
+      props: {}
+    })
+    registerDialog({
+      name: 'ClassicGroupDlg',
+      component: markRaw(MlClassicGroupDlg),
       props: {}
     })
     isDialogRegistered = true
@@ -265,8 +357,27 @@ export const registerMTextColorPicker = () => {
 }
 
 let isLazyPluginRegistered = false
+let isLlmIntegrationStarted = false
 let isAgentIntegrationStarted = false
 let isScriptIntegrationStarted = false
+
+/**
+ * Registers the shared AI model settings (`llmsettings`, LLM text
+ * recognition for `pdftext`) when the optional `@mlightcad/cad-llm-plugin`
+ * peer is installed. The CAD Agent reads its model from these settings.
+ */
+const registerLlmIntegration = async (pluginManager: AcApPluginManager) => {
+  try {
+    const llmRegister = await import('@mlightcad/cad-llm-plugin/register')
+    llmRegister.mergeLlmI18nIntoVueI18n((locale, messages) => {
+      i18n.global.mergeLocaleMessage(locale, messages)
+    })
+    llmRegister.registerLazyLlmPlugin(pluginManager)
+    store.features.llmPlugin = true
+  } catch {
+    // Optional peer `@mlightcad/cad-llm-plugin` is not installed.
+  }
+}
 
 const registerAgentIntegration = async (pluginManager: AcApPluginManager) => {
   try {
@@ -339,12 +450,14 @@ export interface RegisterLazyPluginsOptions {
 /**
  * Registers lazy plugins that load on first use of their trigger commands.
  *
- * Currently registers the PDF plugin (`-cpdf`, `ipdf`), the HTML export
- * plugin (`-chtml`), the SVG export plugin (`csvg`), and optionally the CAD
- * Agent plugin (`agent`) when `@mlightcad/cad-agent-plugin` is installed, and the
+ * Currently registers the PDF plugin (`-cpdf`, `pdfimport`), the HTML export
+ * plugin (`-chtml`), the SVG export plugin (`csvg`), and optionally the AI
+ * model settings (`llmsettings`) when `@mlightcad/cad-llm-plugin` is
+ * installed, the CAD Agent plugin (`agent`) when
+ * `@mlightcad/cad-agent-plugin` is installed, and the
  * script console (`cadscript`) when `@mlightcad/cad-script-plugin` is installed.
  * When {@link AcApDocManager.disableExport} is true, HTML/SVG export plugins
- * are skipped and the PDF plugin only exposes `ipdf`. Host UI commands
+ * are skipped and the PDF plugin only exposes `pdfimport`. Host UI commands
  * `chtml` / `cpdf` open export dialogs and load the plugins on confirm.
  * Safe to call multiple times; registration runs once per application lifetime.
  *
@@ -365,6 +478,10 @@ export const registerLazyPlugins = (
     registerLazySvgPlugin(pluginManager)
   }
 
+  if (!isLlmIntegrationStarted) {
+    isLlmIntegrationStarted = true
+    void registerLlmIntegration(pluginManager)
+  }
   if (!isAgentIntegrationStarted) {
     isAgentIntegrationStarted = true
     void registerAgentIntegration(pluginManager)

@@ -26,15 +26,24 @@ Read more:
 - Lazy-loaded `AcApPlugin` (trigger command: `agent`)
 - Vercel AI SDK `Experimental_Agent` with CAD tool calling
 - Vue chat panel (`@ai-sdk/vue` `Chat` + custom transport)
-- Browser-side API key (OpenAI / Anthropic / OpenAI-compatible)
+- Model and API keys come from the shared AI model settings in
+  [`@mlightcad/cad-llm-plugin`](../cad-llm-plugin/README.md) (`llmsettings`),
+  which `pdftext` text recognition uses too; the panel's gear button opens
+  that dialog
 
 ## Usage in cad-viewer
 
 ```typescript
 import { registerLazyAgentPlugin } from '@mlightcad/cad-agent-plugin/register'
+import { registerLazyLlmPlugin } from '@mlightcad/cad-llm-plugin/register'
 
-registerLazyAgentPlugin(AcApDocManager.instance.pluginManager)
+const { pluginManager } = AcApDocManager.instance
+registerLazyLlmPlugin(pluginManager)
+registerLazyAgentPlugin(pluginManager)
 ```
+
+`@mlightcad/cad-llm-plugin` is a peer dependency: install it next to this
+package.
 
 Run `agent` from the ribbon or command line to open the chat panel.
 
@@ -46,5 +55,6 @@ Tool schemas and execution live in [`@mlightcad/cad-agent-core`](../cad-agent-co
 
 - `execute_cad_script` — all drawing, queries, edits, selection, zoom, context (`cad.drawing`), and file export (`cad.file.saveDxf` / `savePdf` / `saveHtml`)
 
-Agent mode defaults to Simple (no screenshot verification). Enable High inference
-in the panel for opt-in visual verification on complex tasks.
+Agent mode defaults to Simple (optional `cad.view.capturePreview`, no automatic
+vision verification). Enable High inference in the panel for opt-in post-round
+screenshot + vision verification on complex tasks.

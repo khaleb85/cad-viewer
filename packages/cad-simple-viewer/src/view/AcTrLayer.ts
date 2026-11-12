@@ -331,6 +331,28 @@ export class AcTrLayer {
   }
 
   /**
+   * Returns ids of all entities that own geometry in this layer group.
+   *
+   * INSERT fragments decomposed onto this layer are listed under the INSERT's
+   * object id.
+   */
+  getEntityIds(): AcDbObjectId[] {
+    return this._group.getEntityIds()
+  }
+
+  /**
+   * Computes bounds of everything stored in this layer from packed batch data,
+   * ignoring the layer's own on/off/frozen state.
+   *
+   * Unlike {@link computeBatchBoundingBox}, an off or frozen layer still
+   * reports its geometry bounds, so callers that explicitly ask for a layer
+   * (e.g. layer previews) can frame it.
+   */
+  computeContentBoundingBox(target = new THREE.Box3()) {
+    return this._group.computeBoundingBox(target)
+  }
+
+  /**
    * Updates visibility for one entity without rebuilding batched geometry.
    */
   setEntityVisible(objectId: AcDbObjectId, visible: boolean) {
@@ -433,6 +455,20 @@ export class AcTrLayer {
   removeEntity(objectId: AcDbObjectId): boolean {
     const removed = this._group.removeEntity(objectId)
     if (removed) {
+      this._boxDirty = true
+    }
+    return removed
+  }
+
+  /**
+   * Removes many entities from this layer, compacting its batches once.
+   *
+   * @param objectIds - Object ids to remove.
+   * @returns Ids removed from this layer.
+   */
+  removeEntities(objectIds: Iterable<AcDbObjectId>): AcDbObjectId[] {
+    const removed = this._group.removeEntities(objectIds)
+    if (removed.length > 0) {
       this._boxDirty = true
     }
     return removed

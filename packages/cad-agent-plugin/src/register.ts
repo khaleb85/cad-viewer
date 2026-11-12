@@ -11,6 +11,11 @@ export const AGENT_PLUGIN_TRIGGERS = ['agent'] as const
 /**
  * Registers the CAD Agent plugin for lazy loading.
  *
+ * The agent reads its model from the shared AI model settings, so hosts also
+ * call `registerLazyLlmPlugin` from `@mlightcad/cad-llm-plugin/register`,
+ * which provides the settings dialog (`llmsettings`) and the LLM text
+ * recognizer.
+ *
  * Import from `@mlightcad/cad-agent-plugin/register` so the main bundle
  * is not pulled into the application entry chunk.
  */

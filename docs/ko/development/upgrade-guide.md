@@ -6,6 +6,79 @@ title: "cad-simple-viewer 및 cad-editor 업그레이드"
 
 이 가이드는 `@mlightcad/cad-simple-viewer`와 `@mlightcad/cad-editor`를 안전하게 업그레이드하는 방법을 설명합니다. 즉, 왜 이들을 개별적으로 올릴 수 없는지, 어떤 관련 패키지가 함께 이동해야 하는지, 그리고 주어진 릴리스에 대해 올바른 호환 버전 집합을 확인하는 두 가지 신뢰할 수 있는 방법을 다룹니다.
 
+::: info 공유 AI 모델 설정(`@mlightcad/cad-llm-plugin`)
+이 변경이 포함된 릴리스부터 LLM 공급자 설정이 `@mlightcad/cad-agent-plugin`에서 새 **`@mlightcad/cad-llm-plugin`**으로 옮겨져, CAD 에이전트와 `pdftext` 문자 인식(OCR)이 같은 설정을 공유합니다. 새 패키지는 **LLMSETTINGS** 명령과 UI 프레임워크에 의존하지 않는 설정 대화상자(`@mlightcad/cad-editor`의 AI 리본 탭에서도 열 수 있음)를 제공하며, `@mlightcad/cad-simple-viewer`에는 `AcApLlmSettingsService`가 추가되어 어떤 기능에서든 대화상자를 열거나 이미지 지원 모델이 설정되었는지 확인할 수 있습니다.
+
+호스트 마이그레이션:
+
+- `@mlightcad/cad-llm-plugin`(이제 `@mlightcad/cad-agent-plugin`의 peer 의존성)을 설치하고 `registerLazyAgentPlugin`과 함께 `registerLazyLlmPlugin`을 호출합니다. 패키지가 설치되어 있으면 `@mlightcad/cad-editor`가 자동으로 등록합니다.
+- `registerLazyAgentPlugin`은 더 이상 문자 인식기를 등록하지 않습니다. 인식기 id는 `cad-llm`(이전 `cad-agent`)이며 `registerLazyLlmPlugin`이 등록합니다. `acapAgentRecognizeText` / `cleanRecognizedText`는 `@mlightcad/cad-llm-plugin`의 `acapLlmRecognizeText` / `acapLlmCleanRecognizedText`로 바뀌었습니다.
+- 에이전트 패널의 내장 설정 카드는 대화상자로 대체되며, 톱니바퀴 버튼이 LLMSETTINGS를 엽니다.
+- 저장된 설정은 유지됩니다. `localStorage` 키 `cad-agent-plugin.llm-config`는 바뀌지 않습니다.
+- 사용 중인 모델이 텍스트 전용이면 OCR은 설정된 첫 번째 이미지 지원 모델을 사용합니다.
+
+```ts
+import { registerLazyAgentPlugin } from '@mlightcad/cad-agent-plugin/register'
+import { registerLazyLlmPlugin } from '@mlightcad/cad-llm-plugin/register'
+
+registerLazyLlmPlugin(pluginManager)
+registerLazyAgentPlugin(pluginManager)
+```
+:::
+
+::: info PDF 가져오기: `ipdf`가 `PDFIMPORT` / `-PDFIMPORT`로
+이 변경이 포함된 릴리스(1.8.0)부터 `@mlightcad/cad-pdf-plugin`의 PDF 가져오기 명령은 AutoCAD와 같은 이름을 씁니다:
+
+- **PDFIMPORT**는 파일을 고른 뒤 [PDF 가져오기] 대화상자(`AcUiPdfImportDialog`)를 엽니다: 미리보기가 있는 페이지, 삽입점(X/Y 또는 화면상에 지정), 축척, 모드(도면 복원 / PDF 모양 유지).
+- **-PDFIMPORT**는 `ipdf`의 명령행 프롬프트(페이지 번호, [축척]·[모드] 옵션이 있는 삽입점)를 유지합니다. 클래스는 `AcApImportPdfPromptCmd`입니다.
+
+마이그레이션: `ipdf`는 더 이상 없습니다. `executeCommand('ipdf')`로 프롬프트에 답하던 스크립트는 `-pdfimport`를 사용하세요. 리본을 직접 그리는 호스트는 `pdfimport`를 사용합니다(cad-editor 리본 항목 ID는 이제 `cmd-pdfimport`). 명령 설명은 `command.ACAD.ipdf`에서 `command.ACAD.pdfimport` / `command.ACAD.-pdfimport`로, 프롬프트 문자열은 `jig.ipdf`에서 `jig.pdfimport`로 옮겨졌습니다(대화상자 문자열은 `jig.pdfimport.dialog`). `AcApPdfImportConvertor.importFromFilePicker`는 이제 대화상자를 표시하고, `importFromCommandLine`이 프롬프트 흐름입니다.
+:::
+
+::: info 스마트 블록: 검색 및 변환(`BSEARCH`)
+이 변경이 포함된 릴리스부터 `@mlightcad/cad-simple-viewer`는 **-BSEARCH**를 등록하고, `@mlightcad/cad-editor`는 도구 팔레트의 검색 및 변환 탭(찾은 인스턴스 목록)과 블록으로 변환 대화상자가 있는 **BSEARCH**(별칭 `BCONVERT`)를 추가합니다(리본의 삽입 및 AI 탭).
+
+형상 일치가 `@mlightcad/cad-pdf-plugin`에서 `@mlightcad/cad-simple-viewer`로 이동했습니다. 가져오기를 옮기십시오:
+
+| `@mlightcad/cad-pdf-plugin`(사용 중단) | `@mlightcad/cad-simple-viewer` |
+| --- | --- |
+| `findPdfShapeMatches` | `acedFindShapeMatches` |
+| `applyPdfAffine` | `acedApplyAffine2d` |
+| `pdfEntityToFeature` | `acedEntityToShapeFeature(entity, id, { matchLayer: false })` |
+| `PdfMatchFeature` / `PdfAffine` / `PdfShapeMatch` / `PdfShapeMatchOptions` | `AcEdShapeFeature` / `AcEdAffine2d` / `AcEdShapeMatch` / `AcEdShapeMatchOptions` |
+
+이전 이름은 사용 중단된 별칭으로 계속 동작합니다. 문자열은 특징의 `kind`에서 `label`로 옮겨졌습니다. `pdfblock`은 이제 `-BSEARCH` 프롬프트 순서(변환 → 새로 만들기/기존 → 이름 → 삽입점 → 범위)를 따르므로 이전 프롬프트에 응답하던 스크립트는 수정해야 합니다.
+:::
+
+::: info AutoCAD 그룹(`GROUP` / `PICKSTYLE` / `GROUPDISPLAYMODE`)
+이 변경이 포함된 릴리스부터 `@mlightcad/cad-simple-viewer`는 **GROUP**, **-GROUP**, **UNGROUP**, **GROUPEDIT**를 등록하고, `PICKSTYLE`이 `1` 또는 `3`일 때 선택을 확장하며, 선택 가능한 그룹에 `GROUPDISPLAYMODE` 그립을 적용합니다. `@mlightcad/cad-editor`는 **CLASSICGROUP**(객체 그룹화 대화상자)과 홈 → 그룹 리본 패널을 추가합니다.
+
+`PICKSTYLE`(0–3, 기본 `1`)과 `GROUPDISPLAYMODE`(0–2, 기본 `2`)가 등록된 `@mlightcad/data-model`이 필요합니다. 연관 해치 동시 선택(`PICKSTYLE` 2/3)은 `AcDbHatch`에 경계 soft-pointer가 생길 때까지 no-op입니다.
+:::
+
+::: info `cad.view.capturePreview` 선택 미리보기
+이 변경이 포함된 릴리스부터 `CadSession.capturePreview`는 단독 `longSide` 숫자 대신 옵션 객체를 받습니다.
+
+```ts
+capturePreview?(options?: {
+  longSide?: number
+  selection?: boolean
+}): Promise<CaptureDrawingPreviewResult>
+```
+
+스크립트에서는 `cad.view.capturePreview({ longSide?, selection? })`를 사용합니다. `cad.selection.replace(ids)` 이후 `selection: true`를 전달하면 ENTPREVIEW와 같은 batch 미리보기 경로로 선택 엔티티를 추출하고(장면 bounds로 프레이밍, 데이터베이스 `geometricExtents` 아님) PNG를 도구 결과에 첨부합니다. 선택이 비어 있으면 `reason: 'no-selection'`을 반환합니다. 렌더러가 없는 `createDatabaseSession`은 여전히 미리보기를 건너뜁니다.
+:::
+
+::: info `cad.view.capturePreview` 도면층 미리보기
+이 변경이 포함된 릴리스부터 `CadCapturePreviewOptions`에 `layers?: string | string[]`가, `CaptureDrawingPreviewFailure`에 `'no-layers'`가 추가됩니다.
+
+```ts
+cad.view.capturePreview({ layers: ['WALL', 'DOOR'], longSide: 1024 })
+```
+
+모델 공간에서 해당 도면층의 객체만 렌더링하며(INSERT는 해당 도면층에 있는 부분만), 도면 전체가 아니라 도면층들을 합친 범위로 프레이밍합니다. 도면층 이름은 대소문자를 구분하지 않으며, 존재하지 않는 이름은 스크립트 실행 중 오류를 발생시키고, `layers`는 `selection: true`와 함께 쓸 수 없습니다. `normalizeCadCapturePreviewOptions`는 이제 `NormalizedCadCapturePreviewOptions`(`layers`는 중복 제거된 `string[]`)를 반환합니다. 사용자 정의 `CadSession.capturePreview` 구현은 `options.layers`를 처리하거나 `reason: 'no-layers'`를 반환해야 합니다. 뷰어 구현은 새 `AcApEntityPreviewConvertor.captureLayers(layerNames, longSide)`를 사용합니다.
+:::
+
 ::: info 가벼운 파일 열기 랜딩 엔트리
 **1.8.0**부터 `@mlightcad/cad-simple-viewer`는 DocManager에 의존하지 않는 랜딩용 서브경로를 제공합니다. **`acuiCreateFileOpenSession`**(지연 `createDocManager` + 자동 열기 / `attachSourcesTo`)을 우선하십시오. 도면을 직접 여는 경우(예: Vue `MlCadViewer`)에는 `AcUiFileOpenLanding`을 사용하십시오.
 
@@ -79,15 +152,32 @@ GitHub 저장소는 여전히 [`mlightcad/cad-viewer`](https://github.com/mlight
 다른 HTML-core 헬퍼도 같습니다(예: `captureAcExSavedViewExtents` → `acexHtmlCaptureSavedViewExtents`, `buildOsnapCatalog` → `acexHtmlBuildOsnapCatalog`). `AcApHtmlConvertor` 및 `chtml` / `-chtml` 같은 명령 수준 API는 영향을 받지 않습니다. 개발 가이드에 나오는 새 이름은 **1.8.0+** 기준이며, 1.7.x에서는 이전 심볼을 계속 사용하세요.
 :::
 
+::: tip 스크립트 호스트: 실제 치수 엔티티 생성(`drawDim*`)
+**1.8.0-preview.2** 이후 릴리스부터 `@mlightcad/cad-script-core`의 `cad.edit.transaction`으로 치수 엔티티를 만들 수 있습니다(이전에는 스냅샷 읽기만 가능):
+
+- `drawDimAligned`, `drawDimLinear`, `drawDimDiameter`, `drawDimRadius`
+- `drawDimAngular`, `drawDimArc`, `drawDimOrdinate`
+
+Agent/스크립트는 선·화살표·문자로 치수를 흉내 내지 말고 이 API를 호출하세요. 지름/반지름은 `center` + `radius`를 받으므로 원 스냅샷을 바로 넘길 수 있습니다. 자세한 내용: [스크립트 API](../guide/script/api.md).
+:::
+
+::: tip 스크립트 호스트: 블록별 집계는 `cad.blocks`
+이 변경이 포함된 릴리스부터 `cad.blocks`는 블록별 `entityCount` / `typeCounts` 메타데이터를 제공하며 전체 `entities` 배열은 넣지 않습니다. 집계는 이 필드 또는 `count(pred)`를 쓰세요. 스냅샷은 `where` / `inBlock(id, pred)` — 공간 전체 스냅샷은 약 500개에서 `too_many_matches`로 중단됩니다. `where` / `count` / `inBox`는 모형/도면 공간만 스캔합니다.
+:::
+
+::: info SVG File → Open
+**1.8.0**부터 일반 File → Open / `openDocument` / `openUrl`로 `.svg`를 도면으로 열 수 있습니다. 변환은 새 패키지 [`@mlightcad/cad-svg-converter`](https://github.com/mlightcad/cad-viewer/tree/main/packages/cad-svg-converter)(`@mlightcad/data-model`만 의존)에 있습니다. `cad-editor`의 `initializeCadViewer`가 자동 등록합니다. `cad-simple-viewer`만 쓰는 경우 시작 시 `registerSvgConverter()`를 한 번 호출하세요. 보내기는 계속 `cad-svg-plugin`의 `csvg`입니다.
+:::
+
 ::: info PDF 내보내기를 공유 코어로 분리(브라우저 + Node)
 **1.8.0**부터 PDF 내보내기는 HTML 내보내기와 같은 계층을 사용합니다. 공유 로직은 `@mlightcad/cad-pdf-core`(옵션 모델과 database → PDF 파이프라인, `cad-simple-viewer` / DOM에 **의존하지 않음**)에 있으며, 다음 두 프론트엔드가 이를 사용합니다.
 
 | 패키지 | 역할 |
 | --- | --- |
-| `@mlightcad/cad-pdf-plugin` | 브라우저 `cpdf` / `-cpdf` / `ipdf`(및 Vue 내보내기 대화상자) |
+| `@mlightcad/cad-pdf-plugin` | 브라우저 `cpdf` / `-cpdf` / `pdfimport`(및 Vue 내보내기 대화상자) |
 | `@mlightcad/cad-pdf-exporter` | Node 헤드리스 DXF/DWG → PDF — **브라우저 불필요** |
 
-**브라우저 통합 측 — 대부분 동일.** `cpdf` / `-cpdf` / `ipdf`, `AcApPdfConvertor`, `AcApPdfExportOptions`, `resolveAcApPdfExportOptions`를 그대로 사용하세요. 새 peer `@mlightcad/cad-pdf-core`를 플러그인과 같은 버전으로 함께 설치하세요.
+**브라우저 통합 측 — 대부분 동일.** `cpdf` / `-cpdf` / `pdfimport`, `AcApPdfConvertor`, `AcApPdfExportOptions`, `resolveAcApPdfExportOptions`를 그대로 사용하세요. 새 peer `@mlightcad/cad-pdf-core`를 플러그인과 같은 버전으로 함께 설치하세요.
 
 **사용자에게 영향을 주는 API / 동작 변경:**
 

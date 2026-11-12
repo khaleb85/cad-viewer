@@ -6,6 +6,79 @@ title: "Upgrade cad-simple-viewer a cad-editor"
 
 Tato příručka vysvětluje, jak bezpečně upgradovat `@mlightcad/cad-simple-viewer` a `@mlightcad/cad-editor` — proč je nelze navyšovat izolovaně, které související balíčky se musí posunout společně a jaké existují dva spolehlivé způsoby, jak pro dané vydání určit správnou kompatibilní sadu verzí.
 
+::: info Sdílené nastavení modelu AI (`@mlightcad/cad-llm-plugin`)
+Od vydání, které obsahuje tuto změnu, se nastavení poskytovatelů LLM přesouvá z `@mlightcad/cad-agent-plugin` do nového balíčku **`@mlightcad/cad-llm-plugin`**, takže CAD agent i rozpoznávání textu `pdftext` (OCR) sdílejí jednu konfiguraci. Nový balíček přidává příkaz **LLMSETTINGS** a dialog nastavení nezávislý na UI frameworku (dostupný i na kartě AI pásu karet v `@mlightcad/cad-editor`) a `@mlightcad/cad-simple-viewer` přidává `AcApLlmSettingsService`, přes který může jakákoli funkce dialog otevřít nebo zjistit, zda je nakonfigurován model s podporou obrázků.
+
+Migrace hostitelských aplikací:
+
+- Nainstalujte `@mlightcad/cad-llm-plugin` (nyní peer závislost `@mlightcad/cad-agent-plugin`) a vedle `registerLazyAgentPlugin` volejte `registerLazyLlmPlugin`. `@mlightcad/cad-editor` to při nainstalovaném balíčku udělá sám.
+- `registerLazyAgentPlugin` už neregistruje rozpoznávač textu. Rozpoznávač má nyní id `cad-llm` (dříve `cad-agent`) a registruje ho `registerLazyLlmPlugin`. Z `acapAgentRecognizeText` / `cleanRecognizedText` jsou nyní `acapLlmRecognizeText` / `acapLlmCleanRecognizedText` v `@mlightcad/cad-llm-plugin`.
+- Vloženou kartu nastavení v panelu agenta nahrazuje dialog; tlačítko s ozubeným kolem otevře LLMSETTINGS.
+- Uložená nastavení zůstávají: klíč `localStorage` `cad-agent-plugin.llm-config` se nemění.
+- Pokud používaný model podporuje jen text, OCR použije první nakonfigurovaný model s podporou obrázků.
+
+```ts
+import { registerLazyAgentPlugin } from '@mlightcad/cad-agent-plugin/register'
+import { registerLazyLlmPlugin } from '@mlightcad/cad-llm-plugin/register'
+
+registerLazyLlmPlugin(pluginManager)
+registerLazyAgentPlugin(pluginManager)
+```
+:::
+
+::: info Import PDF: z `ipdf` je `PDFIMPORT` / `-PDFIMPORT`
+Od vydání, které obsahuje tuto změnu (1.8.0), používá příkaz pro import PDF v `@mlightcad/cad-pdf-plugin` názvy z AutoCADu:
+
+- **PDFIMPORT** po výběru souboru otevře dialog **Importovat PDF** (`AcUiPdfImportDialog`): stránka s náhledem, bod vložení (X/Y nebo na obrazovce), měřítko a režim (Obnovit výkres / Zachovat vzhled PDF).
+- **-PDFIMPORT** zachovává výzvy na příkazovém řádku, které mělo `ipdf` (stránka, bod vložení s možnostmi **Měřítko** a **Režim**). Jeho třída je `AcApImportPdfPromptCmd`.
+
+Migrace: `ipdf` již neexistuje. Skripty, které spouštěly `executeCommand('ipdf')` a odpovídaly na výzvy, mají použít `-pdfimport`; hostitelé s vlastním pásem karet mají použít `pdfimport` (ID položky pásu karet v cad-editor je nyní `cmd-pdfimport`). Popisy příkazů se přesouvají z `command.ACAD.ipdf` do `command.ACAD.pdfimport` / `command.ACAD.-pdfimport` a texty výzev z `jig.ipdf` do `jig.pdfimport` (texty dialogu v `jig.pdfimport.dialog`). `AcApPdfImportConvertor.importFromFilePicker` nyní zobrazí dialog; `importFromCommandLine` je postup s výzvami.
+:::
+
+::: info Chytré bloky: Vyhledat a převést (`BSEARCH`)
+Od vydání, které obsahuje tuto změnu, registruje `@mlightcad/cad-simple-viewer` příkaz **-BSEARCH** a `@mlightcad/cad-editor` přidává **BSEARCH** (alias `BCONVERT`) s kartou Vyhledat a převést v paletě nástrojů (seznam nalezených instancí) a dialogem Převést na blok (karty Vložit a AI na pásu karet).
+
+Porovnávání tvarů se přesunulo z `@mlightcad/cad-pdf-plugin` do `@mlightcad/cad-simple-viewer`. Upravte importy:
+
+| `@mlightcad/cad-pdf-plugin` (zastaralé) | `@mlightcad/cad-simple-viewer` |
+| --- | --- |
+| `findPdfShapeMatches` | `acedFindShapeMatches` |
+| `applyPdfAffine` | `acedApplyAffine2d` |
+| `pdfEntityToFeature` | `acedEntityToShapeFeature(entity, id, { matchLayer: false })` |
+| `PdfMatchFeature` / `PdfAffine` / `PdfShapeMatch` / `PdfShapeMatchOptions` | `AcEdShapeFeature` / `AcEdAffine2d` / `AcEdShapeMatch` / `AcEdShapeMatchOptions` |
+
+Staré názvy fungují dál jako zastaralé aliasy. Text se přesunul z `kind` do `label`. `pdfblock` nyní používá pořadí výzev `-BSEARCH` (Převést → Nový/Existující → název → bod vložení → rozsah); skripty odpovídající na staré výzvy je třeba upravit.
+:::
+
+::: info AutoCAD skupiny (`GROUP` / `PICKSTYLE` / `GROUPDISPLAYMODE`)
+Od vydání, které obsahuje tuto změnu, `@mlightcad/cad-simple-viewer` registruje **GROUP**, **-GROUP**, **UNGROUP** a **GROUPEDIT**, rozšiřuje výběr při `PICKSTYLE` `1` nebo `3` a uplatňuje úchyty `GROUPDISPLAYMODE` u volitelných skupin. `@mlightcad/cad-editor` přidává **CLASSICGROUP** (dialog Seskupování objektů) a panel Domů → Skupiny na pásu karet.
+
+Vyžaduje `@mlightcad/data-model` se systémovými proměnnými `PICKSTYLE` (0–3, výchozí `1`) a `GROUPDISPLAYMODE` (0–2, výchozí `2`). Sdílený výběr asociativní šrafy (`PICKSTYLE` 2/3) zůstává no-op, dokud `AcDbHatch` nezíská soft-pointery hranic.
+:::
+
+::: info Náhled výběru v `cad.view.capturePreview`
+Od vydání, které obsahuje tuto změnu, `CadSession.capturePreview` přijímá objekt voleb místo holého čísla `longSide`:
+
+```ts
+capturePreview?(options?: {
+  longSide?: number
+  selection?: boolean
+}): Promise<CaptureDrawingPreviewResult>
+```
+
+Ve skriptu použijte `cad.view.capturePreview({ longSide?, selection? })`. Po `cad.selection.replace(ids)` předáte `selection: true` pro vykreslení vybraných entit stejnou batch-preview cestou jako ENTPREVIEW (rámování podle scénových bounds, ne databázových `geometricExtents`) a připojení PNG k výsledku nástroje. Prázdný výběr vrací `reason: 'no-selection'`. Bezhlavový `createDatabaseSession` stále přeskočí náhledy (bez rendereru).
+:::
+
+::: info Náhled hladin v `cad.view.capturePreview`
+Od vydání, které obsahuje tuto změnu, přidává `CadCapturePreviewOptions` volbu `layers?: string | string[]` a `CaptureDrawingPreviewFailure` hodnotu `'no-layers'`:
+
+```ts
+cad.view.capturePreview({ layers: ['WALL', 'DOOR'], longSide: 1024 })
+```
+
+Vykreslí se jen geometrie modelového prostoru na těchto hladinách (INSERT přispěje jen svými částmi na těchto hladinách) a snímek se ořízne na společný rozsah hladin místo celého výkresu. Názvy hladin nerozlišují velikost písmen; neznámé názvy vyhodí chybu během běhu skriptu; `layers` nelze kombinovat se `selection: true`. `normalizeCadCapturePreviewOptions` nyní vrací `NormalizedCadCapturePreviewOptions` (`layers` jako `string[]` bez duplicit). Vlastní implementace `CadSession.capturePreview` by měly zpracovat `options.layers`, nebo vrátit `reason: 'no-layers'`. Implementace prohlížeče používá novou `AcApEntityPreviewConvertor.captureLayers(layerNames, longSide)`.
+:::
+
 ::: info Lehký vstup pro úvodní stránku otevření souboru
 Od **1.8.0** nabízí `@mlightcad/cad-simple-viewer` podcestu bez DocManageru pro úvodní stránky. Upřednostněte **`acuiCreateFileOpenSession`** (lazy `createDocManager` + automatické otevření / `attachSourcesTo`). Použijte `AcUiFileOpenLanding`, když otevíráte výkresy sami (např. Vue `MlCadViewer`):
 
@@ -79,15 +152,32 @@ Chování se nemění; mění se jen názvy symbolů. Při upgradu z 1.7.x aktua
 Stejné přejmenování platí i pro další pomocné funkce HTML-core (například `captureAcExSavedViewExtents` → `acexHtmlCaptureSavedViewExtents`, `buildOsnapCatalog` → `acexHtmlBuildOsnapCatalog`). API na úrovni příkazů jako `AcApHtmlConvertor` a `chtml` / `-chtml` nejsou ovlivněna. Vývojové příručky s novými názvy cílí na **1.8.0+**; na 1.7.x používejte i nadále staré symboly.
 :::
 
+::: tip Skriptový hostitel: vytváření skutečných kót (`drawDim*`)
+Od vydání po **1.8.0-preview.2** umí `cad.edit.transaction` v `@mlightcad/cad-script-core` vytvářet kótovací entity — nejen je číst ze snapshotů:
+
+- `drawDimAligned`, `drawDimLinear`, `drawDimDiameter`, `drawDimRadius`
+- `drawDimAngular`, `drawDimArc`, `drawDimOrdinate`
+
+Agenti a skripty by měli volat tato API místo napodobování kót čarami, šipkami a textem. Průměr/poloměr přijímají `center` + `radius`, takže snapshot kružnice lze předat přímo. Viz [API skriptů](../guide/script/api.md).
+:::
+
+::: tip Skriptový hostitel: statistiky po blocích na `cad.blocks`
+Od vydání s touto změnou `cad.blocks` poskytuje u každého bloku `entityCount` / `typeCounts` bez plného pole `entities`. Pro součty preferujte tato pole nebo `count(pred)`. Snímky přes `where` / `inBlock(id, pred)` — snímek celého prostoru se zastaví kolem 500 s `too_many_matches`. `where` / `count` / `inBox` procházejí jen modelový a výkresový prostor.
+:::
+
+::: info SVG File → Open
+Od verze **1.8.0** lze `.svg` otevřít jako výkres přes File → Open / `openDocument` / `openUrl`. Konverze je v novém balíčku [`@mlightcad/cad-svg-converter`](https://github.com/mlightcad/cad-viewer/tree/main/packages/cad-svg-converter). `initializeCadViewer` v `cad-editor` jej registruje automaticky; při samotném `cad-simple-viewer` zavolejte jednou `registerSvgConverter()`. Export zůstává `csvg` v `cad-svg-plugin`.
+:::
+
 ::: info Export PDF rozdělen do sdíleného jádra (prohlížeč + Node)
 Od verze **1.8.0** používá export PDF stejné vrstvení jako export HTML. Sdílená logika je v `@mlightcad/cad-pdf-core` (model voleb a pipeline database → PDF, **bez** závislosti na `cad-simple-viewer` / DOM). Spotřebovávají ji dvě frontendy:
 
 | Balíček | Role |
 | --- | --- |
-| `@mlightcad/cad-pdf-plugin` | Prohlížečové `cpdf` / `-cpdf` / `ipdf` (a Vue dialog exportu) |
+| `@mlightcad/cad-pdf-plugin` | Prohlížečové `cpdf` / `-cpdf` / `pdfimport` (a Vue dialog exportu) |
 | `@mlightcad/cad-pdf-exporter` | Headless Node DXF/DWG → PDF — **bez prohlížeče** |
 
-**Integrátoři v prohlížeči — většinou beze změny.** Nadále používejte `cpdf` / `-cpdf` / `ipdf`, `AcApPdfConvertor`, `AcApPdfExportOptions` a `resolveAcApPdfExportOptions`. Nainstalujte nový peer `@mlightcad/cad-pdf-core` vedle pluginu (stejná verze jako `cad-simple-viewer`).
+**Integrátoři v prohlížeči — většinou beze změny.** Nadále používejte `cpdf` / `-cpdf` / `pdfimport`, `AcApPdfConvertor`, `AcApPdfExportOptions` a `resolveAcApPdfExportOptions`. Nainstalujte nový peer `@mlightcad/cad-pdf-core` vedle pluginu (stejná verze jako `cad-simple-viewer`).
 
 **API / chování, které se uživatelů týkají:**
 

@@ -10,10 +10,7 @@
       :top-offset="paletteOffsets.top"
       :bottom-offset="paletteOffsets.bottom"
     >
-      <ml-overflow-tabs
-        v-model="store.dialogs.activePaletteTab"
-        :tabs="tabs"
-      >
+      <ml-overflow-tabs v-model="store.dialogs.activePaletteTab" :tabs="tabs">
         <div
           v-if="store.dialogs.activePaletteTab === 'layerManager'"
           class="ml-layer-list-wrapper"
@@ -78,6 +75,18 @@
           <ml-blocks-palette />
         </div>
         <div
+          v-else-if="store.dialogs.activePaletteTab === 'bdetect'"
+          class="ml-bdetect-palette-wrapper"
+        >
+          <ml-b-detect-palette />
+        </div>
+        <div
+          v-else-if="store.dialogs.activePaletteTab === 'bsearch'"
+          class="ml-bsearch-palette-wrapper"
+        >
+          <ml-b-search-palette />
+        </div>
+        <div
           v-else-if="
             store.features.agentPlugin &&
             store.dialogs.activePaletteTab === 'agent'
@@ -95,16 +104,20 @@
         >
           <ml-cad-script-panel />
         </div>
+        <div
+          v-else-if="activeHostedPanel"
+          :key="activeHostedPanel.tab"
+          class="ml-hosted-panel-wrapper"
+        >
+          <ml-hosted-panel :element="activeHostedPanel.element" />
+        </div>
       </ml-overflow-tabs>
     </ml-tool-palette>
   </el-config-provider>
 </template>
 
 <script setup lang="ts">
-import {
-  AcApDocManager,
-  AcApLayerService
-} from '@mlightcad/cad-simple-viewer'
+import { AcApDocManager, AcApLayerService } from '@mlightcad/cad-simple-viewer'
 import { AcDbEntityProperties } from '@mlightcad/data-model'
 import {
   type MlOverflowTab,
@@ -118,12 +131,15 @@ import { useI18n } from 'vue-i18n'
 import { store } from '../../app'
 import { useSelectionSet, useViewerRect } from '../../composable'
 import { toolPaletteTabName, toolPaletteTitle } from '../../locale'
+import MlBDetectPalette from './MlBDetectPalette.vue'
 import MlBlocksPalette from './MlBlocksPalette.vue'
+import MlBSearchPalette from './MlBSearchPalette.vue'
 import MlCadScriptPanel from './MlCadScriptPanel.vue'
 import MlCountList from './MlCountList.vue'
 import MlDesignReviewPalette from './MlDesignReviewPalette.vue'
 import MlEntityProperties from './MlEntityProperties.vue'
 import MlFindPalette from './MlFindPalette.vue'
+import MlHostedPanel from './MlHostedPanel.vue'
 import MlLayerList from './MlLayerList.vue'
 import MlMeasurementPalette from './MlMeasurementPalette.vue'
 import MlMemoryProfile from './MlMemoryProfile.vue'
@@ -253,21 +269,39 @@ const tabNames = computed((): readonly string[] => {
   if (store.dialogs.openFileProfileTabVisible) {
     names.push('openFileProfile')
   }
+  // Only while BDETECT runs: the list belongs to that command.
+  if (store.dialogs.bdetectTabVisible) {
+    names.push('bdetect')
+  }
+  // Only while BSEARCH reviews its instances.
+  if (store.dialogs.bsearchTabVisible) {
+    names.push('bsearch')
+  }
   if (store.features.agentPlugin) {
     names.push('agent')
   }
   if (store.features.scriptPlugin) {
     names.push('cadScript')
   }
+  for (const panel of store.dialogs.hostedPanels) names.push(panel.tab)
   return names
 })
 
+/** Command panel of the active tab, if that tab is a hosted panel. */
+const activeHostedPanel = computed(() =>
+  store.dialogs.hostedPanels.find(
+    panel => panel.tab === store.dialogs.activePaletteTab
+  )
+)
+
 const tabs = computed<MlOverflowTab[]>(() => {
   return tabNames.value.map(name => {
+    const hosted = store.dialogs.hostedPanels.find(panel => panel.tab === name)
     return {
       name,
-      label:
-        name === 'cadScript'
+      label: hosted
+        ? hosted.title
+        : name === 'cadScript'
           ? t('main.toolPalette.script.scriptTab')
           : toolPaletteTabName(name)
     }
@@ -278,6 +312,7 @@ const activeTabTitle = computed(() => {
   if (store.dialogs.activePaletteTab === 'cadScript') {
     return t('main.toolPalette.script.scriptTitle')
   }
+  if (activeHostedPanel.value) return activeHostedPanel.value.title
   return toolPaletteTitle(store.dialogs.activePaletteTab)
 })
 
@@ -331,6 +366,8 @@ const propertyEntityLocked = computed(() => propertyRows.value.locked)
   z-index: 7;
 }
 
+.ml-bdetect-palette-wrapper,
+.ml-bsearch-palette-wrapper,
 .ml-layer-list-wrapper {
   overflow: hidden;
   width: 100%;
@@ -422,7 +459,8 @@ const propertyEntityLocked = computed(() => propertyRows.value.locked)
   flex-direction: column;
 }
 
-.ml-agent-palette-wrapper {
+.ml-agent-palette-wrapper,
+.ml-hosted-panel-wrapper {
   overflow: hidden;
   width: 100%;
   height: 100%;

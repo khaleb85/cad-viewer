@@ -2,7 +2,6 @@ import {
   AcCmColor,
   AcCmEventManager,
   AcDbDatabase,
-  AcDbFileType,
   acdbHostApplicationServices,
   AcDbOpenDatabaseOptions,
   AcDbSystemVariables,
@@ -24,6 +23,8 @@ import {
   AcApConvertToJpgCmd,
   AcApConvertToPngCmd,
   AcApCopyCmd,
+  AcApDashBSearchCmd,
+  AcApDashGroupCmd,
   AcApDimAlignedCmd,
   AcApDimAngularCmd,
   AcApDimArcCmd,
@@ -37,6 +38,8 @@ import {
   AcApEllipseCmd,
   AcApEntityPreviewCmd,
   AcApEraseCmd,
+  AcApGroupCmd,
+  AcApGroupEditCmd,
   AcApHatchCmd,
   AcApHideObjectsCmd,
   AcApImageAttachCmd,
@@ -54,8 +57,11 @@ import {
   AcApLayerUnisoCmd,
   AcApLayerUnlockCmd,
   AcApLayoffCmd,
+  AcApLeaderCmd,
   AcApLineCmd,
   AcApLogCmd,
+  AcApMLeaderCmd,
+  AcApMLeaderEditCmd,
   AcApMLineCmd,
   AcApMoveCmd,
   AcApMTextCmd,
@@ -79,8 +85,11 @@ import {
   AcApSplineCmd,
   AcApSwitchBgCmd,
   AcApSysVarCmd,
+  AcApUcsCmd,
   AcApUndoCmd,
+  AcApUngroupCmd,
   AcApUnisolateObjectsCmd,
+  AcApViewRestoreCmd,
   AcApXAttachCmd,
   AcApXLineCmd,
   AcApZoomCmd,
@@ -104,6 +113,7 @@ import {
   acapCollectPaperViewportsBox,
   acapResolveLayoutFrameBox
 } from '../util/AcApLayoutViewFraming'
+import { acapResolveOpenFileType } from '../util/acapResolveOpenFileType'
 import { isScriptQuitCommand, parseScriptLines } from '../util/AcApScriptParser'
 import { acapWithSecondaryDatabase } from '../util/AcApSecondaryDatabase'
 import { AcTrView2d } from '../view'
@@ -119,6 +129,7 @@ import {
 } from './AcApDocsUrl'
 import { AcApDocument } from './AcApDocument'
 import { AcApFontLoader } from './AcApFontLoader'
+import { acapHealModelLayoutLink } from './acapHealModelLayoutLink'
 import {
   AcApOpenDatabaseOptions,
   AcApOpenViewMode
@@ -190,6 +201,7 @@ const DEFAULT_COMMAND_ALIASES: Record<string, string[]> = {
   '-LAYER': ['-LA'],
   LINE: ['L'],
   MLINE: ['ML'],
+  MLEADEREDIT: ['MLE'],
   MTEXT: ['T'],
   MOVE: ['M'],
   OFFSET: ['O'],
@@ -631,6 +643,9 @@ export class AcApDocManager {
     AcTrMTextRenderer.getInstance().setFontUrl(fontsUrl)
     this.installFontFileLoadTimeout()
     acdbHostApplicationServices().workingDatabase = doc.database
+    // Bind the empty drawing's model space after workingDatabase is set so
+    // worldToScreen / UCS icon have a layout camera during the first db.read.
+    this.setActiveLayout(view, doc.database)
 
     this._commandManager = new AcEdCommandStack()
     this.registerCommands()
@@ -1492,12 +1507,11 @@ export class AcApDocManager {
   ): Promise<string> {
     const { targetView, ...dbOptions } = options
     const db = new AcDbDatabase()
-    const fileExtension = fileName.split('.').pop()?.toLocaleLowerCase()
     await acapWithSecondaryDatabase(db, async () => {
       await db.read(
         content,
         { readOnly: true, ...dbOptions },
-        fileExtension === 'dwg' ? AcDbFileType.DWG : AcDbFileType.DXF
+        acapResolveOpenFileType(fileName)
       )
     })
     return this.registerOverlayDatabase(db, { targetView })
@@ -1884,6 +1898,51 @@ export class AcApDocManager {
   }
 
   /**
+   * Returns whether `cmdName` is the trigger of a lazy plugin that has not
+   * registered the command yet.
+   *
+   * Such commands do not exist in the command stack until their plugin loads,
+   * which {@link sendStringToExecute} does on demand. Interactive callers (the
+   * command line) use this to accept them instead of reporting an unknown
+   * command.
+   *
+   * @param cmdName - Command name as typed (case-insensitive).
+   */
+  isLazyPluginCommand(cmdName: string): boolean {
+    const name = cmdName.trim()
+    if (!name) return false
+    return (
+      this._pluginManager.isLazyPluginTrigger(name) &&
+      !this._commandManager.lookupGlobalCmd(name)
+    )
+  }
+
+  /**
+   * Lazy plugin trigger commands not loaded yet whose names start with
+   * `prefix`, for command-line auto-completion next to
+   * {@link searchCommandsByPrefix}.
+   *
+   * Their required open mode is unknown until the plugin loads, so they are
+   * not filtered by the document's mode; running one in a mode it does not
+   * support reports that when the command starts.
+   *
+   * @param prefix - Prefix to match (case-insensitive).
+   * @returns Upper-case trigger names, sorted.
+   */
+  searchLazyCommandsByPrefix(prefix: string): string[] {
+    const normalized = prefix.trim().toUpperCase()
+    if (!normalized) return []
+    return this._pluginManager
+      .getLazyPluginTriggers()
+      .filter(
+        trigger =>
+          trigger.startsWith(normalized) &&
+          !this._commandManager.lookupGlobalCmd(trigger)
+      )
+      .sort()
+  }
+
+  /**
    * Registers all default commands available in the CAD viewer.
    *
    * This method sets up the command system by registering built-in commands including:
@@ -1943,6 +2002,11 @@ export class AcApDocManager {
     addSystemCommand('entout', 'entout', new AcApEntityPreviewCmd())
     addSystemCommand('ellipse', 'ellipse', new AcApEllipseCmd())
     addSystemCommand('erase', 'erase', new AcApEraseCmd())
+    addSystemCommand('group', 'group', new AcApGroupCmd())
+    addSystemCommand('-bsearch', '-bsearch', new AcApDashBSearchCmd())
+    addSystemCommand('-group', '-group', new AcApDashGroupCmd())
+    addSystemCommand('groupedit', 'groupedit', new AcApGroupEditCmd())
+    addSystemCommand('ungroup', 'ungroup', new AcApUngroupCmd())
     addSystemCommand('hideobjects', 'hideobjects', new AcApHideObjectsCmd())
     addSystemCommand('dimlinear', 'dimlinear', new AcApDimLinearCmd())
     addSystemCommand('dimaligned', 'dimaligned', new AcApDimAlignedCmd())
@@ -1975,6 +2039,18 @@ export class AcApDocManager {
     addSystemCommand('layerp', 'layerp', new AcApLayerPCmd())
     addSystemCommand('layerclose', 'layerclose', new AcApLayerCloseCmd())
     addSystemCommand('line', 'line', new AcApLineCmd())
+    addSystemCommand('leader', 'leader', new AcApLeaderCmd())
+    addSystemCommand('mleader', 'mleader', new AcApMLeaderCmd())
+    addSystemCommand(
+      'mleaderedit',
+      'mleaderedit',
+      new AcApMLeaderEditCmd('add')
+    )
+    addSystemCommand(
+      'mleadereditremove',
+      'mleadereditremove',
+      new AcApMLeaderEditCmd('remove')
+    )
     addSystemCommand('mline', 'mline', new AcApMLineCmd())
     addSystemCommand('mtext', 'mtext', new AcApMTextCmd())
     addSystemCommand('copy', 'copy', new AcApCopyCmd())
@@ -2011,6 +2087,8 @@ export class AcApDocManager {
     addSystemCommand('undo', 'undo', new AcApUndoCmd())
     addSystemCommand('redo', 'redo', new AcApRedoCmd())
     addSystemCommand('zoom', 'zoom', new AcApZoomCmd())
+    addSystemCommand('viewrestore', 'viewrestore', new AcApViewRestoreCmd())
+    addSystemCommand('ucs', 'ucs', new AcApUcsCmd())
 
     // Register system variables as commands
     const sysVars = AcDbSysVarManager.instance().getAllDescriptors()
@@ -2286,8 +2364,14 @@ export class AcApDocManager {
   setActiveLayout(view?: AcTrView2d, database?: AcDbDatabase) {
     const currentView = view ?? (this.curView as AcTrView2d)
     const db = database ?? this.curDocument.database
-    currentView.activeLayoutBtrId = db.currentSpaceId
-    currentView.modelSpaceBtrId = db.tables.blockTable.modelSpace.objectId
+    // Heal Model layout → *Model_Space before activating. Stale layout BTR
+    // ids leave `activeLayoutView` undefined (blank canvas + zoomTo crash).
+    const modelSpaceId = acapHealModelLayoutLink(db)
+    const activeSpaceId = db.currentSpaceId || modelSpaceId
+    currentView.ensureLayoutView(activeSpaceId)
+    currentView.ensureLayoutView(modelSpaceId)
+    currentView.activeLayoutBtrId = activeSpaceId
+    currentView.modelSpaceBtrId = modelSpaceId
   }
 
   /**
@@ -2317,6 +2401,10 @@ export class AcApDocManager {
       this.openProgressView.clear()
     }
     this.openProgressView.bindDrawDatabase(this.context.doc.database)
+    // Activate layout views before db.read streams entities. Otherwise
+    // mid-open UCS / worldToScreen run with no camera and WCS +Y appears
+    // to point down on screen until onAfterOpenDocument.
+    this.setActiveLayout(this.openProgressView, this.context.doc.database)
     // `progressiveRendering` gates both stages: time-sliced mid-open paints
     // in batchConvert, and whether the open overlay waits for deferred text.
     // Camera auto-fit is started separately in onAfter when the open view
@@ -2939,6 +3027,7 @@ export class AcApDocManager {
     this._pluginManager.setContext(context)
     this.bindOpenProgress(doc)
     this.curView.bindDrawDatabase(doc.database)
+    this.setActiveLayout(this.curView, doc.database)
   }
 
   /**

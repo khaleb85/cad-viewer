@@ -1,4 +1,9 @@
 import {
+  acapLlmCreateModel,
+  type AcApLlmSettings,
+  acapLlmSkipDataUrlDownload
+} from '@mlightcad/cad-llm-plugin'
+import {
   type ChatTransport,
   convertToModelMessages,
   Experimental_Agent as Agent,
@@ -11,11 +16,10 @@ import {
 
 import { agentT } from '../i18n'
 import type { AgentMode } from '../storage/AgentModeStore'
-import type { LlmSettings } from '../storage/LlmSettingsStore'
 import { createCadTools } from '../tools/cadTools'
 import { formatChatError } from '../ui/formatChatError'
+import { type AgentContextUsage, buildAgentContextUsage } from './contextUsage'
 import { extractConversationContext } from './conversationContext'
-import { createModelFromSettings } from './createModel'
 import { captureDrawingPreview } from './drawingPreviewCapture'
 import {
   buildVerificationFeedbackMessage,
@@ -23,7 +27,6 @@ import {
   verifyDrawing
 } from './drawingVerifier'
 import { normalizeInlineFileData } from './normalizeInlineFileData'
-import { skipDataUrlDownload } from './skipDataUrlDownload'
 import { buildCadAgentSystemPrompt } from './systemPrompt'
 import {
   appendAssistantText,
@@ -46,37 +49,83 @@ export interface AgentChatOptions {
    * invoked CAD tools (skipped when the agent only replied with text).
    */
   agentMode: AgentMode
+  /**
+   * Called after each agent round with the last model step's prompt tokens so
+   * the UI can update the context-usage ring.
+   */
+  onContextUsage?: (usage: AgentContextUsage) => void
 }
+
+/**
+ * Max model↔tool steps in one `agent.stream` (one user turn).
+ * Query / edit tasks often need many successive `execute_cad_script` calls;
+ * the old limit of 10 ran out too quickly.
+ */
+export const MAX_AGENT_STEPS_SIMPLE = 50
+/** High inference allows longer incremental draw + fix loops. */
+export const MAX_AGENT_STEPS_HIGH = 80
 
 /**
  * Builds an AI SDK agent configured for CAD drawing with tool calling.
  *
  * @param settings - LLM provider credentials and model selection.
- * @param options - Runtime options (agent mode controls screenshots / verification).
+ * @param options - Runtime options (agent mode controls automatic vision verification).
  * @returns An agent that streams responses and can invoke {@link createCadTools}.
  */
 export function createCadAgent(
-  settings: LlmSettings,
+  settings: AcApLlmSettings,
   options: AgentChatOptions = { agentMode: 'simple' }
 ) {
+  const maxSteps =
+    options.agentMode === 'high-inference'
+      ? MAX_AGENT_STEPS_HIGH
+      : MAX_AGENT_STEPS_SIMPLE
   return new Agent({
-    model: createModelFromSettings(settings),
+    model: acapLlmCreateModel(settings),
     system: buildCadAgentSystemPrompt(options.agentMode),
     tools: createCadTools({ agentMode: options.agentMode }),
-    stopWhen: stepCountIs(10)
+    stopWhen: stepCountIs(maxSteps)
   })
 }
 
-/**
- * Streams one agent round and returns the updated UI messages when finished.
- */
+/** Extracts tool name/description/schema text for context-usage estimates. */
+function toolDefsForContextUsage(tools: Agent['tools']) {
+  return Object.entries(tools).map(([name, value]) => {
+    const tool = value as {
+      description?: string
+      inputSchema?: unknown
+      parameters?: unknown
+    }
+    let schemaText = ''
+    try {
+      schemaText = JSON.stringify(tool.inputSchema ?? tool.parameters ?? '')
+    } catch {
+      schemaText = String(tool.inputSchema ?? tool.parameters ?? '')
+    }
+    return {
+      name,
+      description: tool.description,
+      schemaText
+    }
+  })
+}
+
 async function streamAgentRound(options: {
   agent: Agent
   workingMessages: UIMessage[]
   abortSignal: AbortSignal | undefined
   write: UIMessageChunkWriter
+  systemPrompt: string
+  onContextUsage?: (usage: AgentContextUsage) => void
 }): Promise<UIMessage[]> {
-  const { agent, workingMessages, abortSignal, write } = options
+  const {
+    agent,
+    workingMessages,
+    abortSignal,
+    write,
+    systemPrompt,
+    onContextUsage
+  } = options
   const modelMessages = normalizeInlineFileData(
     await convertToModelMessages(workingMessages, {
       tools: agent.tools,
@@ -85,12 +134,41 @@ async function streamAgentRound(options: {
       ignoreIncompleteToolCalls: true
     })
   )
-  // Agent.stream typings omit streamText extras; both options are forwarded at runtime.
+  const tools = toolDefsForContextUsage(agent.tools)
+  const reportContextUsage = (
+    usage: {
+      inputTokens: number | undefined
+      outputTokens: number | undefined
+    },
+    messages: UIMessage[]
+  ) => {
+    if (abortSignal?.aborted || !onContextUsage) return
+    const usedTokens = usage.inputTokens
+    if (typeof usedTokens !== 'number' || !Number.isFinite(usedTokens)) return
+    onContextUsage(
+      buildAgentContextUsage({
+        usedTokens,
+        outputTokens:
+          typeof usage.outputTokens === 'number'
+            ? usage.outputTokens
+            : undefined,
+        systemPrompt,
+        tools,
+        messages
+      })
+    )
+  }
+
+  // Agent.stream typings omit streamText extras; options are forwarded at runtime.
   const result = agent.stream({
     prompt: modelMessages,
     abortSignal,
     // Skip redundant fetch of inline image data URLs (can stall large attachments).
-    experimental_download: skipDataUrlDownload
+    experimental_download: acapLlmSkipDataUrlDownload,
+    // Update the ring after every model step (not only when the round ends).
+    onStepFinish: ({ usage }) => {
+      reportContextUsage(usage, workingMessages)
+    }
   } as Parameters<Agent['stream']>[0])
 
   let finishedMessages = workingMessages
@@ -105,6 +183,15 @@ async function streamAgentRound(options: {
 
   for await (const chunk of uiStream) {
     write(chunk)
+  }
+
+  // Final pass with the completed transcript so tool results land in Conversation.
+  if (onContextUsage && !abortSignal?.aborted) {
+    try {
+      reportContextUsage(await result.usage, finishedMessages)
+    } catch {
+      // Usage may reject when the stream produced no steps; leave prior UI state.
+    }
   }
 
   return finishedMessages
@@ -135,7 +222,7 @@ function countCadToolParts(messages: UIMessage[]): number {
  */
 export function createAgentChatTransport(
   getAgent: () => Agent,
-  getSettings: () => LlmSettings,
+  getSettings: () => AcApLlmSettings,
   getOptions: () => AgentChatOptions
 ): ChatTransport<UIMessage> {
   return {
@@ -154,14 +241,17 @@ export function createAgentChatTransport(
 
           try {
             let workingMessages = validatedMessages
-            const { agentMode } = getOptions()
+            const { agentMode, onContextUsage } = getOptions()
+            const systemPrompt = buildCadAgentSystemPrompt(agentMode)
 
             if (agentMode === 'simple') {
               await streamAgentRound({
                 agent,
                 workingMessages,
                 abortSignal,
-                write
+                write,
+                systemPrompt,
+                onContextUsage
               })
               return
             }
@@ -177,7 +267,9 @@ export function createAgentChatTransport(
                 agent,
                 workingMessages,
                 abortSignal,
-                write
+                write,
+                systemPrompt,
+                onContextUsage
               })
 
               if (abortSignal?.aborted) break

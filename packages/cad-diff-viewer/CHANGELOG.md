@@ -1,5 +1,22 @@
 # @mlightcad/cad-diff-viewer
 
+## 1.8.0-preview.3
+
+### Patch Changes
+
+- feat: adds drawDim\* script APIs for real dimensions, suggested-task prompts and a context-usage ring in the agent palette, and narrower entity queries so large drawings avoid script_timeout. Also frames the first Model visit from converted geometry when opening into a paper layout so ZOOM Original does not land on a blank view
+- Updated dependencies [5926492]
+- Updated dependencies
+  - @mlightcad/cad-simple-viewer@1.8.0-preview.3
+
+## 1.8.0-preview.2
+
+### Patch Changes
+
+- fix: keeps MTEXT background masks under their glyphs after INSERT compact by preserving original child order in the group compactor, and loads OrbitControls via an explicit .js import so ESM resolution does not break. Also upgrades mtext-renderer to 0.13.8 and mtext-input-box to 0.3.8
+- Updated dependencies
+  - @mlightcad/cad-simple-viewer@1.8.0-preview.2
+
 ## 1.8.0-preview.1
 
 ### Patch Changes

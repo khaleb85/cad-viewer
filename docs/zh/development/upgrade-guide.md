@@ -6,6 +6,79 @@ title: "升级 cad-simple-viewer 和 cad-editor"
 
 本指南介绍如何安全地升级 `@mlightcad/cad-simple-viewer` 和 `@mlightcad/cad-editor`——为什么它们不能单独升级、哪些相关包必须一起迁移，以及两种可靠的方法来确定任意给定版本的正确兼容版本集。
 
+::: info 共享的 AI 模型设置（`@mlightcad/cad-llm-plugin`）
+从包含此变更的版本开始，LLM 服务商设置从 `@mlightcad/cad-agent-plugin` 移到新的 **`@mlightcad/cad-llm-plugin`**，CAD 智能体和 `pdftext` 文字识别（OCR）共用同一份配置。新包提供 **LLMSETTINGS** 命令和一个不依赖 UI 框架的设置对话框（`@mlightcad/cad-editor` 的 AI 功能区选项卡中也有入口）；`@mlightcad/cad-simple-viewer` 新增 `AcApLlmSettingsService`，任何功能都可以通过它打开对话框，或检查是否配置了支持图片的模型。
+
+宿主迁移：
+
+- 安装 `@mlightcad/cad-llm-plugin`（现在是 `@mlightcad/cad-agent-plugin` 的 peer 依赖），并在 `registerLazyAgentPlugin` 旁调用 `registerLazyLlmPlugin`。安装该包后，`@mlightcad/cad-editor` 会自动完成注册。
+- `registerLazyAgentPlugin` 不再注册文字识别器。识别器 id 改为 `cad-llm`（原为 `cad-agent`），由 `registerLazyLlmPlugin` 注册。`acapAgentRecognizeText` / `cleanRecognizedText` 改为 `@mlightcad/cad-llm-plugin` 中的 `acapLlmRecognizeText` / `acapLlmCleanRecognizedText`。
+- 智能体面板中内嵌的设置卡片被对话框取代，齿轮按钮会打开 LLMSETTINGS。
+- 已保存的设置不会丢失：`localStorage` 键 `cad-agent-plugin.llm-config` 保持不变。
+- 当前使用的模型只支持文本时，OCR 会改用第一个已配置的支持图片的模型。
+
+```ts
+import { registerLazyAgentPlugin } from '@mlightcad/cad-agent-plugin/register'
+import { registerLazyLlmPlugin } from '@mlightcad/cad-llm-plugin/register'
+
+registerLazyLlmPlugin(pluginManager)
+registerLazyAgentPlugin(pluginManager)
+```
+:::
+
+::: info 输入 PDF：`ipdf` 改为 `PDFIMPORT` / `-PDFIMPORT`
+从包含此改动的版本（1.8.0）起，`@mlightcad/cad-pdf-plugin` 的 PDF 导入命令改用 AutoCAD 的名称：
+
+- **PDFIMPORT** 在选择文件后打开“输入 PDF”对话框（`AcUiPdfImportDialog`）：带预览的页面、插入点（X/Y 或在屏幕上指定）、比例和输入方式（复原图纸 / 保留 PDF 视觉效果）。
+- **-PDFIMPORT** 保留原 `ipdf` 的命令行提示（页码，以及带“比例”和“模式”选项的插入点），对应类为 `AcApImportPdfPromptCmd`。
+
+迁移：`ipdf` 已不存在。通过 `executeCommand('ipdf')` 并回答提示的脚本应改用 `-pdfimport`；自行渲染功能区的宿主应使用 `pdfimport`（cad-editor 功能区按钮 ID 现为 `cmd-pdfimport`）。命令说明从 `command.ACAD.ipdf` 移到 `command.ACAD.pdfimport` / `command.ACAD.-pdfimport`，提示文本从 `jig.ipdf` 移到 `jig.pdfimport`（对话框文本位于 `jig.pdfimport.dialog`）。`AcApPdfImportConvertor.importFromFilePicker` 现在显示对话框；`importFromCommandLine` 为命令行流程。
+:::
+
+::: info 智能块：搜索并转换（`BSEARCH`）
+自包含本变更的版本起，`@mlightcad/cad-simple-viewer` 注册 **-BSEARCH**，`@mlightcad/cad-editor` 增加 **BSEARCH**（别名 `BCONVERT`），提供工具选项板中的「搜索并转换」选项卡（列出找到的实例）和「转换为块」对话框（位于功能区「插入」和「AI」选项卡）。
+
+形状匹配已从 `@mlightcad/cad-pdf-plugin` 移至 `@mlightcad/cad-simple-viewer`，请迁移导入：
+
+| `@mlightcad/cad-pdf-plugin`（已弃用） | `@mlightcad/cad-simple-viewer` |
+| --- | --- |
+| `findPdfShapeMatches` | `acedFindShapeMatches` |
+| `applyPdfAffine` | `acedApplyAffine2d` |
+| `pdfEntityToFeature` | `acedEntityToShapeFeature(entity, id, { matchLayer: false })` |
+| `PdfMatchFeature` / `PdfAffine` / `PdfShapeMatch` / `PdfShapeMatchOptions` | `AcEdShapeFeature` / `AcEdAffine2d` / `AcEdShapeMatch` / `AcEdShapeMatchOptions` |
+
+旧名称仍作为已弃用的别名可用。文字内容已从特征的 `kind` 移到 `label`（默认 `ignoreLabels: false` 时仍需一致）。`pdfblock` 现在使用 `-BSEARCH` 的提示顺序（转换 → 新建/现有 → 名称 → 插入点 → 范围），按旧提示应答的脚本需要调整。
+:::
+
+::: info AutoCAD 编组（`GROUP` / `PICKSTYLE` / `GROUPDISPLAYMODE`）
+自包含本变更的版本起，`@mlightcad/cad-simple-viewer` 注册 **GROUP**、**-GROUP**、**UNGROUP**、**GROUPEDIT**；当 `PICKSTYLE` 为 `1` 或 `3` 时扩展选择；并对可选编组应用 `GROUPDISPLAYMODE` 夹点。`@mlightcad/cad-editor` 增加 **CLASSICGROUP**（对象编组对话框）以及「开始 → 编组」功能区面板。
+
+需要已注册 `PICKSTYLE`（0–3，默认 `1`）和 `GROUPDISPLAYMODE`（0–2，默认 `2`）的 `@mlightcad/data-model`。关联填充共选（`PICKSTYLE` 2/3）在 `AcDbHatch` 具备边界软指针之前仍为 no-op。
+:::
+
+::: info `cad.view.capturePreview` 选中预览出图
+自包含本变更的版本起，`CadSession.capturePreview` 改为接收选项对象，不再使用单独的 `longSide` 数字参数：
+
+```ts
+capturePreview?(options?: {
+  longSide?: number
+  selection?: boolean
+}): Promise<CaptureDrawingPreviewResult>
+```
+
+脚本侧使用 `cad.view.capturePreview({ longSide?, selection? })`。在 `cad.selection.replace(ids)` 之后传入 `selection: true`，会通过与 ENTPREVIEW 相同的 batch 预览路径提取选中图元（按场景包围盒取景，而非数据库 `geometricExtents`），并将 PNG 附加到工具结果。空选中返回 `reason: 'no-selection'`。无渲染器的 `createDatabaseSession` 仍会跳过预览。
+:::
+
+::: info `cad.view.capturePreview` 按图层出图
+自包含本变更的版本起，`CadCapturePreviewOptions` 新增 `layers?: string | string[]`，`CaptureDrawingPreviewFailure` 新增 `'no-layers'`：
+
+```ts
+cad.view.capturePreview({ layers: ['WALL', 'DOOR'], longSide: 1024 })
+```
+
+只渲染模型空间中这些图层上的图元（块参照只贡献其位于这些图层上的部分），并按这些图层叠加后的范围取景，而不是整张图纸。图层名不区分大小写；不存在的图层名会在脚本运行时抛错；`layers` 不能与 `selection: true` 同时使用。`normalizeCadCapturePreviewOptions` 现在返回 `NormalizedCadCapturePreviewOptions`（`layers` 为去重后的 `string[]`）。自定义的 `CadSession.capturePreview` 实现应处理 `options.layers`，或返回 `reason: 'no-layers'`。查看器实现使用新增的 `AcApEntityPreviewConvertor.captureLayers(layerNames, longSide)`。
+:::
+
 ::: info 轻量文件打开落地页入口
 从 **1.8.0** 起，`@mlightcad/cad-simple-viewer` 为落地页提供不依赖 DocManager 的子路径。请优先使用 **`acuiCreateFileOpenSession`**（延迟 `createDocManager` + 自动打开 / `attachSourcesTo`）。当你自行打开图纸时使用 `AcUiFileOpenLanding`（例如 Vue `MlCadViewer`）：
 
@@ -79,15 +152,38 @@ GitHub 仓库仍然是 [`mlightcad/cad-viewer`](https://github.com/mlightcad/cad
 其他 HTML-core 辅助函数同样改名（例如 `captureAcExSavedViewExtents` → `acexHtmlCaptureSavedViewExtents`，`buildOsnapCatalog` → `acexHtmlBuildOsnapCatalog`）。命令级 API（如 `AcApHtmlConvertor` 以及 `chtml` / `-chtml`）不受影响。开发指南中展示的新名称面向 **1.8.0+**；若仍使用 1.7.x，请继续用旧符号名。
 :::
 
+::: tip 脚本宿主：创建真正的标注实体（`drawDim*`）
+自 **1.8.0-preview.2** 之后的版本起，`@mlightcad/cad-script-core` 的 `cad.edit.transaction` 可创建标注实体（此前只能读取快照）：
+
+- `drawDimAligned`、`drawDimLinear`、`drawDimDiameter`、`drawDimRadius`
+- `drawDimAngular`、`drawDimArc`、`drawDimOrdinate`
+
+Agent / 脚本应调用这些方法，而不是用直线、箭头和文字拼假标注。直径/半径支持 `center` + `radius`，可直接使用圆快照。详见 [脚本 API](../guide/script/api.md)。
+:::
+
+::: tip 脚本宿主：按块统计挂在 `cad.blocks`
+包含此改动的版本起，`cad.blocks` 提供每个块的 `entityCount` / `typeCounts` 元数据，不再内嵌实体数组。统计请用这些字段或 `count(pred)`。快照用 `where` / `inBlock(id, pred)`——整空间裸快照会在约 500 条时以 `too_many_matches` 中止。`where` / `count` / `inBox` 只扫模型/图纸空间（块定义用 `inBlock`）。块参照的 `type` 为 `BlockReference`。
+:::
+
+::: info SVG File → Open
+从 **1.8.0** 起，可通过常规 File → Open / `openDocument` / `openUrl` 打开 `.svg`。矢量转换在新包 [`@mlightcad/cad-svg-converter`](https://github.com/mlightcad/cad-viewer/tree/main/packages/cad-svg-converter)（仅依赖 `@mlightcad/data-model`）。
+
+**使用 `@mlightcad/cad-editor`：** `initializeCadViewer` 会自动注册转换器；请与固定版本组一起安装 `@mlightcad/cad-svg-converter`。
+
+**仅使用 `@mlightcad/cad-simple-viewer`：** 启动时调用一次 `registerSvgConverter()`。
+
+v1 支持子集：`line`、`polyline`/`polygon`/`rect`、`circle`、`ellipse`（非均匀时折线近似）、`path`（细分）、`text`、嵌套 `g` + transform。导出仍用 `@mlightcad/cad-svg-plugin` 的 `csvg`；编辑后保存为 DXF（`cdxf`）或再导出 SVG，无原生 SVG 保存。
+:::
+
 ::: info PDF 导出拆分为共享核心（浏览器 + Node）
 从 **1.8.0** 开始，PDF 导出与 HTML 导出采用相同的分层：共享逻辑放在 `@mlightcad/cad-pdf-core`（选项模型与 database → PDF 管线，**不**依赖 `cad-simple-viewer` / DOM）。两个前端都基于它：
 
 | 包 | 作用 |
 | --- | --- |
-| `@mlightcad/cad-pdf-plugin` | 浏览器端 `cpdf` / `-cpdf` / `ipdf`（以及 Vue 导出对话框） |
+| `@mlightcad/cad-pdf-plugin` | 浏览器端 `cpdf` / `-cpdf` / `pdfimport`（以及 Vue 导出对话框） |
 | `@mlightcad/cad-pdf-exporter` | Node 无头 DXF/DWG → PDF — **无需浏览器** |
 
-**浏览器集成方——大体不变。** 继续使用 `cpdf` / `-cpdf` / `ipdf`、`AcApPdfConvertor`、`AcApPdfExportOptions`、`resolveAcApPdfExportOptions`。请把新的 peer `@mlightcad/cad-pdf-core` 与插件一起安装（版本与 `cad-simple-viewer` 相同）。
+**浏览器集成方——大体不变。** 继续使用 `cpdf` / `-cpdf` / `pdfimport`、`AcApPdfConvertor`、`AcApPdfExportOptions`、`resolveAcApPdfExportOptions`。请把新的 peer `@mlightcad/cad-pdf-core` 与插件一起安装（版本与 `cad-simple-viewer` 相同）。
 
 **对用户有影响的 API / 行为变化：**
 
@@ -151,6 +247,7 @@ await exportFileToPdf('drawing.dwg', 'drawing.pdf', {
 | `@mlightcad/cad-html-plugin` | 一键导出自包含 HTML |
 | `@mlightcad/cad-pdf-plugin` | 浏览器端 PDF 导出与 PDF 转 CAD 导入 |
 | `@mlightcad/cad-svg-plugin` | SVG 导出 |
+| `@mlightcad/cad-svg-converter` | SVG File → Open（矢量 → AcDb 实体） |
 | `@mlightcad/cad-simple-ui-plugin` | 纯 DOM 工具栏、图层管理器、停靠面板 |
 | `@mlightcad/cad-agent-plugin` | AI 智能体驱动的交互 |
 | `@mlightcad/cad-onedrive-plugin` | OneDrive 集成 |

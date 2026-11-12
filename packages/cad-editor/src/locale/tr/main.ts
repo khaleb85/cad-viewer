@@ -13,8 +13,10 @@ export default {
   },
   ribbon: {
     tab: {
+      ai: 'AI',
       home: 'Ana Sayfa',
       insert: 'Ekle',
+      view: 'Görünüm',
       review: 'İnceleme',
       measurement: 'Ölçüm',
       hatchContext: 'Tarama',
@@ -209,13 +211,21 @@ export default {
       }
     },
     group: {
+      smartBlocks: 'Akıllı Bloklar',
+      agent: 'Ajan',
+      aiModel: 'Yapay Zekâ Modeli',
+      pdf: 'PDF',
       draw: 'Çiz',
       dimension: 'Ölçü',
       modify: 'Düzenle',
       layer: 'Katman',
       properties: 'Özellikler',
+      groups: 'Gruplar',
       utilities: 'Yardımcı Araçlar',
       annotation: 'Açıklama',
+      navigate: 'Gezinme',
+      namedViews: 'Adlı Görünümler',
+      coordinates: 'Koordinatlar',
       review: 'İnceleme',
       measurement: 'Ölçüm',
       style: 'Stil',
@@ -272,6 +282,20 @@ export default {
       arc: 'Eliptik Yay'
     },
     tooltip: {
+      searchConvert:
+        'Seçili nesnelerin tüm kopyalarını bulur ve bloklara dönüştürür (BSEARCH).',
+      detectConvert:
+        'Çizimin her yerindeki yinelenen nesneleri bulur ve bloklara dönüştürür (BDETECT).',
+      importPdf:
+        'PDF dosyasından vektör geometriyi içe aktarır; daireleri, yayları ve eğrileri yeniden oluşturur (PDFIMPORT).',
+      pdfScale:
+        'İçe aktarılan PDF geometrisini bilinen bir mesafenin iki noktasına göre ölçekler (PDFSCALE).',
+      pdfDim:
+        'Patlatılmış PDF ölçülerini (oklar veya işaretler, çizgiler, uzatma çizgileri ve metinler) ölçü nesnelerine geri dönüştürür (PDFDIM).',
+      pdfBlock:
+        'PDF içindeki tekrarlanan geometriyi bloğa dönüştürür ve her kopyayı blok referansıyla değiştirir (PDFBLOCK).',
+      pdfText:
+        'Patlatılmış PDF metin çizgilerini metin nesnelerine geri dönüştürür (PDFTEXT).',
       line: 'Tek bir düz çizgi parçası çizin.',
       polyline:
         'Bağlı bir dizi çizgi veya yay parçasını tek bir nesne olarak çizin.',
@@ -302,6 +326,9 @@ export default {
       dimcontinue: 'Önceki ölçüden sürekli ölçü oluşturun.',
       dimbaseline: 'Önceki ölçüden taban çizgisi ölçüsü oluşturun.',
       dimstyle: 'Ölçü stili yöneticisini açın.',
+      mleader: 'Çoklu önder oluşturun.',
+      mleaderAdd: 'Mevcut çoklu öndere bir önder çizgisi ekleyin.',
+      mleaderRemove: 'Mevcut çoklu önderden bir önder çizgisini kaldırın.',
       move: 'Seçili nesneleri yeni bir konuma taşıyın.',
       rotate: 'Seçili nesneleri bir taban noktası etrafında döndürün.',
       copy: 'Seçili nesneleri yeni bir konuma kopyalayın.',
@@ -311,6 +338,12 @@ export default {
       undo: 'Son düzenleme işlemini geri alın.',
       redo: 'Son geri alınan düzenleme işlemini yineleyin.',
       properties: 'Geçerli seçim için Özellikler panelini açın.',
+      group: 'Seçili nesnelerden grup oluşturur (GROUP).',
+      ungroup: 'Grup tanımını çözer (UNGROUP).',
+      groupEdit:
+        'Grup üyelerini ekler, kaldırır veya yeniden adlandırır (GROUPEDIT).',
+      groupSelect: 'Grup seçimini açar veya kapatır (PICKSTYLE).',
+      classicGroup: 'Nesne Gruplama iletişim kutusunu açar (CLASSICGROUP).',
       quickSelect:
         'Ölçütlere göre varlıkları filtrelemek ve seçmek için Hızlı Seçimi açın.',
       find: 'Tüm çizimde veya geçerli yerleşimde metin aramak için Bul paletini açın.',
@@ -332,6 +365,32 @@ export default {
         'Bir blokta kullanılacak öznitelik tanımı oluşturun (ATTDEF).',
       agent:
         'Doğal dil kullanarak geometri çizmek için CAD Ajanı panel sekmesini açın.',
+      llmSettings:
+        'CAD Ajanı ve PDF metin tanıma (OCR) tarafından kullanılan yapay zekâ modeli sağlayıcılarını ve API anahtarlarını yapılandırın.',
+      pan: 'Büyütmeyi değiştirmeden çizimin görünümünü taşır.',
+      zoom: 'Çizim görüntüsünü yakınlaştırır veya uzaklaştırır.',
+      zoomExtents:
+        'Tüm varlıkların maksimum sınırlarını görüntülemek için yakınlaştırır.',
+      zoomWindow:
+        'Bir pencereyle belirtilen alanı görüntülemek için yakınlaştırır.',
+      zoomPrevious: 'Önceki görünümü görüntülemek için yakınlaştırır.',
+      zoomSaved: 'Kayıtlı VPORT / düzen görünümüne yakınlaştırır.',
+      zoomSmart: 'Baskın geometri kümesine yakınlaştırır.',
+      newView:
+        'Geçerli görüntüden veya bir pencereden yeni bir adlı görünüm oluşturur.',
+      viewManager:
+        'Adlı görünümleri oluşturmak, geri yüklemek ve silmek için Görünüm Yöneticisi\'ni açar.',
+      ucs: 'Geçerli kullanıcı koordinat sisteminin orijinini ve yönünü ayarlar.',
+      namedUcs: 'Adlı UCS tanımlarını ve UCS simgesi ayarlarını yönetir.',
+      ucsWorld: 'UCS\'yi dünya koordinat sistemine ayarlar.',
+      ucsOrigin: 'Yeni bir UCS orijini tanımlar.',
+      ucsX: 'UCS\'yi X ekseni etrafında döndürür.',
+      ucsY: 'UCS\'yi Y ekseni etrafında döndürür.',
+      ucsZ: 'UCS\'yi Z ekseni etrafında döndürür.',
+      ucsZAxis: 'Z eksenini belirterek bir UCS tanımlar.',
+      ucsView: 'UCS\'yi geçerli görünümle hizalar.',
+      ucsObject: 'UCS\'yi seçilen bir nesneye hizalar.',
+      restoreView: 'Çizimde kayıtlı adlı bir görünümü geri yükler.',
       propertyColor:
         'Yeni oluşturulan nesneler veya seçili varlıklar için rengi ayarlayın.',
       propertyLineType:
@@ -400,6 +459,13 @@ export default {
       }
     },
     command: {
+      searchConvert: 'Ara ve\nDönüştür',
+      detectConvert: 'Algıla ve\nDönüştür',
+      importPdf: 'PDF\nİçe Aktar',
+      pdfScale: 'Ölçeği\nKalibre Et',
+      pdfDim: 'Ölçüleri\nKurtar',
+      pdfBlock: 'Blok\nOluştur',
+      pdfText: 'Metni\nKurtar',
       line: 'Çizgi',
       polyline: 'Çoklu Çizgi',
       circle: 'Daire',
@@ -430,6 +496,9 @@ export default {
       dimcontinue: 'Sürekli',
       dimbaseline: 'Taban',
       dimstyle: 'Ölçü Stili',
+      mleader: 'Çoklu Önder',
+      mleaderAdd: 'Önder Ekle',
+      mleaderRemove: 'Önder Kaldır',
       move: 'Taşı',
       rotate: 'Döndür',
       copy: 'Kopyala',
@@ -438,6 +507,11 @@ export default {
       undo: 'Geri Al',
       redo: 'Yinele',
       properties: 'Özellikler',
+      group: 'Grup',
+      ungroup: 'Grubu Çöz',
+      groupEdit: 'Grup Düzenle',
+      groupSelect: 'Grup Seçimi Aç/Kapa',
+      classicGroup: 'Grup Yöneticisi',
       quickSelect: 'Hızlı\nSeçim',
       find: 'Bul',
       countList: 'Sayım',
@@ -447,8 +521,74 @@ export default {
       insert: 'Ekle',
       editAttributes: 'Öznitelikleri\nDüzenle',
       defineAttribute: 'Öznitelik\nTanımla',
-      agent: 'CAD\nAjanı'
+      agent: 'Ajan',
+      llmSettings: 'Model\nAyarları',
+      pan: 'Kaydır',
+      zoom: 'Yakınlaştır',
+      zoomExtents: 'Sınırlar',
+      zoomWindow: 'Pencere',
+      zoomPrevious: 'Önceki',
+      zoomSaved: 'Kayıtlı',
+      zoomSmart: 'Akıllı',
+      newView: 'Yeni\nGörünüm',
+      viewManager: 'Görünüm\nYöneticisi',
+      ucs: 'UCS',
+      namedUcs: 'Adlı\nUCS',
+      ucsWorld: 'Dünya',
+      ucsOrigin: 'Orijin',
+      ucsX: 'X',
+      ucsY: 'Y',
+      ucsZ: 'Z',
+      ucsZAxis: 'Z Ekseni',
+      ucsView: 'Görünüm',
+      ucsObject: 'Nesne',
+      restoreView: 'Görünümü\nGeri Yükle'
     }
+  },
+  bsearch: {
+    found: '{count} örnek bulundu, {included} tanesi dahil',
+    previous: 'Önceki örnek',
+    next: 'Sonraki örnek',
+    convert: 'Bloğa dönüştür…',
+    cancel: 'İptal',
+    rotation: 'Döndürülmüş',
+    mirror: 'Aynalanmış',
+    scale: 'Ölçeklenmiş',
+    sameLayer: 'Aynı katman',
+    existingBlocks: 'Mevcut bloklar',
+    textVariations: 'Metin farkları',
+    pickPrompt: 'Dahil etmek veya hariç tutmak için bir örneğe tıklayın ya da',
+    source: 'Seçili nesneler: {count}',
+    options: 'Arama seçenekleri',
+    none: 'Başka örnek bulunamadı. Arama seçeneklerini değiştirin veya yalnızca seçimi dönüştürün.',
+    includeAll: 'Tümünü dahil et',
+    include: 'Bu örneği dahil et',
+    instance: 'Örnek {index}',
+    blockReference: 'Blok referansı',
+    rotatedBy: '{angle}° döndürülmüş',
+    mirrored: 'Aynalanmış',
+    scaledBy: 'Ölçek {scale}',
+    hint: 'Örneğe yakınlaştırmak için bir satıra tıklayın. Dahil etmek veya hariç tutmak için çizimde bir örneğe tıklayın.'
+  },
+  bdetect: {
+    detecting: 'Çizimde yinelenen nesneler aranıyor…',
+    foundSoFar: 'Şu ana kadar {count} grup bulundu',
+    stop: 'Durdur',
+    groups: '{count} yinelenen nesne grubu',
+    none: 'Yinelenen nesne bulunamadı.',
+    selectAll: 'Tümünü seç',
+    instances: '{count} örnek × {objects} nesne',
+    layers: 'Katmanlar: {layers}',
+    attributes: 'Öznitelikler',
+    attributesHint: 'Örnekler arasında farklı olan metinler öznitelik olur',
+    blockName: 'Blok adı',
+    review: 'Bu grubu incele ve dönüştür…',
+    convertSelected: 'Seçilenleri dönüştür ({count})',
+    close: 'Kapat',
+    pickPrompt: 'Grubunu göstermek için bir nesneye tıklayın veya',
+    summary: '{groups} grup {count} blok referansına dönüştürüldü',
+    nameDuplicate:
+      '"{name}" blok adı seçili başka bir grup tarafından kullanılıyor'
   },
   verticalToolbar: {
     measure: {
@@ -561,7 +701,7 @@ export default {
       text: 'Yazı yüksekliği',
       description:
         'İşaretler için yazı yüksekliği ayarlarını açar (ekrana sığdır veya dünya yüksekliği)',
-      fit: 'Fit',
+      fit: 'Sığdır',
       wcs: 'WCS'
     },
     measurementColor: {
@@ -572,7 +712,7 @@ export default {
       text: 'Yazı yüksekliği',
       description:
         'Seçili ölçümün veya sonraki ölçümlerin yazı yüksekliği ayarlarını açar',
-      fit: 'Fit',
+      fit: 'Sığdır',
       wcs: 'WCS'
     },
     showMarkup: {
@@ -604,6 +744,11 @@ export default {
       description: 'Çizim arka planını beyaz ve siyah arasında değiştirir',
       disabledInReadingMode:
         'Okuma modundayken kullanılamaz (beyaz tuval sabittir)'
+    },
+    readingMode: {
+      text: 'Okuma',
+      description:
+        'Okuma modunu açar/kapatır: daha kolay inceleme için beyaz tuval üzerinde siyah çizgiler'
     },
     zoom: {
       text: 'Yakınlaştır',
@@ -797,6 +942,14 @@ export default {
         table: 'Tablo'
       }
     },
+    bdetect: {
+      tab: 'Algılama',
+      title: 'Algıla ve Dönüştür'
+    },
+    bsearch: {
+      tab: 'Arama',
+      title: 'Ara ve Dönüştür'
+    },
     countList: {
       tab: 'Sayım',
       title: 'Sayım',
@@ -981,13 +1134,13 @@ export default {
       total: 'Toplam açılış',
       read: 'db.read',
       parse: 'PARSE',
-      entity: 'ENTITY flush',
+      entity: 'ENTITY aktarımı',
       convert: 'Sahne dönüşümü',
       cacheHits: 'Önbellek isabet',
       cacheMisses: 'Önbellek miss',
-      cacheBuild: 'Miss build',
-      cacheCompact: 'Miss compact',
-      cacheHitPath: 'Hit path',
+      cacheBuild: 'Iska: oluşturma',
+      cacheCompact: 'Iska: sıkıştırma',
+      cacheHitPath: 'İsabet yolu',
       columns: {
         stage: 'Aşama',
         duration: 'Süre',
@@ -995,8 +1148,8 @@ export default {
         metric: 'Metrik',
         value: 'Değer',
         block: 'Blok',
-        build: 'Build',
-        compact: 'Compact'
+        build: 'Oluşturma',
+        compact: 'Sıkıştırma'
       }
     },
     blocks: {

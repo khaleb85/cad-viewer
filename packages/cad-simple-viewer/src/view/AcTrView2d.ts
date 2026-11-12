@@ -49,11 +49,7 @@ import * as THREE from 'three'
 import Stats from 'three/examples/jsm/libs/stats.module'
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 
-import {
-  AcApDocManager,
-  AcApSettingManager,
-  DEFAULT_FONT_MAPPING
-} from '../app'
+import { AcApDocManager, AcApSettingManager } from '../app'
 import { AcApOpenViewMode } from '../app/AcApOpenDatabaseOptions'
 import { AcApZoomCmd } from '../command/AcApZoomCmd'
 import { isMarkupHtmlTextEditing } from '../command/markup/AcApMarkupTextEdit'
@@ -94,11 +90,15 @@ import {
   acedNeedsCrossingGeometryRefine
 } from '../editor/view/AcEdSelectionBoxIntersect'
 import { isEffectiveSpatialQueryHit } from '../editor/view/AcEdSpatialQueryResult'
+import { AcApUcsService } from '../service/AcApUcsService'
 import type { AcTrLazySpatialChildren } from '../spatialIndex'
 import type { AcTrSpatialSearchOptions } from '../spatialIndex/AcTrSpatialIndex'
 import { AcTrGeometryUtil } from '../util'
 import { acapRunDatabaseEdit } from '../util/AcApDatabaseEdit'
-import { acapResolveLayoutFrameBox } from '../util/AcApLayoutViewFraming'
+import {
+  acapResolveContentFrameBox,
+  acapResolveLayoutFrameBox
+} from '../util/AcApLayoutViewFraming'
 import {
   collectTextStyleFontNames,
   planTextStyleFontPreload
@@ -108,6 +108,7 @@ import {
   ACAP_READING_MODE_BACKGROUND,
   AcApReadingModeState
 } from './AcApReadingMode'
+import { AcApUcsIconOverlay } from './AcApUcsIconOverlay'
 import {
   trySelectReviewOverlay,
   trySelectReviewOverlaysByBox
@@ -218,6 +219,9 @@ export class AcTrView2d extends AcEdBaseView {
   private _numOfEntitiesToProcess: number
   /** CSS2D renderer for HTML transient overlays */
   private _css2dRenderer: CSS2DRenderer
+  /** Drawing UCS triad overlay (On / at origin). */
+  private _ucsIconOverlay: AcApUcsIconOverlay | null = null
+  private _onUcsChanged?: () => void
   /**
    * Block table record ids of layouts whose entities are currently being
    * batch-converted into the scene. Used by
@@ -675,11 +679,7 @@ export class AcTrView2d extends AcEdBaseView {
     // Shared across all layer batched groups so later entities (e.g. wipeouts)
     // occlude earlier linework via depth, matching AutoCAD draw order.
     setAcTrDrawOrderZAllocator(() => this._renderer.allocateDrawOrderZ())
-    // Baked-in mapping always applies; user-stored settings (if any) win on conflict.
-    const fontMapping = {
-      ...DEFAULT_FONT_MAPPING,
-      ...AcApSettingManager.instance.fontMapping
-    }
+    const fontMapping = AcApSettingManager.instance.fontMapping
     this._renderer.setFontMapping(fontMapping)
     this._onFontNotFound = args => {
       eventBus.emit('font-not-found', {
@@ -1066,12 +1066,18 @@ export class AcTrView2d extends AcEdBaseView {
     this._css2dRenderer.domElement.style.maxHeight = '100%'
     container.appendChild(this._css2dRenderer.domElement)
 
+    this._ucsIconOverlay = new AcApUcsIconOverlay(container)
+    this._onUcsChanged = () => {
+      this._ucsIconOverlay?.update(this)
+      this._isDirty = true
+    }
+    AcApUcsService.events.ucsChanged.addEventListener(this._onUcsChanged)
+
     this._missedImages = new Map()
     this._layoutViewManager = new AcTrLayoutViewManager()
     this._progressiveOpenFit = new AcTrProgressiveOpenFitController(
       (box, margin) => {
-        this.activeLayoutView.zoomTo(box, margin ?? 1.1)
-        this._isDirty = true
+        this.zoomTo(box, margin ?? 1.1)
       }
     )
     this._entityDisplay = new AcTrEntityDisplayController(layerName =>
@@ -1724,6 +1730,7 @@ export class AcTrView2d extends AcEdBaseView {
   }
   set activeLayoutBtrId(value: string) {
     const previous = this._scene.activeLayoutBtrId
+    this.ensureLayoutView(value)
     this._layoutViewManager.activeLayoutBtrId = value
     this._scene.activeLayoutBtrId = value
     this.htmlTransientManager.setActiveLayoutId(value)
@@ -1738,6 +1745,20 @@ export class AcTrView2d extends AcEdBaseView {
    */
   get activeLayoutView() {
     return this._layoutViewManager.activeLayoutView!
+  }
+
+  /**
+   * Ensures a scene layout and {@link AcTrLayoutView} exist for `layoutBtrId`.
+   *
+   * Open framing and picking require an active layout view. Entity streams
+   * create scene layouts by owner id, but layout views normally come from
+   * `AcDbLayout` dictionary entries — which can point at a stale BTR id while
+   * `currentSpaceId` / entities use the real `*Model_Space` handle.
+   */
+  ensureLayoutView(layoutBtrId: AcDbObjectId) {
+    if (!layoutBtrId) return
+    this._scene.addEmptyLayout(layoutBtrId)
+    this.createLayoutViewIfNeeded(layoutBtrId)
   }
 
   /**
@@ -1877,27 +1898,34 @@ export class AcTrView2d extends AcEdBaseView {
    * @inheritdoc
    */
   screenToWorld(point: AcGePoint2dLike): AcGePoint2d {
-    const activeLayoutView = this.activeLayoutView
-    return activeLayoutView
-      ? activeLayoutView.screenToWorld(point)
-      : new AcGePoint2d(point)
+    const activeLayoutView = this._layoutViewManager.activeLayoutView
+    if (activeLayoutView) {
+      return activeLayoutView.screenToWorld(point)
+    }
+    // No layout camera yet. Screen Y grows downward; invert so orientation
+    // consumers (UCS icon axes) stay upright until setActiveLayout runs.
+    return new AcGePoint2d(point.x, -point.y)
   }
 
   /**
    * @inheritdoc
    */
   worldToScreen(point: AcGePoint2dLike): AcGePoint2d {
-    const activeLayoutView = this.activeLayoutView
-    return activeLayoutView
-      ? activeLayoutView.worldToScreen(point)
-      : new AcGePoint2d(point)
+    const activeLayoutView = this._layoutViewManager.activeLayoutView
+    if (activeLayoutView) {
+      return activeLayoutView.worldToScreen(point)
+    }
+    // See screenToWorld — never pass WCS through as CSS pixels (that flips Y).
+    return new AcGePoint2d(point.x, -point.y)
   }
 
   /**
    * @inheritdoc
    */
   zoomTo(box: AcGeBox2d, margin: number = 1.1) {
-    this.activeLayoutView.zoomTo(box, margin)
+    const layoutView = this.activeLayoutView
+    if (!layoutView) return
+    layoutView.zoomTo(box, margin)
     this._isDirty = true
   }
 
@@ -2351,6 +2379,7 @@ export class AcTrView2d extends AcEdBaseView {
     if (!activeLayout) return results
 
     const activeLayoutView = this.activeLayoutView
+    if (!activeLayoutView) return results
     const effectiveHitRadius = hitRadius ?? this.selectionBoxSize
     const paperBox = activeLayoutView.pointToBox(point, effectiveHitRadius)
     const threshold = Math.max(
@@ -2855,7 +2884,7 @@ export class AcTrView2d extends AcEdBaseView {
     // many converts in parallel and OOM'd dense drawings (e.g. cathedral.dwg)
     // during "Rendering drawing ...". Progressive mid-open paints stay gated
     // by `_progressiveRendering` inside batchConvert / markProgressiveDirty.
-    this._convertQueue.push(...entities)
+    this.enqueueConvert(entities)
     void this.drainConvertQueue()
   }
 
@@ -2864,10 +2893,13 @@ export class AcTrView2d extends AcEdBaseView {
    */
   removeEntity(entity: AcDbEntity | AcDbEntity[]) {
     const entities = Array.isArray(entity) ? entity : [entity]
-    entities.forEach(entity => {
-      this.releaseConvertClaim(entity.objectId)
-      this._scene.removeEntity(entity.objectId)
-    })
+    entities.forEach(entity => this.releaseConvertClaim(entity.objectId))
+    if (entities.length === 1) {
+      this._scene.removeEntity(entities[0].objectId)
+    } else if (entities.length > 1) {
+      // One bulk removal: batches are compacted once, not once per entity.
+      this._scene.removeEntities(entities.map(entity => entity.objectId))
+    }
     this._isDirty = true
   }
 
@@ -3182,12 +3214,10 @@ export class AcTrView2d extends AcEdBaseView {
 
     // Extents (any layout), or Saved model fallback without *ACTIVE:
     // prefer drawable content; never lead with template model/paper limits.
-    return acapResolveLayoutFrameBox({
-      limits: undefined,
-      viewportsBox: isModelSpace ? undefined : viewportsBox,
-      // Model EXTMIN/EXTMAX is often stale after a paper-space open; frame the
-      // converted geometry like `zoomToFitDrawing` does when opening on Model.
-      layoutExtents: isModelSpace && entityBox ? undefined : layoutExtents,
+    return acapResolveContentFrameBox({
+      isModelSpace,
+      viewportsBox,
+      layoutExtents,
       entityBox
     })?.box
   }
@@ -3220,7 +3250,23 @@ export class AcTrView2d extends AcEdBaseView {
    */
   clear() {
     this.abortConversion()
+    // Scene.clear keeps active/model BTR ids (regen reuses them). Capture
+    // before layouts are dropped so we can rebind cameras afterward.
+    const activeLayoutBtrId = this._scene.activeLayoutBtrId
+    const modelSpaceBtrId = this._scene.modelSpaceBtrId
     this._scene.clear()
+    // Layout views hold cameras for prior BTR ids — drop them with the
+    // scene so a later open cannot activate a stale handle. Regen and
+    // same-document clear still need an active layout view, so rebind
+    // empty views for the ids the scene retained.
+    this._layoutViewManager = new AcTrLayoutViewManager()
+    if (activeLayoutBtrId) {
+      this.ensureLayoutView(activeLayoutBtrId)
+      this._layoutViewManager.activeLayoutBtrId = activeLayoutBtrId
+    }
+    if (modelSpaceBtrId && modelSpaceBtrId !== activeLayoutBtrId) {
+      this.ensureLayoutView(modelSpaceBtrId)
+    }
     // Scene teardown orphans InstancedMeshes — drop singleton slot maps too.
     AcTrMTextRenderer.getInstance().resetMeshGlyphBatch()
     this._renderer.resetDrawOrderZ()
@@ -3399,6 +3445,17 @@ export class AcTrView2d extends AcEdBaseView {
     }
     const active = document.activeElement
     return active instanceof Node && this.container.contains(active)
+  }
+
+  /**
+   * Appends entities to the convert queue. Not `push(...entities)`: one
+   * commit can carry hundreds of thousands of entities (e.g. a PDF import),
+   * which exceeds the engine's argument limit and throws "Maximum call stack
+   * size exceeded".
+   */
+  private enqueueConvert(entities: readonly AcDbEntity[]) {
+    const queue = this._convertQueue
+    for (let i = 0; i < entities.length; i++) queue.push(entities[i])
   }
 
   /**
@@ -3725,6 +3782,12 @@ export class AcTrView2d extends AcEdBaseView {
         this._onLayoutSwitched
       )
     }
+    if (this._onUcsChanged) {
+      AcApUcsService.events.ucsChanged.removeEventListener(this._onUcsChanged)
+      this._onUcsChanged = undefined
+    }
+    this._ucsIconOverlay?.dispose()
+    this._ucsIconOverlay = null
     if (this._onCommandWillStartHitTest) {
       this.editor.events.commandWillStart.removeEventListener(
         this._onCommandWillStartHitTest
@@ -3817,6 +3880,7 @@ export class AcTrView2d extends AcEdBaseView {
       render: this._renderer,
       camera: this.internalCamera
     })
+    this._ucsIconOverlay?.update(this)
 
     const stillLoading = this._numOfEntitiesToProcess > 0
     const sceneBusy = stillLoading || this._pendingGeometryJobs > 0
@@ -4015,7 +4079,7 @@ export class AcTrView2d extends AcEdBaseView {
       const convert = async () => {
         try {
           if (this._progressiveRendering) {
-            this._convertQueue.push(...entities)
+            this.enqueueConvert(entities)
             await this.drainConvertQueue()
           } else {
             await this.batchConvert(entities)

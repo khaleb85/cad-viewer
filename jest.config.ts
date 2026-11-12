@@ -6,8 +6,9 @@ const config: Config = {
   testEnvironment: 'node',
   transform: {
     // Transpile-only: type-checking the `ai` / `@ai-sdk/*` graph that
-    // cad-agent-plugin pulls in exhausts the heap (see its copy-typings.mjs).
-    '^.+[\\\\/]packages[\\\\/]cad-agent-plugin[\\\\/].+\\.ts$': [
+    // cad-agent-plugin / cad-llm-plugin pull in exhausts the heap (see
+    // cad-agent-plugin's copy-typings.mjs).
+    '^.+[\\\\/]packages[\\\\/]cad-(agent|llm)-plugin[\\\\/].+\\.ts$': [
       'ts-jest',
       {
         tsconfig: '<rootDir>/packages/cad-agent-plugin/tsconfig.jest.json'
@@ -37,12 +38,18 @@ const config: Config = {
     '^lodash-es$': 'lodash',
     '^@mlightcad/cad-pdf-core$':
       '<rootDir>/packages/cad-pdf-core/src/index.ts',
+    '^@mlightcad/pdf-renderer$':
+      '<rootDir>/packages/pdf-renderer/src/index.ts',
+    '^@mlightcad/cad-svg-converter$':
+      '<rootDir>/packages/cad-svg-converter/src/index.ts',
     '^@mlightcad/cad-html-core$':
       '<rootDir>/packages/cad-html-core/src/index.ts',
     '^@mlightcad/cad-html-plugin$':
       '<rootDir>/packages/cad-html-plugin/src/index.ts',
     '^@mlightcad/cad-agent-core$':
       '<rootDir>/packages/cad-agent-core/src/index.ts',
+    '^@mlightcad/cad-llm-plugin$':
+      '<rootDir>/packages/cad-llm-plugin/src/index.ts',
     '^@mlightcad/cad-script-core$':
       '<rootDir>/packages/cad-script-core/src/index.ts',
     '^@mlightcad/cad-script-core/script-api$':

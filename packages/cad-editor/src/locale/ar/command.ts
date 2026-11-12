@@ -5,6 +5,14 @@ export default {
 
   ACAD: {
     ...enCommand.ACAD,
+    bsearch: {
+      description: 'الكتل الذكية: يبحث عن الأشكال المتطابقة ويحولها إلى كتل',
+      prompt: 'حدد الكائنات المراد البحث عنها'
+    },
+    bdetect: {
+      description:
+        'الكتل الذكية: يبحث عن الكائنات المتكررة في الرسم ويحولها إلى كتل'
+    },
 
     hatch: {
       ...enCommand.ACAD.hatch,
@@ -77,6 +85,11 @@ export default {
         'إنشاء أنماط النص وتعديلها وتحديدها للنص والنص متعدد الأسطر'
     },
 
+    mleaderstyle: {
+      ...enCommand.ACAD.mleaderstyle,
+      description: 'إنشاء وتعديل أنماط الخطوط المتعددة للبيانات'
+    },
+
     attedit: {
       ...enCommand.ACAD.attedit,
       description:
@@ -87,6 +100,11 @@ export default {
       ...enCommand.ACAD.attdef,
       description:
         'إنشاء تعريف سمة لاستخدامه داخل كتلة'
+    },
+    classicgroup: {
+      ...enCommand.ACAD.classicgroup,
+      description:
+        'فتح مربع حوار تجميع الكائنات لإنشاء المجموعات وإدارتها'
     }
   },
 
