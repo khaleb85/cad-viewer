@@ -3,7 +3,8 @@ import {
   AcApOpenDatabaseOptions,
   AcApSettingManager,
   AcEdOpenMode,
-  AcEdSelectionEventArgs
+  AcEdSelectionEventArgs,
+  eventBus
 } from '@mlightcad/cad-simple-viewer'
 import {
   AcDbDatabase,
@@ -116,6 +117,13 @@ class CadViewerApp {
             document.title = args.doc.docTitle
           }
         )
+
+        // The host draws its own loading in place of the engine busy overlay
+        eventBus.on('busy-indicator', ({ visible }) => {
+          window.dispatchEvent(
+            new CustomEvent('cad-busy-changed', { detail: { visible } })
+          )
+        })
 
         // Expose command API for host application (e.g. Coordly React)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -466,6 +474,10 @@ class CadViewerApp {
 
     try {
       const res = await fetch(fileUrl)
+      if (!res.ok) {
+        this.emitFileLoadError(fileName, `HTTP ${res.status}`)
+        return
+      }
       const blob = await res.blob()
 
       const fileContent = await this.readBlob(blob)
@@ -499,11 +511,19 @@ class CadViewerApp {
         console.log(`Successfully loaded: ${fileName}`)
         window.dispatchEvent(new CustomEvent('cad-file-loaded'))
       } else {
-        console.error(`Failed to load: ${fileName}`)
+        this.emitFileLoadError(fileName, 'open-failed')
       }
     } catch (error) {
-      console.error(`Error loading file: ${error}`)
+      this.emitFileLoadError(fileName, String(error))
     }
+  }
+
+  /** The host stops its loading and offers another viewer. */
+  private emitFileLoadError(fileName: string, reason: string) {
+    console.error(`Failed to load ${fileName}: ${reason}`)
+    window.dispatchEvent(
+      new CustomEvent('cad-file-load-error', { detail: { fileName, reason } })
+    )
   }
 
   private resolveMode(modeStr: string): AcEdOpenMode {
