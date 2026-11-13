@@ -2,7 +2,6 @@ import type { AcDbParsingTaskStats, AcDbProgressdEventArgs } from '@mlightcad/da
 
 import { eventBus } from '../../editor/global/eventBus'
 import { acapAnalyzeUnsupportedDrawing } from '../../util/AcApAnalyzeUnsupportedDrawing'
-import { AcApFontUtil } from '../../util/AcApFontUtil'
 import { acapFormatFontsMissedReplacement } from '../../util/AcApFormatFontMissedMessage'
 import {
   acapFormatUnsupportedEntitiesMessage,
@@ -39,6 +38,8 @@ export class AcApNotificationEventBridge {
    * dropping warnings that depended solely on the one-shot PARSE stats).
    */
   private readonly _unsupportedNotifiedSessions = new Set<string>()
+  /** Missing font names already reported, keyed by {@link AcApDocSession.id}. */
+  private readonly _missedFontsBySession = new Map<string, Set<string>>()
   /** Whether {@link install} has attached listeners. */
   private _installed = false
 
@@ -67,6 +68,45 @@ export class AcApNotificationEventBridge {
   private forgetSession(sessionId: string) {
     this._pendingUnknownBySession.delete(sessionId)
     this._unsupportedNotifiedSessions.delete(sessionId)
+    this._missedFontsBySession.delete(sessionId)
+  }
+
+  /**
+   * Keeps one missing-font warning per session: merges the new names into the
+   * session set and replaces the previous warning with one listing all of them.
+   * Re-reporting an already listed font does not re-raise the warning.
+   *
+   * @param fontNames - Missing font names to add.
+   */
+  private notifyMissedFonts(fontNames: string[]) {
+    const sessionId = this._docManager.activeSessionId
+    let missed = this._missedFontsBySession.get(sessionId)
+    if (!missed) {
+      missed = new Set()
+      this._missedFontsBySession.set(sessionId, missed)
+    }
+    const sizeBefore = missed.size
+    for (const name of fontNames) {
+      const fontName = name.trim()
+      if (fontName) missed.add(fontName)
+    }
+    if (missed.size === sizeBefore) return
+
+    const allFonts = [...missed]
+    const center = this._getCenter()
+    center.removeWhere(
+      notification =>
+        notification.source === 'font-missed' &&
+        notification.type === 'warning' &&
+        notification.sessionId === sessionId
+    )
+    center.warning(
+      acapI18nTranslate('main.notification.title.fontNotFound'),
+      acapI18nTranslate('main.message.fontsNotFound', {
+        fonts: acapFormatFontsMissedReplacement(allFonts)
+      }),
+      { source: 'font-missed', fontNames: allFonts, ...this.sessionOptions() }
+    )
   }
 
   /**
@@ -128,13 +168,7 @@ export class AcApNotificationEventBridge {
    * @param params - Missing font names.
    */
   private readonly _onFontsNotFound = (params: { fonts: string[] }) => {
-    this._getCenter().warning(
-      acapI18nTranslate('main.notification.title.fontNotFound'),
-      acapI18nTranslate('main.message.fontsNotFound', {
-        fonts: acapFormatFontsMissedReplacement(params.fonts)
-      }),
-      { source: 'font-missed', fontNames: params.fonts, ...this.sessionOptions() }
-    )
+    this.notifyMissedFonts(params.fonts)
   }
 
   /**
@@ -148,23 +182,7 @@ export class AcApNotificationEventBridge {
     fontName: string
     count: number
   }) => {
-    const fontName = params.fontName.trim()
-    if (!fontName) return
-    const center = this._getCenter()
-    center.removeWhere(
-      notification =>
-        notification.source === 'font-missed' &&
-        notification.fontNames?.includes(fontName) === true
-    )
-    center.warning(
-      acapI18nTranslate('main.notification.title.fontNotFound'),
-      acapI18nTranslate('main.message.fontMissedInDrawing', {
-        font: fontName,
-        count: params.count,
-        replacementFont: AcApFontUtil.getReplacementFontName(fontName)
-      }),
-      { source: 'font-missed', fontNames: [fontName], ...this.sessionOptions() }
-    )
+    this.notifyMissedFonts([params.fontName])
   }
 
   /**
@@ -174,6 +192,15 @@ export class AcApNotificationEventBridge {
     const missedFonts = Object.keys(
       this._docManager.curView.missedData.fonts
     )
+    const reported = this._missedFontsBySession.get(
+      this._docManager.activeSessionId
+    )
+    if (reported) {
+      const stillMissed = new Set(missedFonts)
+      for (const fontName of reported) {
+        if (!stillMissed.has(fontName)) reported.delete(fontName)
+      }
+    }
     this._getCenter().removeResolvedFontMissedNotifications(missedFonts)
   }
 

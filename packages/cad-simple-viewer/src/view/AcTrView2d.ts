@@ -49,7 +49,11 @@ import * as THREE from 'three'
 import Stats from 'three/examples/jsm/libs/stats.module'
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 
-import { AcApDocManager, AcApSettingManager } from '../app'
+import {
+  AcApDocManager,
+  AcApSettingManager,
+  DEFAULT_FONT_MAPPING
+} from '../app'
 import { AcApOpenViewMode } from '../app/AcApOpenDatabaseOptions'
 import { AcApZoomCmd } from '../command/AcApZoomCmd'
 import { isMarkupHtmlTextEditing } from '../command/markup/AcApMarkupTextEdit'
@@ -679,8 +683,11 @@ export class AcTrView2d extends AcEdBaseView {
     // Shared across all layer batched groups so later entities (e.g. wipeouts)
     // occlude earlier linework via depth, matching AutoCAD draw order.
     setAcTrDrawOrderZAllocator(() => this._renderer.allocateDrawOrderZ())
-    const fontMapping = AcApSettingManager.instance.fontMapping
-    this._renderer.setFontMapping(fontMapping)
+    // Baked-in mapping always applies; user-stored settings win on conflict.
+    this._renderer.setFontMapping({
+      ...DEFAULT_FONT_MAPPING,
+      ...AcApSettingManager.instance.fontMapping
+    })
     this._onFontNotFound = args => {
       eventBus.emit('font-not-found', {
         fontName: args.fontName,
