@@ -13,8 +13,9 @@ PDF drawings keep only what was printed: curves are Bézier paths, text is often
 | Recover Text | `pdftext` | Turns exploded text strokes back into text |
 | Make Block | `pdfblock` | Turns repeated geometry back into a block |
 | Recover Dims | `pdfdim` | Turns exploded dimensions back into dimension objects |
+| Recover Hatch | `pdfhatch` | Turns the loose strokes of a hatch back into a hatch with its pattern |
 
-The commands need **Write** mode. A typical order is `pdfimport` → `pdfscale` → `pdftext` → `pdfblock` → `pdfdim`.
+The commands need **Write** mode. A typical order is `pdfimport` → `pdfscale` → `pdftext` → `pdfblock` → `pdfdim` → `pdfhatch`.
 
 ## Import (`pdfimport`)
 
@@ -75,15 +76,34 @@ Every character shape you type is remembered in the browser, so drawings that us
 
 ## Recover dimensions (`pdfdim`)
 
-1. Select the area with the dimensions.
+1. Select the area with the dimensions. Value text may be TEXT, or still exploded strokes (before `pdftext`): digits and CAD symbols are read with a built-in template matcher — no LLM. If strokes still cannot be read, linear dimensions fall back to the measured length.
 2. These are recognized:
    - **Linear**: any angle, arrows inside or outside, architectural ticks, and chained dimensions.
    - **Radius and diameter**: an arrow touching a circle, with an `R…` or `Ø…` text.
    - **Angular**: an arc with an arrow at each end.
-3. Choose **Yes**, **No** or **Review**, as with blocks.
+3. The **Recover Dimensions** panel opens in the palette, with dimensions previewed in place of their strokes. You can pan and zoom while it is open.
+   - Edit each value, clear a check box to skip a dimension, and pick or create a dim style (the preview shows recovered sizes with that style's appearance).
+   - **Hide original strokes** (on by default) shows the result without the strokes it replaces.
+4. Click **Apply** to convert. **Cancel**, or closing the palette, changes nothing.
 
-The dimensions use a `PDF_DIM` style whose text height and arrow size match the PDF. Its linear scale factor equals the drawing scale read from the texts, so a 1:100 drawing still shows its real values. Texts that differ from the measurement, or carry extra symbols, are kept as written.
+The dimensions use a `PDF_DIM` style (or a name you create) whose paper sizes match the PDF; entity overrides keep those sizes even if another style's DIMSCALE is large. Its linear scale factor equals the drawing scale read from the texts, so a 1:100 drawing still shows its real values. Texts that differ from the measurement, or carry extra symbols, are kept as written.
 
 ::: tip
 Run `pdfscale` first if you want the geometry at real size. `pdfdim` then finds a scale of 1:1.
 :::
+
+## Recover hatches (`pdfhatch`)
+
+A PDF keeps a pattern hatch only as many short strokes, already cut to the boundary.
+
+1. Select the hatched area together with the lines around it. A crossing window over the area is enough.
+2. Regular strokes are matched against the `acadiso.pat` patterns (ANSI31, ANSI36, AR-B816, ...), then against user-defined single or crossed lines. If nothing fits, the spacing, stagger and dashes are measured and the hatch gets a custom `PDF_HATCH` pattern.
+3. The boundary comes from closed outlines in the selection, or from the area the selected lines, arcs and polylines enclose, even where they cross or run past each other. Islands stay holes.
+4. The **Recover Hatch** panel opens in the palette, with the hatches previewed in place of their strokes. You can pan and zoom while it is open.
+   - The list shows every hatch with its pattern, scale and angle, a match score and how many objects it replaces. Hatches that do not redraw their strokes well are marked. Click a hatch to frame it in the drawing; clear its check box to skip it.
+   - Choose another **pattern** (from `acadiso.pat`, or user-defined single or double lines), and its scale and angle are measured from the strokes again. You can also type the **scale** (or **spacing**) and **angle** yourself; **Auto fit** measures them again.
+   - **Add area** picks a point inside an area the recognition missed: the best fitting pattern is matched to the strokes in the closed area around that point.
+   - **Hide original strokes** (on by default) shows the result without the strokes it replaces.
+5. Click **Apply** to convert. **Cancel**, or closing the palette, changes nothing.
+
+A hatch is only found when drawing it again reproduces its strokes, and only objects a hatch redraws completely are erased, also after you change its pattern. Pattern scale and angle are given in drawing units, so a hatch imported at scale 1 has a small scale; run `pdfscale` first to get real values.

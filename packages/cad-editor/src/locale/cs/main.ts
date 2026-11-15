@@ -261,6 +261,7 @@ export default {
       draw: 'Kreslení',
       dimension: 'Kóty',
       modify: 'Úpravy',
+      clipboard: 'Schránka',
       layer: 'Hladiny',
       properties: 'Vlastnosti',
       groups: 'Skupiny',
@@ -335,6 +336,8 @@ export default {
         'Změní měřítko importované geometrie PDF podle dvou bodů známé vzdálenosti (PDFSCALE).',
       pdfDim:
         'Převede rozložené kóty z PDF (šipky nebo značky, čáry, vynášecí čáry a texty) zpět na kótovací objekty (PDFDIM).',
+      pdfHatch:
+        'Převede rozložené čáry šrafy z PDF zpět na šrafu se vzorem, měřítkem a úhlem (PDFHATCH).',
       pdfBlock:
         'Převede opakovanou geometrii z PDF na blok a každou kopii nahradí referencí bloku (PDFBLOCK).',
       pdfText:
@@ -372,8 +375,18 @@ export default {
         'Odebere odkazovou čáru z existující vícenásobné odkazové čáry.',
       move: 'Posune vybrané objekty na novou pozici.',
       rotate: 'Otočí vybrané objekty kolem základního bodu.',
-      copy: 'Zkopíruje vybrané objekty na nové místo.',
+      scale:
+        'Zvětší nebo zmenší vybrané objekty se zachováním jejich proporcí.',
       erase: 'Odstraní vybrané objekty z výkresu.',
+      pasteClip: 'Vloží objekty ze schránky do aktuálního výkresu (PASTECLIP).',
+      pasteOrig:
+        'Vloží objekty ze schránky se souřadnicemi z původního výkresu (PASTEORIG).',
+      pasteBlock:
+        'Vloží objekty ze schránky do aktuálního výkresu jako blok (PASTEBLOCK).',
+      cutClip: 'Odstraní vybrané objekty a zkopíruje je do schránky (CUTCLIP).',
+      copyClip: 'Zkopíruje vybrané objekty do schránky (COPYCLIP).',
+      copyBase:
+        'Zkopíruje vybrané objekty do schránky se zadaným základním bodem (COPYBASE).',
       offset: 'Vytvoří rovnoběžnou kopii objektu v zadané vzdálenosti.',
       undo: 'Vrátí zpět poslední úpravu.',
       redo: 'Zopakuje poslední vrácenou úpravu.',
@@ -497,6 +510,7 @@ export default {
       importPdf: 'Importovat\nPDF',
       pdfScale: 'Kalibrovat\nměřítko',
       pdfDim: 'Obnovit\nkóty',
+      pdfHatch: 'Obnovit\nšrafy',
       pdfBlock: 'Vytvořit\nblok',
       pdfText: 'Obnovit\ntext',
       line: 'Úsečka',
@@ -534,8 +548,14 @@ export default {
       mleaderRemove: 'Odebrat odkaz',
       move: 'Posunout',
       rotate: 'Otočit',
-      copy: 'Kopírovat',
+      scale: 'Měřítko',
       erase: 'Vymazat',
+      pasteClip: 'Vložit',
+      pasteOrig: 'Vložit do původních souřadnic',
+      pasteBlock: 'Vložit jako blok',
+      cutClip: 'Vyjmout',
+      copyClip: 'Kopírovat',
+      copyBase: 'Kopírovat se základním bodem',
       offset: 'Ekvidistanta',
       undo: 'Zpět',
       redo: 'Znovu',

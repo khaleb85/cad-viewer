@@ -88,6 +88,27 @@ export default {
       description: '선택한 객체를 새 위치에 복제하여 복사합니다',
       prompt: '객체 선택'
     },
+    copybase: {
+      description: '지정한 기준점과 함께 선택한 객체를 클립보드로 복사',
+      prompt: '객체 선택'
+    },
+    copyclip: {
+      description: '선택한 객체를 클립보드로 복사',
+      prompt: '객체 선택'
+    },
+    cutclip: {
+      description: '선택한 객체를 클립보드로 복사하고 도면에서 제거',
+      prompt: '객체 선택'
+    },
+    pasteblock: {
+      description: '클립보드의 객체를 블록으로 붙여넣기'
+    },
+    pasteclip: {
+      description: '클립보드의 객체를 현재 도면에 붙여넣기'
+    },
+    pasteorig: {
+      description: '원본 도면의 좌표를 사용하여 클립보드의 객체를 붙여넣기'
+    },
     csvg: {
       description: '현재 도면을 SVG로 변환합니다'
     },
@@ -129,6 +150,12 @@ export default {
     },
     dwgname: {
       description: '현재 도면 파일의 이름을 저장합니다(읽기 전용)'
+    },
+    find: {
+      description: '문자 검색 도킹 패널을 엽니다'
+    },
+    layer: {
+      description: '도면층 관리자 도킹 패널을 열거나 닫습니다'
     },
     loginname: {
       description: '사용자의 로그인 이름을 표시합니다(읽기 전용)'
@@ -211,6 +238,10 @@ export default {
       description: 'PDF에서 분해된 치수를 치수 객체로 되돌립니다',
       prompt: '치수가 있는 영역 선택'
     },
+    pdfhatch: {
+      description: 'PDF에서 선분으로 분해된 해치를 해치 객체로 되돌립니다',
+      prompt: '해치 영역과 주변 경계선 선택'
+    },
     pdfblock: {
       description: 'PDF의 반복 형상을 블록으로 되돌립니다',
       prompt: '블록 인스턴스 하나의 객체 선택'
@@ -224,7 +255,8 @@ export default {
       prompt: '축척할 객체 선택'
     },
     pdfimport: {
-      description: '[PDF 가져오기] 대화상자로 PDF 파일에서 벡터 형상을 가져옵니다'
+      description:
+        '[PDF 가져오기] 대화상자로 PDF 파일에서 벡터 형상을 가져옵니다'
     },
     '-pdfimport': {
       description: '명령행 옵션을 사용하여 PDF 파일에서 벡터 형상을 가져옵니다'
@@ -524,6 +556,11 @@ export default {
     },
     rotate: {
       description: '선택한 객체를 기준점을 중심으로 회전합니다',
+      prompt: '객체 선택'
+    },
+    scale: {
+      description:
+        '선택한 객체를 축척 후에도 비율이 유지되도록 확대 또는 축소합니다',
       prompt: '객체 선택'
     },
     select: {

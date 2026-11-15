@@ -96,6 +96,29 @@ export default {
       description: 'Seçili varlıkları klonlayarak yeni konumlara kopyalar',
       prompt: 'Varlıkları seçin'
     },
+    copybase: {
+      description:
+        'Seçili nesneleri belirtilen bir taban noktasıyla panoya kopyalar',
+      prompt: 'Varlıkları seçin'
+    },
+    copyclip: {
+      description: 'Seçili nesneleri panoya kopyalar',
+      prompt: 'Varlıkları seçin'
+    },
+    cutclip: {
+      description: 'Seçili nesneleri panoya kopyalar ve çizimden kaldırır',
+      prompt: 'Varlıkları seçin'
+    },
+    pasteblock: {
+      description: 'Panodaki nesneleri blok olarak yapıştırır'
+    },
+    pasteclip: {
+      description: 'Panodaki nesneleri geçerli çizime yapıştırır'
+    },
+    pasteorig: {
+      description:
+        'Panodaki nesneleri özgün çizimin koordinatlarını kullanarak yapıştırır'
+    },
     csvg: {
       description: 'Geçerli çizimi SVG\'ye dönüştürür'
     },
@@ -139,6 +162,12 @@ export default {
     },
     dwgname: {
       description: 'Geçerli çizim dosyasının adını saklar (salt okunur)'
+    },
+    find: {
+      description: 'Metin arama yerleştirme panelini açar'
+    },
+    layer: {
+      description: 'Katman yöneticisi yerleştirme panelini açar veya kapatır'
     },
     loginname: {
       description: 'Kullanıcının oturum açma adını görüntüler (salt okunur)'
@@ -231,6 +260,11 @@ export default {
       description:
         'Patlatılmış PDF ölçülerini ölçü nesnelerine geri dönüştürür',
       prompt: 'Ölçüleri içeren alanı seçin'
+    },
+    pdfhatch: {
+      description:
+        'PDF taramasının dağınık çizgilerini tarama nesnesine geri dönüştürür',
+      prompt: 'Taralı alanı çevresindeki çizgilerle birlikte seçin'
     },
     pdfblock: {
       description: 'PDF içindeki tekrarlanan geometriyi bloğa geri dönüştürür',
@@ -569,6 +603,11 @@ export default {
     },
     rotate: {
       description: 'Seçili varlıkları bir taban noktası etrafında döndürür',
+      prompt: 'Varlıkları seçin'
+    },
+    scale: {
+      description:
+        'Seçili varlıkları, ölçeklemeden sonra oranlarını koruyarak büyütür veya küçültür',
       prompt: 'Varlıkları seçin'
     },
     select: {

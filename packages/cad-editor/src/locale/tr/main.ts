@@ -218,6 +218,7 @@ export default {
       draw: 'Çiz',
       dimension: 'Ölçü',
       modify: 'Düzenle',
+      clipboard: 'Pano',
       layer: 'Katman',
       properties: 'Özellikler',
       groups: 'Gruplar',
@@ -292,6 +293,8 @@ export default {
         'İçe aktarılan PDF geometrisini bilinen bir mesafenin iki noktasına göre ölçekler (PDFSCALE).',
       pdfDim:
         'Patlatılmış PDF ölçülerini (oklar veya işaretler, çizgiler, uzatma çizgileri ve metinler) ölçü nesnelerine geri dönüştürür (PDFDIM).',
+      pdfHatch:
+        'PDF taramasının dağınık çizgilerini deseni, ölçeği ve açısıyla birlikte taramaya geri dönüştürür (PDFHATCH).',
       pdfBlock:
         'PDF içindeki tekrarlanan geometriyi bloğa dönüştürür ve her kopyayı blok referansıyla değiştirir (PDFBLOCK).',
       pdfText:
@@ -331,8 +334,18 @@ export default {
       mleaderRemove: 'Mevcut çoklu önderden bir önder çizgisini kaldırın.',
       move: 'Seçili nesneleri yeni bir konuma taşıyın.',
       rotate: 'Seçili nesneleri bir taban noktası etrafında döndürün.',
-      copy: 'Seçili nesneleri yeni bir konuma kopyalayın.',
+      scale:
+        'Seçili nesneleri, ölçeklemeden sonra oranlarını koruyarak büyütün veya küçültün.',
       erase: 'Seçili nesneleri çizimden silin.',
+      pasteClip: 'Panodaki nesneleri geçerli çizime yapıştırır (PASTECLIP).',
+      pasteOrig:
+        'Panodaki nesneleri özgün çizimdeki koordinatlarla yapıştırır (PASTEORIG).',
+      pasteBlock:
+        'Panodaki nesneleri geçerli çizime blok olarak yapıştırır (PASTEBLOCK).',
+      cutClip: 'Seçili nesneleri kaldırır ve panoya kopyalar (CUTCLIP).',
+      copyClip: 'Seçili nesneleri panoya kopyalar (COPYCLIP).',
+      copyBase:
+        'Seçili nesneleri belirtilen bir temel noktayla panoya kopyalar (COPYBASE).',
       offset:
         'Bir nesnenin belirtilen mesafede paralel bir kopyasını oluşturun.',
       undo: 'Son düzenleme işlemini geri alın.',
@@ -464,6 +477,7 @@ export default {
       importPdf: 'PDF\nİçe Aktar',
       pdfScale: 'Ölçeği\nKalibre Et',
       pdfDim: 'Ölçüleri\nKurtar',
+      pdfHatch: 'Taramaları\nKurtar',
       pdfBlock: 'Blok\nOluştur',
       pdfText: 'Metni\nKurtar',
       line: 'Çizgi',
@@ -501,8 +515,14 @@ export default {
       mleaderRemove: 'Önder Kaldır',
       move: 'Taşı',
       rotate: 'Döndür',
-      copy: 'Kopyala',
+      scale: 'Ölçekle',
       erase: 'Sil',
+      pasteClip: 'Yapıştır',
+      pasteOrig: 'Orijinal Koordinatlara Yapıştır',
+      pasteBlock: 'Blok Olarak Yapıştır',
+      cutClip: 'Kes',
+      copyClip: 'Kopyala',
+      copyBase: 'Temel Noktayla Kopyala',
       offset: 'Ötele',
       undo: 'Geri Al',
       redo: 'Yinele',

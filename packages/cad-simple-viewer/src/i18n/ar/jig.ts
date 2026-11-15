@@ -129,6 +129,19 @@ export default {
       }
     }
   },
+  copybase: {
+    basePoint: 'حدد نقطة الأساس'
+  },
+  pasteclip: {
+    insertionPoint: 'حدد نقطة الإدراج',
+    empty: 'لا تحتوي الحافظة على كائنات رسم'
+  },
+  pasteorig: {
+    sameDrawing: 'لا يمكن لـ PASTEORIG اللصق في الرسم الذي نُسخت منه الكائنات'
+  },
+  pasteblock: {
+    insertionPoint: 'حدد نقطة الإدراج'
+  },
   dimlinear: {
     xLine1Point: 'حدد نقطة أصل خط الامتداد الأول',
     xLine2Point: 'حدد نقطة أصل خط الامتداد الثاني',
@@ -884,7 +897,16 @@ export default {
     endPoint: 'حدد نقطة نهاية القوس',
     lockedEndPoint:
       'حدد نقطة نهاية القوس (استخدم Ctrl للتبديل بين القوس الأكبر والأصغر)',
-    invalidPoints: 'النقاط الثلاث على استقامة واحدة ولا يمكنها تعريف قوس.'
+    invalidPoints: 'النقاط الثلاث على استقامة واحدة ولا يمكنها تعريف قوس.',
+    pickArc: 'حدد دائرة أو قوسًا أو قوس خط متعدد',
+    noArc: 'لا توجد دائرة أو قوس هنا. انقر على منحنى، أو اختر ثلاث نقاط.',
+    keywords: {
+      threePoint: {
+        display: 'ثلاث نقاط(T)',
+        local: 'ثلاث نقاط',
+        global: 'ThreePoint'
+      }
+    }
   },
   measureArea: {
     firstPoint: 'حدد النقطة الأولى',
@@ -1174,6 +1196,7 @@ export default {
     arrowheadOrRemove: 'حدد موقع رأس سهم خط الإشارة أو [إزالة خطوط الإشارة]',
     selectLeaderToRemove: 'حدد خط إشارة لإزالته أو اضغط Enter للإنهاء',
     cannotRemoveLast: 'لا يمكن إزالة آخر خط إشارة من خط الإشارة المتعدد هذا.',
+    noLeaderAtPoint: 'لم يتم العثور على خط إشارة عند هذه النقطة.',
     keywords: {
       remove: {
         display: 'إزالة خطوط الإشارة(R)',
@@ -1412,6 +1435,35 @@ export default {
     invalid: {
       referencePoints:
         'النقاط المرجعية غير صالحة: يجب أن تكون النقطتان مختلفتين.'
+    }
+  },
+  scale: {
+    basePoint: 'حدد نقطة الأساس',
+    scaleFactorOrOptions: 'حدد معامل المقياس أو',
+    referenceLength: 'حدد الطول المرجعي',
+    newLengthOrPoints: 'حدد الطول الجديد أو',
+    newLengthFirstPoint: 'حدد النقطة الأولى',
+    copyMessage: 'جارٍ تغيير مقياس نسخة من الكائنات المحددة.',
+    keywords: {
+      copy: {
+        display: 'نسخ(C)',
+        local: 'نسخ',
+        global: 'Copy'
+      },
+      reference: {
+        display: 'مرجع(R)',
+        local: 'مرجع',
+        global: 'Reference'
+      },
+      points: {
+        display: 'نقاط(P)',
+        local: 'نقاط',
+        global: 'Points'
+      }
+    },
+    invalid: {
+      factor: 'يجب أن تكون القيمة موجبة وغير صفرية.',
+      length: 'يجب أن تكون القيمة موجبة وغير صفرية.'
     }
   },
   revcloud: {
@@ -1679,6 +1731,7 @@ export default {
     exportFormat: 'تنسيق التصدير',
     exportInvisibleLayers: 'تصدير الطبقات غير المرئية',
     exportLayouts: 'تصدير المخططات',
+    exportEmptyLayouts: 'تصدير المخططات الفارغة',
     background: 'لون الخلفية',
     initialView: 'العرض الأولي عند فتح HTML',
     viewerMode: 'وضع العارض دون اتصال',
@@ -1745,6 +1798,7 @@ export default {
   cpdf: {
     modelSpaceFit: 'إطار مساحة النموذج',
     exportLayouts: 'تصدير المخططات',
+    exportEmptyLayouts: 'تصدير المخططات الفارغة',
     textMode: 'عرض النص',
     colorMode: 'وضع الألوان',
     keywords: {
@@ -2096,13 +2150,80 @@ export default {
     }
   },
   pdfdim: {
+    cancelled: 'تم إلغاء استعادة الأبعاد؛ لم يتم تغيير أي شيء.',
     noDimensions:
       'لم يتم العثور على أبعاد في التحديد (يلزم وجود رؤوس أسهم أو علامات وخطوط أبعاد ونصوص قيم).',
-    convertAll:
-      'تم العثور على {count} بُعد (مقياس الرسم 1:{scale}). هل تريد تحويلها؟',
-    convertOne: 'البُعد {index}/{count} "{text}": تحويل؟',
     summary:
-      'تم تحويل {count} بُعد؛ يستخدم النمط PDF_DIM معامل مقياس خطي قدره {scale}.'
+      'تم تحويل {count} بُعد؛ يستخدم النمط {style} معامل مقياس خطي قدره {scale}.',
+    panel: {
+      title: 'استعادة الأبعاد',
+      style: 'نمط البعد',
+      dimStyle: 'النمط',
+      newStyle: 'نمط بعد جديد…',
+      newStyleName: 'اسم نمط البعد الجديد',
+      createStyle: 'إنشاء',
+      nameEmpty: 'أدخل اسمًا.',
+      nameInvalid: 'يحتوي الاسم على أحرف غير مسموح بها.',
+      nameExists: 'يوجد بالفعل نمط بعد بهذا الاسم.',
+      scale: 'مقياس الرسم',
+      stylePreview: 'معاينة نمط البُعد المحدد مع الأحجام المُستعادة',
+      dimensions: 'الأبعاد',
+      selectHint: 'حدد بُعدًا للتكبير إليه؛ يمكنك تعديل القيمة قبل التطبيق.',
+      empty: 'لم يتم العثور على أبعاد في التحديد.',
+      include: 'تحويل هذا البُعد',
+      kindLinear: 'خطي',
+      kindRadius: 'نصف القطر',
+      kindDiameter: 'القطر',
+      kindAngular: 'زاوي',
+      textTip: 'نص البُعد (تجاوز)',
+      measured: 'المقاس {value}',
+      hideStrokes: 'إخفاء الخطوط الأصلية',
+      ready: '{ready} من {count} أبعاد جاهزة',
+      cancel: 'إلغاء',
+      apply: 'تطبيق'
+    }
+  },
+  pdfhatch: {
+    cancelled: 'تم إلغاء استعادة التهشير؛ لم يتم تغيير أي شيء.',
+    pickPoint: 'حدد نقطة داخل المنطقة المراد تهشيرها',
+    panel: {
+      title: 'استعادة التهشير',
+      hatches: 'التهشيرات',
+      addArea: 'إضافة منطقة',
+      addAreaTip:
+        'حدد نقطة داخل منطقة لم يتم التعرّف عليها؛ ستتم مطابقة خطوطها مع أنسب نمط.',
+      picking: 'حدد نقطة داخل المنطقة في الرسم…',
+      noBoundary: 'لم يتم العثور على منطقة مغلقة حول تلك النقطة.',
+      noStrokes: 'لم يتم العثور على نمط منتظم في تلك المنطقة.',
+      empty: 'لم يتم العثور على تهشير. استخدم "إضافة منطقة" لتحديد واحد.',
+      include: 'تحويل هذا التهشير',
+      addedTag: 'مضاف',
+      entities: '{count} كائن',
+      selectHint: 'حدد تهشيرًا لتغيير نمطه أو مقياسه أو زاويته.',
+      ownGroup: 'مقاس / معرّف من المستخدم',
+      libraryGroup: 'معرّف مسبقًا',
+      pattern: 'النمط',
+      scale: 'المقياس',
+      spacing: 'التباعد',
+      angle: 'الزاوية',
+      autoFit: 'ملاءمة تلقائية',
+      autoFitTip: 'إعادة قياس مقياس هذا النمط وزاويته ونقطة أصله من الخطوط.',
+      match: 'النمط على الخطوط: {precision} · الخطوط المعاد رسمها: {recall}',
+      noEntities:
+        'لا يعيد هذا النمط رسم أي كائن بالكامل؛ لن يتم استبدال أي شيء.',
+      guessed: 'لا يوجد أثر لهذا النمط في الخطوط؛ المقياس والزاوية تقديريان.',
+      poorMatch: 'تطابق ضعيف: تبقى الخطوط التي لا يعيد التهشير رسمها.',
+      userSingle: 'معرّف من المستخدم',
+      userDouble: 'معرّف من المستخدم، مزدوج',
+      measured: 'نمط مقاس',
+      hideStrokes: 'إخفاء الخطوط الأصلية',
+      ready: '{ready} من {count} تهشيرات جاهزة',
+      cancel: 'إلغاء',
+      apply: 'تطبيق'
+    },
+    noHatches:
+      'لم يتم العثور على تهشير في التحديد (يلزم وجود خطوط متوازية منتظمة والخطوط التي تحدها).',
+    summary: 'تم تحويل {count} تهشير ({patterns}) واستبدال {strokes} كائن.'
   },
   bsearch: {
     unsupported:

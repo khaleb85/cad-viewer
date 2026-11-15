@@ -130,6 +130,20 @@ export default {
       }
     }
   },
+  copybase: {
+    basePoint: 'Specify base point'
+  },
+  pasteclip: {
+    insertionPoint: 'Specify insertion point',
+    empty: 'The clipboard contains no drawing objects'
+  },
+  pasteorig: {
+    sameDrawing:
+      'PASTEORIG cannot paste into the drawing the objects were copied from'
+  },
+  pasteblock: {
+    insertionPoint: 'Specify insertion point'
+  },
   dimlinear: {
     xLine1Point: 'Specify first extension line origin or <select object>',
     xLine2Point: 'Specify second extension line origin',
@@ -784,9 +798,17 @@ export default {
     startPoint: 'Specify arc start point',
     throughPoint: 'Specify a point on the arc',
     endPoint: 'Specify arc end point',
-    lockedEndPoint:
-      'Specify arc end point (Ctrl to switch major/minor arc)',
-    invalidPoints: 'The three points are collinear and do not define an arc.'
+    lockedEndPoint: 'Specify arc end point (Ctrl to switch major/minor arc)',
+    invalidPoints: 'The three points are collinear and do not define an arc.',
+    pickArc: 'Select a circle, arc or polyline arc',
+    noArc: 'No circle or arc here. Click on a curve, or choose ThreePoint.',
+    keywords: {
+      threePoint: {
+        display: 'ThreePoint(T)',
+        local: 'ThreePoint',
+        global: 'ThreePoint'
+      }
+    }
   },
   measureArea: {
     firstPoint: 'Specify first point',
@@ -893,8 +915,7 @@ export default {
   leader: {
     startPoint: 'Specify leader start point',
     nextPoint: 'Specify next point',
-    nextPointOrOptions:
-      'Specify next point or [Annotation/Format/Undo]',
+    nextPointOrOptions: 'Specify next point or [Annotation/Format/Undo]',
     formatPrompt: 'Enter leader format option [Spline/STraight/Arrow/None]',
     annotationText: 'Enter first line of annotation text or <options>',
     nextAnnotationLine: 'Enter next line of annotation text',
@@ -1031,10 +1052,10 @@ export default {
   mleaderedit: {
     selectMLeader: 'Select a multileader',
     rejectMLeader: 'Must select a multileader.',
-    arrowheadOrRemove:
-      'Specify leader arrowhead location or [Remove leaders]',
+    arrowheadOrRemove: 'Specify leader arrowhead location or [Remove leaders]',
     selectLeaderToRemove: 'Specify a leader to remove or press Enter to finish',
     cannotRemoveLast: 'Cannot remove the last leader from this multileader.',
+    noLeaderAtPoint: 'No leader found at that point.',
     keywords: {
       remove: {
         display: 'Remove leaders(R)',
@@ -1273,6 +1294,35 @@ export default {
     },
     invalid: {
       referencePoints: 'Invalid reference points: points must be different.'
+    }
+  },
+  scale: {
+    basePoint: 'Specify base point',
+    scaleFactorOrOptions: 'Specify scale factor or',
+    referenceLength: 'Specify reference length',
+    newLengthOrPoints: 'Specify new length or',
+    newLengthFirstPoint: 'Specify first point',
+    copyMessage: 'Scaling a copy of the selected objects.',
+    keywords: {
+      copy: {
+        display: 'Copy(C)',
+        local: 'Copy',
+        global: 'Copy'
+      },
+      reference: {
+        display: 'Reference(R)',
+        local: 'Reference',
+        global: 'Reference'
+      },
+      points: {
+        display: 'Points(P)',
+        local: 'Points',
+        global: 'Points'
+      }
+    },
+    invalid: {
+      factor: 'Value must be positive and nonzero.',
+      length: 'Value must be positive and nonzero.'
     }
   },
   revcloud: {
@@ -1540,6 +1590,7 @@ export default {
     exportFormat: 'Export format',
     exportInvisibleLayers: 'Export invisible layers',
     exportLayouts: 'Export layouts',
+    exportEmptyLayouts: 'Export empty layouts',
     background: 'Background color',
     initialView: 'Initial view when opening HTML',
     viewerMode: 'Offline viewer mode',
@@ -1606,6 +1657,7 @@ export default {
   cpdf: {
     modelSpaceFit: 'Model space frame',
     exportLayouts: 'Export layouts',
+    exportEmptyLayouts: 'Export empty layouts',
     textMode: 'Text rendering',
     colorMode: 'Color mode',
     keywords: {
@@ -1835,8 +1887,7 @@ export default {
   dashgroup: {
     option: 'Enter an option',
     empty: 'No groups defined',
-    listEntry:
-      '{name}  {description}  [{selectable}]  ({count})',
+    listEntry: '{name}  {description}  [{selectable}]  ({count})',
     yes: 'Yes',
     no: 'No',
     enterNameOrBlank: 'Enter group name or press Enter for unnamed',
@@ -1900,8 +1951,7 @@ export default {
   },
   pdfimport: {
     pageNumber: 'Enter page number (1-{count})',
-    insertionPoint:
-      'Specify insertion point (scale {scale}, mode {mode}) or',
+    insertionPoint: 'Specify insertion point (scale {scale}, mode {mode}) or',
     modePrompt: 'Select import mode',
     modeRecover: 'recover drawing',
     modeVisual: 'keep PDF appearance',
@@ -1957,23 +2007,96 @@ export default {
     }
   },
   pdfdim: {
+    cancelled: 'Recover Dimensions cancelled; nothing was changed.',
     noDimensions:
       'No dimensions found in the selection (arrowheads or ticks, dimension lines and value texts are needed).',
-    convertAll:
-      'Found {count} dimensions (drawing scale 1:{scale}). Convert them?',
-    convertOne: 'Dimension {index}/{count} "{text}": convert?',
     summary:
-      'Converted {count} dimension(s); style PDF_DIM uses a linear scale factor of {scale}.'
+      'Converted {count} dimension(s); style {style} uses a linear scale factor of {scale}.',
+    panel: {
+      title: 'Recover Dimensions',
+      style: 'Dimension style',
+      dimStyle: 'Style',
+      newStyle: 'New dim style…',
+      newStyleName: 'Name of the new dim style',
+      createStyle: 'Create',
+      nameEmpty: 'Enter a name.',
+      nameInvalid: 'The name contains characters that are not allowed.',
+      nameExists: 'A dim style with this name already exists.',
+      scale: 'Drawing scale',
+      stylePreview: 'Preview of the selected dim style with recovered sizes',
+      dimensions: 'Dimensions',
+      selectHint:
+        'Select a dimension to zoom to it; edit the value before Apply.',
+      empty: 'No dimensions found in the selection.',
+      include: 'Convert this dimension',
+      kindLinear: 'Linear',
+      kindRadius: 'Radius',
+      kindDiameter: 'Diameter',
+      kindAngular: 'Angular',
+      textTip: 'Dimension text (override)',
+      measured: 'Measured {value}',
+      hideStrokes: 'Hide original strokes',
+      ready: '{ready} of {count} dimensions ready',
+      cancel: 'Cancel',
+      apply: 'Apply'
+    }
+  },
+  pdfhatch: {
+    cancelled: 'Recover Hatch cancelled; nothing was changed.',
+    pickPoint: 'Pick a point inside the area to hatch',
+    panel: {
+      title: 'Recover Hatch',
+      hatches: 'Hatches',
+      addArea: 'Add area',
+      addAreaTip:
+        'Pick a point inside an area the recognition missed; the best fitting pattern is matched to its strokes.',
+      picking: 'Pick a point inside the area in the drawing…',
+      noBoundary: 'No closed area was found around that point.',
+      noStrokes: 'No regular pattern was found in that area.',
+      empty: 'No hatch found. Use Add area to pick one.',
+      include: 'Convert this hatch',
+      addedTag: 'added',
+      entities: '{count} objects',
+      selectHint: 'Select a hatch to change its pattern, scale or angle.',
+      ownGroup: 'Measured / user defined',
+      libraryGroup: 'Predefined',
+      pattern: 'Pattern',
+      scale: 'Scale',
+      spacing: 'Spacing',
+      angle: 'Angle',
+      autoFit: 'Auto fit',
+      autoFitTip:
+        'Measure the scale, angle and origin of this pattern from the strokes again.',
+      match: 'Pattern on strokes: {precision} · strokes re-drawn: {recall}',
+      noEntities:
+        'This pattern re-draws no object completely; nothing would be replaced.',
+      guessed:
+        'The strokes show no trace of this pattern; its scale and angle are a guess.',
+      poorMatch: 'Poor match: strokes the hatch does not re-draw are kept.',
+      userSingle: 'User defined',
+      userDouble: 'User defined, double',
+      measured: 'Measured pattern',
+      hideStrokes: 'Hide original strokes',
+      ready: '{ready} of {count} hatches ready',
+      cancel: 'Cancel',
+      apply: 'Apply'
+    },
+    noHatches:
+      'No hatch found in the selection (regular parallel strokes and the lines bounding them are needed).',
+    summary:
+      'Converted {count} hatch(es) ({patterns}), replacing {strokes} object(s).'
   },
   bsearch: {
-    unsupported: 'None of the selected objects can be matched (lines, arcs, circles, polylines, ellipses, splines, text, mtext and block references are supported).',
+    unsupported:
+      'None of the selected objects can be matched (lines, arcs, circles, polylines, ellipses, splines, text, mtext and block references are supported).',
     skipped: '{count} selected object(s) cannot be matched and are ignored.',
     found: 'Found {count} matching instance(s), {included} to convert. Choose',
     noMatches: 'No other instances found.',
     reviewOne: 'Instance {index}/{count} ({state})',
     included: 'included',
     excluded: 'excluded',
-    options: 'Rotation {rotation}, mirror {mirror}, scale {scale}, same layer {layer}, existing blocks {blocks}, text variations {text}. Toggle',
+    options:
+      'Rotation {rotation}, mirror {mirror}, scale {scale}, same layer {layer}, existing blocks {blocks}, text variations {text}. Toggle',
     on: 'on',
     off: 'off',
     target: 'Convert to',
@@ -1986,7 +2109,8 @@ export default {
     blockNotFound: 'Block "{name}" not found.',
     rotation: 'Specify rotation angle of the block',
     scale: 'Specify scale factor of the block',
-    scope: 'Convert the {count} found instance(s) as well, or only the source objects?',
+    scope:
+      'Convert the {count} found instance(s) as well, or only the source objects?',
     summary: 'Converted into block "{name}": {count} reference(s).',
     keywords: {
       convert: {

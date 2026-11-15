@@ -126,6 +126,19 @@ export default {
       }
     }
   },
+  copybase: {
+    basePoint: '기준점 지정'
+  },
+  pasteclip: {
+    insertionPoint: '삽입점 지정',
+    empty: '클립보드에 도면 객체가 없습니다'
+  },
+  pasteorig: {
+    sameDrawing: 'PASTEORIG는 객체를 복사한 원본 도면에는 붙여넣을 수 없습니다'
+  },
+  pasteblock: {
+    insertionPoint: '삽입점 지정'
+  },
   dimlinear: {
     xLine1Point: '첫 번째 치수보조선 원점 지정 또는 <객체 선택>',
     xLine2Point: '두 번째 치수보조선 원점 지정',
@@ -808,7 +821,16 @@ export default {
     throughPoint: '호 위의 점 지정',
     endPoint: '호의 끝점 지정',
     lockedEndPoint: '호의 끝점 지정 (Ctrl 키로 큰 호/작은 호 전환)',
-    invalidPoints: '세 점이 동일 선상에 있어 호를 정의할 수 없습니다.'
+    invalidPoints: '세 점이 동일 선상에 있어 호를 정의할 수 없습니다.',
+    pickArc: '원, 호 또는 폴리선 호 선택',
+    noArc: '여기에 원이나 호가 없습니다. 곡선을 클릭하거나 3점을 선택하세요.',
+    keywords: {
+      threePoint: {
+        display: '3점(T)',
+        local: '3점',
+        global: 'ThreePoint'
+      }
+    }
   },
   measureArea: {
     firstPoint: '첫 번째 점 지정',
@@ -1064,6 +1086,7 @@ export default {
     arrowheadOrRemove: '지시선 화살촉 위치 지정 또는 [지시선 제거(R)]',
     selectLeaderToRemove: '제거할 지시선 지정 또는 Enter 키를 눌러 완료',
     cannotRemoveLast: '이 다중 지시선에서 마지막 지시선은 제거할 수 없습니다.',
+    noLeaderAtPoint: '해당 위치에서 지시선을 찾을 수 없습니다.',
     keywords: {
       remove: {
         display: '지시선 제거(R)',
@@ -1302,6 +1325,35 @@ export default {
     },
     invalid: {
       referencePoints: '잘못된 참조점: 점들은 서로 달라야 합니다.'
+    }
+  },
+  scale: {
+    basePoint: '기준점 지정',
+    scaleFactorOrOptions: '축척 비율 지정 또는',
+    referenceLength: '참조 길이 지정',
+    newLengthOrPoints: '새 길이 지정 또는',
+    newLengthFirstPoint: '첫 번째 점 지정',
+    copyMessage: '선택한 객체의 사본을 축척합니다.',
+    keywords: {
+      copy: {
+        display: '복사(C)',
+        local: '복사',
+        global: 'Copy'
+      },
+      reference: {
+        display: '참조(R)',
+        local: '참조',
+        global: 'Reference'
+      },
+      points: {
+        display: '점(P)',
+        local: '점',
+        global: 'Points'
+      }
+    },
+    invalid: {
+      factor: '값은 0이 아닌 양수여야 합니다.',
+      length: '값은 0이 아닌 양수여야 합니다.'
     }
   },
   revcloud: {
@@ -1569,6 +1621,7 @@ export default {
     exportFormat: '내보내기 형식',
     exportInvisibleLayers: '보이지 않는 도면층 내보내기',
     exportLayouts: '배치 내보내기',
+    exportEmptyLayouts: '빈 배치 내보내기',
     background: '배경색',
     initialView: 'HTML을 열 때의 초기 뷰',
     viewerMode: '오프라인 뷰어 모드',
@@ -1635,6 +1688,7 @@ export default {
   cpdf: {
     modelSpaceFit: '모형 공간 프레임',
     exportLayouts: '배치 내보내기',
+    exportEmptyLayouts: '빈 배치 내보내기',
     textMode: '문자 렌더링',
     colorMode: '색상 모드',
     keywords: {
@@ -1968,7 +2022,8 @@ export default {
       singleView: '페이지 미리보기 표시',
       gridView: '페이지 축소판 표시',
       pageLabel: '페이지 {page}',
-      pageSize: '페이지 크기: {width} × {height} mm ({widthIn} × {heightIn} 인치)',
+      pageSize:
+        '페이지 크기: {width} × {height} mm ({widthIn} × {heightIn} 인치)',
       previewError: '미리보기를 표시할 수 없음',
       positionGroup: '위치',
       onScreen: '화면상에 삽입점 지정',
@@ -1985,13 +2040,83 @@ export default {
     }
   },
   pdfdim: {
+    cancelled: '치수 인식을 취소했습니다. 변경된 내용이 없습니다.',
     noDimensions:
       '선택 영역에서 치수를 찾지 못했습니다 (화살표 또는 사선, 치수선, 숫자 문자가 필요합니다).',
-    convertAll:
-      '치수 {count}개를 찾았습니다 (도면 축척 1:{scale}). 변환하시겠습니까?',
-    convertOne: '치수 {index}/{count} "{text}": 변환하시겠습니까?',
     summary:
-      '치수 {count}개를 변환했습니다. 치수 스타일 PDF_DIM의 선형 축척 비율은 {scale}입니다.'
+      '치수 {count}개를 변환했습니다. 치수 스타일 {style}의 선형 축척 비율은 {scale}입니다.',
+    panel: {
+      title: '치수 인식',
+      style: '치수 스타일',
+      dimStyle: '스타일',
+      newStyle: '새 치수 스타일…',
+      newStyleName: '새 치수 스타일 이름',
+      createStyle: '만들기',
+      nameEmpty: '이름을 입력하십시오.',
+      nameInvalid: '이름에 사용할 수 없는 문자가 있습니다.',
+      nameExists: '같은 이름의 치수 스타일이 이미 있습니다.',
+      scale: '도면 축척',
+      stylePreview: '선택한 치수 스타일 미리보기(인식된 크기 반영)',
+      dimensions: '치수',
+      selectHint:
+        '치수를 선택하면 해당 위치로 확대됩니다. 적용 전에 값을 수정할 수 있습니다.',
+      empty: '선택 영역에서 치수를 찾지 못했습니다.',
+      include: '이 치수 변환',
+      kindLinear: '선형',
+      kindRadius: '반지름',
+      kindDiameter: '지름',
+      kindAngular: '각도',
+      textTip: '치수 문자(재정의)',
+      measured: '측정값 {value}',
+      hideStrokes: '원본 선 숨기기',
+      ready: '{ready}/{count}개 치수 준비됨',
+      cancel: '취소',
+      apply: '적용'
+    }
+  },
+  pdfhatch: {
+    cancelled: '해치 인식을 취소했습니다. 변경된 내용이 없습니다.',
+    pickPoint: '해치할 영역 내부의 점 지정',
+    panel: {
+      title: '해치 인식',
+      hatches: '해치',
+      addArea: '영역 추가',
+      addAreaTip:
+        '인식되지 않은 영역 내부의 점을 지정하면 그 안의 선에 가장 알맞은 패턴을 맞춥니다.',
+      picking: '도면에서 영역 내부의 점을 지정하십시오…',
+      noBoundary: '그 점 주위에서 닫힌 영역을 찾지 못했습니다.',
+      noStrokes: '그 영역에서 규칙적인 패턴을 찾지 못했습니다.',
+      empty: '해치를 찾지 못했습니다. "영역 추가"로 지정하십시오.',
+      include: '이 해치 변환',
+      addedTag: '추가됨',
+      entities: '객체 {count}개',
+      selectHint: '해치를 선택하면 패턴, 축척, 각도를 변경할 수 있습니다.',
+      ownGroup: '측정 / 사용자 정의',
+      libraryGroup: '미리 정의됨',
+      pattern: '패턴',
+      scale: '축척',
+      spacing: '간격',
+      angle: '각도',
+      autoFit: '자동 맞춤',
+      autoFitTip: '선에서 이 패턴의 축척, 각도, 원점을 다시 측정합니다.',
+      match: '선 위의 패턴: {precision} · 다시 그려진 선: {recall}',
+      noEntities:
+        '이 패턴으로 완전히 다시 그려지는 객체가 없어 아무것도 대체되지 않습니다.',
+      guessed:
+        '선에서 이 패턴의 흔적을 찾지 못했습니다. 축척과 각도는 추정값입니다.',
+      poorMatch: '일치도 낮음: 해치가 다시 그리지 못한 선은 그대로 유지됩니다.',
+      userSingle: '사용자 정의',
+      userDouble: '사용자 정의 (이중)',
+      measured: '측정된 패턴',
+      hideStrokes: '원래 선 숨기기',
+      ready: '해치 {count}개 중 {ready}개 준비됨',
+      cancel: '취소',
+      apply: '적용'
+    },
+    noHatches:
+      '선택 영역에서 해치를 찾지 못했습니다 (규칙적인 평행 선분과 그 경계선이 필요합니다).',
+    summary:
+      '해치 {count}개를 변환했습니다 ({patterns}). 객체 {strokes}개를 대체했습니다.'
   },
   bsearch: {
     unsupported:
@@ -2170,10 +2295,12 @@ export default {
       shxFonts: 'SHX 글꼴',
       ttfFonts: 'TrueType 글꼴',
       fontsUsed: '사용 글꼴: {fonts}',
-      fontMissing: '"{font}" 글꼴을 사용할 수 없어 "{fallback}"(으)로 표시됩니다.',
+      fontMissing:
+        '"{font}" 글꼴을 사용할 수 없어 "{fallback}"(으)로 표시됩니다.',
       fontNotShx: 'TrueType 글꼴입니다. SHX 선 문자처럼 보이지 않습니다.',
       fontNotTtf: 'SHX 글꼴입니다. TrueType 윤곽선 문자처럼 보이지 않습니다.',
-      styleChanges: '문자 스타일 "{style}"의 글꼴을 변경합니다. 이 스타일을 사용하는 기존 문자도 바뀝니다.',
+      styleChanges:
+        '문자 스타일 "{style}"의 글꼴을 변경합니다. 이 스타일을 사용하는 기존 문자도 바뀝니다.',
       heightScale: '높이 축척',
       widthFactor: '폭 비율',
       autoWidth: '원래 폭에 맞춤',
@@ -2198,7 +2325,8 @@ export default {
       split: '분할',
       splitTip: '선택한 결합 문자를 원래 행으로 분할합니다',
       mergeAdjacent: '인접 문자 결합',
-      mergeAdjacentTip: '같은 기준선에서 서로 인접한 문자와 단어를 여러 줄 문자로 결합합니다',
+      mergeAdjacentTip:
+        '같은 기준선에서 서로 인접한 문자와 단어를 여러 줄 문자로 결합합니다',
       mergedCount: '여러 줄 문자 {count}개로 결합했습니다.',
       selectHint: 'Ctrl+클릭 또는 Shift+클릭으로 여러 행을 선택할 수 있습니다.',
       mtextTag: '여러 줄 문자'

@@ -89,6 +89,27 @@ export default {
       description: 'نسخ العناصر المحددة إلى مواضع جديدة',
       prompt: 'حدد العناصر'
     },
+    copybase: {
+      description: 'ينسخ الكائنات المحددة إلى الحافظة مع نقطة أساس محددة',
+      prompt: 'حدد العناصر'
+    },
+    copyclip: {
+      description: 'ينسخ الكائنات المحددة إلى الحافظة',
+      prompt: 'حدد العناصر'
+    },
+    cutclip: {
+      description: 'ينسخ الكائنات المحددة إلى الحافظة ويزيلها من الرسم',
+      prompt: 'حدد العناصر'
+    },
+    pasteblock: {
+      description: 'يلصق الكائنات من الحافظة ككتلة'
+    },
+    pasteclip: {
+      description: 'يلصق الكائنات من الحافظة في الرسم الحالي'
+    },
+    pasteorig: {
+      description: 'يلصق الكائنات من الحافظة باستخدام إحداثيات الرسم الأصلي'
+    },
     csvg: {
       description: 'تحويل الرسم الحالي إلى SVG'
     },
@@ -130,6 +151,12 @@ export default {
     },
     dwgname: {
       description: 'عرض اسم ملف الرسم الحالي (للقراءة فقط)'
+    },
+    find: {
+      description: 'فتح لوحة البحث عن النص'
+    },
+    layer: {
+      description: 'فتح أو إغلاق لوحة مدير الطبقات'
     },
     loginname: {
       description: 'عرض اسم تسجيل دخول المستخدم (للقراءة فقط)'
@@ -212,6 +239,10 @@ export default {
     pdfdim: {
       description: 'يحوّل أبعاد PDF المفككة إلى كائنات أبعاد',
       prompt: 'حدد المنطقة التي تحتوي على الأبعاد'
+    },
+    pdfhatch: {
+      description: 'يحوّل الخطوط المتفرقة لتهشير PDF إلى كائن تهشير',
+      prompt: 'حدد المنطقة المهشرة مع الخطوط المحيطة بها'
     },
     pdfblock: {
       description: 'يحوّل الهندسة المتكررة في PDF إلى كتلة',
@@ -525,6 +556,11 @@ export default {
     },
     rotate: {
       description: 'تدوير العناصر المحددة حول نقطة أساس',
+      prompt: 'حدد العناصر'
+    },
+    scale: {
+      description:
+        'تكبير العناصر المحددة أو تصغيرها مع الحفاظ على تناسبها بعد تغيير المقياس',
       prompt: 'حدد العناصر'
     },
     select: {

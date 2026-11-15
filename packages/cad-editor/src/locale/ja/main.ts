@@ -216,6 +216,7 @@ export default {
       draw: '作成',
       dimension: '寸法',
       modify: '修正',
+      clipboard: 'クリップボード',
       layer: '画層',
       properties: 'プロパティ',
       groups: 'グループ',
@@ -290,6 +291,8 @@ export default {
         '既知の距離の 2 点から読み込んだ PDF 図形の尺度を変更します (PDFSCALE)。',
       pdfDim:
         'PDF で分解された寸法（矢印または斜線、寸法線、寸法補助線、文字）を寸法オブジェクトに戻します (PDFDIM)。',
+      pdfHatch:
+        'PDF で線分に分解されたハッチングを、パターン・尺度・角度付きのハッチングに戻します (PDFHATCH)。',
       pdfBlock:
         'PDF の繰り返し図形をブロックにし、各コピーをブロック参照に置き換えます (PDFBLOCK)。',
       pdfText:
@@ -327,8 +330,20 @@ export default {
       mleaderRemove: '既存のマルチ引出線から引出線を削除します。',
       move: '選択したオブジェクトを新しい位置に移動します。',
       rotate: '選択したオブジェクトを基点を中心に回転します。',
-      copy: '選択したオブジェクトを新しい位置に複写します。',
+      scale: '選択したオブジェクトを縦横比を保ったまま拡大または縮小します。',
       erase: '選択したオブジェクトを図面から削除します。',
+      pasteClip:
+        'クリップボードのオブジェクトを現在の図面に貼り付けます (PASTECLIP)。',
+      pasteOrig:
+        '元の図面の座標を使用してクリップボードのオブジェクトを貼り付けます (PASTEORIG)。',
+      pasteBlock:
+        'クリップボードのオブジェクトをブロックとして現在の図面に貼り付けます (PASTEBLOCK)。',
+      cutClip:
+        '選択したオブジェクトを削除してクリップボードにコピーします (CUTCLIP)。',
+      copyClip:
+        '選択したオブジェクトをクリップボードにコピーします (COPYCLIP)。',
+      copyBase:
+        '指定した基点で選択したオブジェクトをクリップボードにコピーします (COPYBASE)。',
       offset: '指定した距離にオブジェクトの平行コピーを作成します。',
       undo: '直前の編集操作を元に戻します。',
       redo: '元に戻した直前の編集操作をやり直します。',
@@ -443,6 +458,7 @@ export default {
       importPdf: 'PDF\n読み込み',
       pdfScale: '尺度\n校正',
       pdfDim: '寸法\n認識',
+      pdfHatch: 'ハッチング\n認識',
       pdfBlock: 'ブロック\n作成',
       pdfText: '文字\n認識',
       line: '線分',
@@ -480,8 +496,14 @@ export default {
       mleaderRemove: '引出線を削除',
       move: '移動',
       rotate: '回転',
-      copy: '複写',
+      scale: '尺度変更',
       erase: '削除',
+      pasteClip: '貼り付け',
+      pasteOrig: '元の座標に貼り付け',
+      pasteBlock: 'ブロックとして貼り付け',
+      cutClip: '切り取り',
+      copyClip: 'コピー',
+      copyBase: '基点コピー',
       offset: 'オフセット',
       undo: '元に戻す',
       redo: 'やり直し',

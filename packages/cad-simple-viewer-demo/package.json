@@ -1,7 +1,7 @@
 {
   "name": "@mlightcad/cad-simple-viewer-demo",
   "private": true,
-  "version": "1.8.0-preview.3",
+  "version": "1.8.0-preview.4",
   "type": "module",
   "repository": {
     "type": "git",
@@ -30,12 +30,11 @@
     "@mlightcad/cad-pdf-core": "workspace:*",
     "@mlightcad/cad-pdf-plugin": "workspace:*",
     "@mlightcad/pdf-renderer": "workspace:*",
-    "@mlightcad/cad-simple-ui-plugin": "workspace:*",
     "@mlightcad/cad-svg-plugin": "workspace:*",
     "@mlightcad/cad-svg-converter": "workspace:*",
     "@mlightcad/cad-simple-viewer": "workspace:*",
-    "@mlightcad/data-model": "1.15.25",
-    "@mlightcad/libredwg-converter": "3.15.25",
+    "@mlightcad/data-model": "1.15.30",
+    "@mlightcad/libredwg-converter": "3.15.30",
     "@mlightcad/mtext-parser": "1.5.7",
     "@mlightcad/mtext-renderer": "0.13.9",
     "@mlightcad/three-renderer": "workspace:*",

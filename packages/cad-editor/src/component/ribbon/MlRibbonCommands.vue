@@ -2,19 +2,15 @@
 import '@mlightcad/ribbon/style.css'
 
 import {
-  ChatDotRound,
   ChatLineSquare,
   CopyDocument,
   Delete,
-  DocumentCopy,
-  EditPen,
   Hide,
-  RefreshLeft,
   RefreshRight,
   Right,
   ScaleToOriginal,
+  Scissor,
   Stamp,
-  Upload,
   View
 } from '@element-plus/icons-vue'
 import {
@@ -113,6 +109,7 @@ import {
 } from '../../composable/namedViewsRevision'
 import { LocaleProp } from '../../locale'
 import {
+  agent,
   arcCenterStartAngle,
   arcCenterStartEnd,
   arcCenterStartLength,
@@ -133,6 +130,7 @@ import {
   circleTanTanTan,
   circleThreePoints,
   circleTwoPoints,
+  copyBase,
   countlist,
   defineAttribute,
   dimAligned,
@@ -175,6 +173,14 @@ import {
   namedUcs,
   newView,
   offset,
+  pasteBlock,
+  pasteClip,
+  pasteOrig,
+  pdfBlock,
+  pdfDimRecognize,
+  pdfHatchRecognize,
+  pdfImport,
+  pdfTextRecognize,
   polygon,
   polyline,
   properties,
@@ -182,6 +188,7 @@ import {
   ray,
   rect,
   revFreeDraw,
+  scale,
   setting,
   splineFitPoints,
   ucs,
@@ -213,10 +220,12 @@ import {
   measurementPanel,
   measurePoint,
   pan as panIcon,
+  redo as redoIcon,
   revCircle,
   revCloud,
   revRect,
   revText,
+  undo as undoIcon,
   zoomToBox,
   zoomToExtent
 } from '../../svg/toolbarIcons'
@@ -268,7 +277,9 @@ const isMarkupOverlayVisible = ref(true)
 const isMeasurementOverlayVisible = ref(true)
 const markupDrawColor = shallowRef(defaultMarkupColor())
 const markupDrawColorDisplay = ref(markupColorToCss(markupDrawColor.value))
-const markupTextHeightMode = ref<OverlayTextHeightMode>(getMarkupTextHeightMode())
+const markupTextHeightMode = ref<OverlayTextHeightMode>(
+  getMarkupTextHeightMode()
+)
 const markupTextHeightWcs = ref<number | undefined>(
   getMarkupCustomTextHeightWcs()
 )
@@ -285,7 +296,9 @@ const measurementLunits = ref(AcDbLinearUnits.Decimal)
 const measurementLuprec = ref(4)
 const measurementAunits = ref(AcDbAngleUnits.DecimalDegrees)
 const measurementAuprec = ref(0)
-const measurementLengthUnit = ref<number>(MEASUREMENT_LENGTH_UNIT_FOLLOW_DRAWING)
+const measurementLengthUnit = ref<number>(
+  MEASUREMENT_LENGTH_UNIT_FOLLOW_DRAWING
+)
 const isRibbonDisabled = computed(() => isDocumentOpening.value)
 const ribbonColor = ref<AcCmColor | undefined>(new AcCmColor())
 const ribbonColorDisplay = ref('#7b8794')
@@ -540,11 +553,7 @@ const togglePickstyleGroupSelection = () => {
   )
   const current = typeof raw === 'number' ? Math.trunc(raw) : 1
   const next = (current & 1) !== 0 ? current & ~1 : current | 1
-  AcDbSysVarManager.instance().setVar(
-    AcDbSystemVariables.PICKSTYLE,
-    next,
-    db
-  )
+  AcDbSysVarManager.instance().setVar(AcDbSystemVariables.PICKSTYLE, next, db)
   pickstyleGroupOn.value = (next & 1) !== 0
 }
 
@@ -731,7 +740,8 @@ const activateRibbonTabForOverlaySelection = () => {
 
   if (kind === 'measurement') {
     const measurementId = getSelectedMeasurementId()
-    const measurementNewlySelected = measurementId !== lastActivatedMeasurementId
+    const measurementNewlySelected =
+      measurementId !== lastActivatedMeasurementId
     lastActivatedMeasurementId = measurementId
     if (measurementNewlySelected) {
       activeRibbonTabId.value = 'measurement'
@@ -904,9 +914,7 @@ const handleRibbonLineWeightChange = (value: AcGiLineWeight) => {
  */
 const syncMarkupStyleControls = () => {
   const store = getMarkupStore()
-  const selected = store.selectedId
-    ? store.get(store.selectedId)
-    : undefined
+  const selected = store.selectedId ? store.get(store.selectedId) : undefined
   if (selected) {
     const color = cssToMarkupColor(selected.style.color)
     markupDrawColor.value = color
@@ -917,8 +925,7 @@ const syncMarkupStyleControls = () => {
         ? selected.style.fontSize
         : getMarkupFontSize()
     const wcs =
-      selected.style.textHeightWcs != null &&
-      selected.style.textHeightWcs > 0
+      selected.style.textHeightWcs != null && selected.style.textHeightWcs > 0
         ? selected.style.textHeightWcs
         : view
           ? acapScreenPxToWcs(fontSize, view)
@@ -975,9 +982,7 @@ const handleMarkupTextHeightClick = async () => {
   textHeightDialogOpen = true
   try {
     const store = getMarkupStore()
-    const selected = store.selectedId
-      ? store.get(store.selectedId)
-      : undefined
+    const selected = store.selectedId ? store.get(store.selectedId) : undefined
     const hasSelection = selected != null
     const fontSizePx =
       selected?.style.fontSize != null && selected.style.fontSize > 0
@@ -988,9 +993,7 @@ const handleMarkupTextHeightClick = async () => {
       : getMarkupCustomTextHeightWcs()
     const initials = acuiResolveTextHeightDialogInitials({
       hasSelection,
-      sessionMode: hasSelection
-        ? 'custom'
-        : getMarkupTextHeightMode(),
+      sessionMode: hasSelection ? 'custom' : getMarkupTextHeightMode(),
       fontSizePx,
       selectedTextHeightWcs,
       view
@@ -1076,19 +1079,16 @@ const handleMeasurementTextHeightClick = async () => {
     const selected = getActiveMeasurementStyle()
     const hasSelection = selected != null
     const measureId = getSelectedMeasurementId()
-    const fontSizePx =
-      selected?.fontSize ?? acapGetMeasurementFontSize()
+    const fontSizePx = selected?.fontSize ?? acapGetMeasurementFontSize()
     const selectedTextHeightWcs = hasSelection
-      ? selected?.textHeightWcs ??
+      ? (selected?.textHeightWcs ??
         (measureId
           ? getMeasurementSnapshot(measureId)?.style.textHeightWcs
-          : undefined)
+          : undefined))
       : acapGetMeasurementCustomTextHeightWcs()
     const initials = acuiResolveTextHeightDialogInitials({
       hasSelection,
-      sessionMode: hasSelection
-        ? 'custom'
-        : acapGetMeasurementTextHeightMode(),
+      sessionMode: hasSelection ? 'custom' : acapGetMeasurementTextHeightMode(),
       fontSizePx,
       selectedTextHeightWcs,
       view
@@ -1248,8 +1248,9 @@ const handleRibbonLayerStateToggle = (payload: {
 }
 
 /**
- * Read: measurement only. Review: measurement + review. Write: all tabs.
- * Contextual tabs keep the visibility their builders already set.
+ * Read: measurement only. Review: measurement + review. Write: all tabs
+ * (including View). Contextual tabs keep the visibility their builders
+ * already set.
  */
 const applyOpenModeTabVisibility = (
   tabs: RibbonTabModel[],
@@ -1260,7 +1261,7 @@ const applyOpenModeTabVisibility = (
     const visible =
       tab.id === 'measurement'
         ? true
-        : tab.id === 'review' || tab.id === 'view'
+        : tab.id === 'review'
           ? openMode >= AcEdOpenMode.Review
           : openMode === AcEdOpenMode.Write
     return { ...tab, visible }
@@ -1286,7 +1287,8 @@ const buildAiTab = (
     | 'pdfScale'
     | 'pdfText'
     | 'pdfBlock'
-    | 'pdfDim',
+    | 'pdfDim'
+    | 'pdfHatch',
     string
   >
 ): RibbonTabModel => {
@@ -1322,7 +1324,7 @@ const buildAiTab = (
                       'cmd-agent',
                       t('main.ribbon.command.agent'),
                       ribbonTooltips.agent,
-                      ChatDotRound
+                      agent
                     )
                   ]
                 }
@@ -1391,7 +1393,7 @@ const buildAiTab = (
                 'cmd-pdfimport',
                 t('main.ribbon.command.importPdf'),
                 ribbonTooltips.importPdf,
-                Upload
+                pdfImport
               ),
               largeButton(
                 'cmd-pdfscale',
@@ -1403,19 +1405,25 @@ const buildAiTab = (
                 'cmd-pdftext',
                 t('main.ribbon.command.pdfText'),
                 ribbonTooltips.pdfText,
-                EditPen
+                pdfTextRecognize
               ),
               largeButton(
                 'cmd-pdfblock',
                 t('main.ribbon.command.pdfBlock'),
                 ribbonTooltips.pdfBlock,
-                CopyDocument
+                pdfBlock
               ),
               largeButton(
                 'cmd-pdfdim',
                 t('main.ribbon.command.pdfDim'),
                 ribbonTooltips.pdfDim,
-                dimLinear
+                pdfDimRecognize
+              ),
+              largeButton(
+                'cmd-pdfhatch',
+                t('main.ribbon.command.pdfHatch'),
+                ribbonTooltips.pdfHatch,
+                pdfHatchRecognize
               )
             ]
           }
@@ -1465,8 +1473,14 @@ const buildBaseTabs = (
     mleaderRemove: t('main.ribbon.tooltip.mleaderRemove'),
     move: t('main.ribbon.tooltip.move'),
     rotate: t('main.ribbon.tooltip.rotate'),
-    copy: t('main.ribbon.tooltip.copy'),
+    scale: t('main.ribbon.tooltip.scale'),
     erase: t('main.ribbon.tooltip.erase'),
+    pasteClip: t('main.ribbon.tooltip.pasteClip'),
+    pasteOrig: t('main.ribbon.tooltip.pasteOrig'),
+    pasteBlock: t('main.ribbon.tooltip.pasteBlock'),
+    cutClip: t('main.ribbon.tooltip.cutClip'),
+    copyClip: t('main.ribbon.tooltip.copyClip'),
+    copyBase: t('main.ribbon.tooltip.copyBase'),
     offset: t('main.ribbon.tooltip.offset'),
     undo: t('main.ribbon.tooltip.undo'),
     redo: t('main.ribbon.tooltip.redo'),
@@ -1494,6 +1508,7 @@ const buildBaseTabs = (
     pdfText: t('main.ribbon.tooltip.pdfText'),
     pdfBlock: t('main.ribbon.tooltip.pdfBlock'),
     pdfDim: t('main.ribbon.tooltip.pdfDim'),
+    pdfHatch: t('main.ribbon.tooltip.pdfHatch'),
     pan: t('main.ribbon.tooltip.pan'),
     zoom: t('main.ribbon.tooltip.zoom'),
     zoomExtents: t('main.ribbon.tooltip.zoomExtents'),
@@ -2352,6 +2367,83 @@ const buildBaseTabs = (
           ]
         },
         {
+          id: 'home-clipboard',
+          title: t('main.ribbon.group.clipboard'),
+          orientation: 'row',
+          collections: [
+            {
+              id: 'home-clipboard-main',
+              layout: 'row',
+              items: [
+                {
+                  id: 'cmd-pasteclip',
+                  type: 'dropdown',
+                  label: t('main.ribbon.command.pasteClip'),
+                  tooltip: ribbonTooltips.pasteClip,
+                  size: 'large',
+                  props: {
+                    icon: pasteClip,
+                    options: [
+                      {
+                        value: 'paste-clip',
+                        label: t('main.ribbon.command.pasteClip'),
+                        tooltip: ribbonTooltips.pasteClip,
+                        icon: pasteClip
+                      },
+                      {
+                        value: 'paste-orig',
+                        label: t('main.ribbon.command.pasteOrig'),
+                        tooltip: ribbonTooltips.pasteOrig,
+                        icon: pasteOrig
+                      },
+                      {
+                        value: 'paste-block',
+                        label: t('main.ribbon.command.pasteBlock'),
+                        tooltip: ribbonTooltips.pasteBlock,
+                        icon: pasteBlock
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              id: 'home-clipboard-secondary',
+              layout: 'column',
+              rows: 3,
+              items: [
+                {
+                  id: 'cmd-cutclip',
+                  type: 'button',
+                  label: t('main.ribbon.command.cutClip'),
+                  tooltip: ribbonTooltips.cutClip,
+                  hideLabel: true,
+                  size: 'small',
+                  props: { icon: Scissor }
+                },
+                {
+                  id: 'cmd-copyclip',
+                  type: 'button',
+                  label: t('main.ribbon.command.copyClip'),
+                  tooltip: ribbonTooltips.copyClip,
+                  hideLabel: true,
+                  size: 'small',
+                  props: { icon: CopyDocument }
+                },
+                {
+                  id: 'cmd-copybase',
+                  type: 'button',
+                  label: t('main.ribbon.command.copyBase'),
+                  tooltip: ribbonTooltips.copyBase,
+                  hideLabel: true,
+                  size: 'small',
+                  props: { icon: copyBase }
+                }
+              ]
+            }
+          ]
+        },
+        {
           id: 'home-modify',
           title: t('main.ribbon.group.modify'),
           orientation: 'row',
@@ -2378,12 +2470,12 @@ const buildBaseTabs = (
                   props: { icon: RefreshRight }
                 },
                 {
-                  id: 'cmd-copy',
+                  id: 'cmd-scale',
                   type: 'button',
-                  label: t('main.ribbon.command.copy'),
-                  tooltip: ribbonTooltips.copy,
+                  label: t('main.ribbon.command.scale'),
+                  tooltip: ribbonTooltips.scale,
                   size: 'small',
-                  props: { icon: DocumentCopy }
+                  props: { icon: scale }
                 }
               ]
             },
@@ -3383,8 +3475,15 @@ const ribbonData = computed(() => {
   commandByItemId.set('cmd-dimstyle', 'dimstyle')
   commandByItemId.set('cmd-move', 'move')
   commandByItemId.set('cmd-rotate', 'rotate')
-  commandByItemId.set('cmd-copy', 'copy')
+  commandByItemId.set('cmd-scale', 'scale')
   commandByItemId.set('cmd-erase', 'erase')
+  commandByItemId.set('cmd-pasteclip', 'pasteclip')
+  commandByItemId.set('paste-clip', 'pasteclip')
+  commandByItemId.set('paste-orig', 'pasteorig')
+  commandByItemId.set('paste-block', 'pasteblock')
+  commandByItemId.set('cmd-cutclip', 'cutclip')
+  commandByItemId.set('cmd-copyclip', 'copyclip')
+  commandByItemId.set('cmd-copybase', 'copybase')
   commandByItemId.set('cmd-offset', 'offset')
   commandByItemId.set('cmd-layer', 'layer')
   commandByItemId.set('cmd-properties', 'properties')
@@ -3415,6 +3514,7 @@ const ribbonData = computed(() => {
   commandByItemId.set('cmd-pdftext', 'pdftext')
   commandByItemId.set('cmd-pdfblock', 'pdfblock')
   commandByItemId.set('cmd-pdfdim', 'pdfdim')
+  commandByItemId.set('cmd-pdfhatch', 'pdfhatch')
   commandByItemId.set('cmd-tool-markup-panel', 'markuppanel')
   commandByItemId.set('cmd-tool-markup-text', 'markuptext')
   commandByItemId.set('cmd-tool-markup-cloud', 'markupcloud')
@@ -3727,7 +3827,7 @@ const handleFileMenuSelect = async (command: string) => {
             <el-button
               class="ml-ribbon-tabs-after__button"
               :disabled="disabled || !canUndo"
-              :icon="RefreshLeft"
+              :icon="undoIcon"
               @click="handleHeaderUndo"
             />
           </el-tooltip>
@@ -3739,7 +3839,7 @@ const handleFileMenuSelect = async (command: string) => {
             <el-button
               class="ml-ribbon-tabs-after__button"
               :disabled="disabled || !canRedo"
-              :icon="RefreshRight"
+              :icon="redoIcon"
               @click="handleHeaderRedo"
             />
           </el-tooltip>

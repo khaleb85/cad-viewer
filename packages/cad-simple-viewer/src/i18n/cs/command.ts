@@ -93,6 +93,29 @@ export default {
         'Kopíruje vybrané objekty vytvořením kopií na nových pozicích',
       prompt: 'Vyberte objekty'
     },
+    copybase: {
+      description:
+        'Zkopíruje vybrané objekty do schránky se zadaným základním bodem',
+      prompt: 'Vyberte objekty'
+    },
+    copyclip: {
+      description: 'Zkopíruje vybrané objekty do schránky',
+      prompt: 'Vyberte objekty'
+    },
+    cutclip: {
+      description:
+        'Zkopíruje vybrané objekty do schránky a odstraní je z výkresu',
+      prompt: 'Vyberte objekty'
+    },
+    pasteblock: {
+      description: 'Vloží objekty ze schránky jako blok'
+    },
+    pasteclip: {
+      description: 'Vloží objekty ze schránky do aktuálního výkresu'
+    },
+    pasteorig: {
+      description: 'Vloží objekty ze schránky se souřadnicemi původního výkresu'
+    },
     csvg: {
       description: 'Převede aktuální výkres na SVG'
     },
@@ -136,6 +159,12 @@ export default {
     },
     dwgname: {
       description: 'Ukládá název aktuálního souboru výkresu (pouze pro čtení)'
+    },
+    find: {
+      description: 'Otevře dokovací panel hledání textu'
+    },
+    layer: {
+      description: 'Otevře nebo zavře dokovací panel správce hladin'
     },
     loginname: {
       description: 'Zobrazí přihlašovací jméno uživatele (pouze pro čtení)'
@@ -223,6 +252,10 @@ export default {
     pdfdim: {
       description: 'Převede rozložené kóty z PDF zpět na kótovací objekty',
       prompt: 'Vyberte oblast s kótami'
+    },
+    pdfhatch: {
+      description: 'Převede rozložené čáry šrafy z PDF zpět na objekt šrafy',
+      prompt: 'Vyberte šrafovanou oblast i s čarami kolem ní'
     },
     pdfblock: {
       description: 'Převede opakovanou geometrii z PDF zpět na blok',
@@ -554,6 +587,11 @@ export default {
     },
     rotate: {
       description: 'Otočí vybrané objekty kolem základního bodu',
+      prompt: 'Vyberte objekty'
+    },
+    scale: {
+      description:
+        'Zvětší nebo zmenší vybrané objekty se zachováním jejich proporcí',
       prompt: 'Vyberte objekty'
     },
     select: {

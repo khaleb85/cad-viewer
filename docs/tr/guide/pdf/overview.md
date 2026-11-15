@@ -13,8 +13,9 @@ PDF çizimleri yalnızca basılı görüntüyü saklar: eğriler Bézier yollar�
 | Metni Kurtar | `pdftext` | Patlatılmış metin çizgilerini yeniden metne dönüştürür |
 | Blok Oluştur | `pdfblock` | Tekrarlanan geometriyi yeniden bloğa dönüştürür |
 | Ölçüleri Kurtar | `pdfdim` | Patlatılmış ölçüleri yeniden ölçü nesnelerine dönüştürür |
+| Taramaları Kurtar | `pdfhatch` | Kısa çizgilere ayrılmış taramayı deseniyle birlikte yeniden taramaya dönüştürür |
 
-Bu komutlar **Yazma** modu gerektirir. Önerilen sıra: `pdfimport` → `pdfscale` → `pdftext` → `pdfblock` → `pdfdim`.
+Bu komutlar **Yazma** modu gerektirir. Önerilen sıra: `pdfimport` → `pdfscale` → `pdftext` → `pdfblock` → `pdfdim` → `pdfhatch`.
 
 ## İçe aktarma (`pdfimport`)
 
@@ -75,15 +76,34 @@ Yazdığınız her karakter şekli tarayıcıda hatırlanır, böylece aynı yaz
 
 ## Ölçüleri kurtarma (`pdfdim`)
 
-1. Ölçülerin bulunduğu alanı seçin.
+1. Ölçülerin bulunduğu alanı seçin. Değer metni TEXT olabilir veya hâlâ patlatılmış çizgiler (`pdftext` öncesi) olabilir: rakamlar ve CAD sembolleri yerleşik şablonla yerel okunur, LLM kullanılmaz. Çizgiler okunamazsa doğrusal ölçüler ölçülen uzunluğu değer olarak kullanır.
 2. Şunlar tanınır:
    - **Doğrusal ölçüler**: her açıda, içte veya dışta oklarla, mimari işaretlerle ve zincir ölçüler.
    - **Yarıçap ve çap ölçüleri**: bir daireye değen ok ve `R…` veya `Ø…` metni.
    - **Açısal ölçüler**: iki ucunda ok bulunan bir yay.
-3. Bloklarda olduğu gibi **Evet**, **Hayır** veya **İncele**'yi seçin.
+3. **Ölçüleri Kurtar** paneli palette açılır ve çizgilerin yerine ölçü önizlemesi gösterilir. Panel açıkken kaydırıp yakınlaştırabilirsiniz.
+   - Her değeri düzenleyin, bir ölçüyü atlamak için onay kutusunu kaldırın ve bir ölçü stili seçin veya oluşturun (önizleme, kurtarılan boyutları seçilen stilin görünümüyle gösterir).
+   - **Orijinal çizgileri gizle** (varsayılan açık) değiştirilecek çizgileri gizleyerek sonucu gösterir.
+4. Dönüştürmek için **Uygula**'ya tıklayın. **İptal** veya paneli kapatmak hiçbir şeyi değiştirmez.
 
-Ölçüler, metin yüksekliği ve ok boyutu PDF ile aynı olan `PDF_DIM` stilini kullanır. Doğrusal ölçek çarpanı metinlerden okunan çizim ölçeğine eşittir; bu yüzden 1:100 bir çizim gerçek değerlerini göstermeye devam eder. Ölçümden farklı olan veya ek semboller taşıyan metinler yazıldığı gibi kalır.
+Ölçüler, kağıt boyutları PDF ile aynı olan `PDF_DIM` stilini (veya oluşturduğunuz adı) kullanır; varlık üzerine yazmalar, başka bir stilin DIMSCALE'i büyük olsa bile bu boyutları sabitler. Doğrusal ölçek çarpanı metinlerden okunan çizim ölçeğine eşittir; bu yüzden 1:100 bir çizim gerçek değerlerini göstermeye devam eder. Ölçümden farklı olan veya ek semboller taşıyan metinler yazıldığı gibi kalır.
 
 ::: tip
 Geometriyi gerçek boyutta istiyorsanız önce `pdfscale` komutunu çalıştırın; ardından `pdfdim` 1:1 ölçeği bulur.
 :::
+
+## Taramaları kurtarma (`pdfhatch`)
+
+PDF bir desen taramasını yalnızca sınıra göre kesilmiş çok sayıda kısa çizgi olarak saklar.
+
+1. Taralı alanı çevresindeki çizgilerle birlikte seçin. Alanın üzerinden bir kesişme penceresi yeterlidir.
+2. Düzenli çizgiler önce `acadiso.pat` desenleriyle (ANSI31, ANSI36, AR-B816, ...), sonra kullanıcı tanımlı tek veya çapraz çizgilerle karşılaştırılır. Hiçbiri uymazsa aralık, kaydırma ve kesikler ölçülür ve tarama özel bir `PDF_HATCH` deseni alır.
+3. Sınır, seçimdeki kapalı konturlardan veya seçili çizgi, yay ve çoklu çizgilerin çevrelediği alandan bulunur; bunlar birbirini kesse ya da sınırın dışına uzasa bile. Adalar delik olarak kalır.
+4. Palette **Taramaları Kurtar** paneli açılır ve taramalar çizgilerin yerinde önizlenir. Panel açıkken kaydırma ve yakınlaştırma yapabilirsiniz.
+   - Listede her taramanın deseni, ölçeği ve açısı, eşleşme puanı ve kaç nesnenin yerini alacağı gösterilir. Çizgilerini iyi yeniden çizemeyen taramalar işaretlenir. Çizimde göstermek için bir taramaya tıklayın; atlamak için onay kutusunu temizleyin.
+   - Başka bir **desen** seçtiğinizde (`acadiso.pat` desenleri veya kullanıcı tanımlı tek ya da çift çizgiler) ölçeği ve açısı çizgilerden yeniden ölçülür. **Ölçeği** (veya **aralığı**) ve **açıyı** kendiniz de girebilirsiniz; **Otomatik uydur** bunları yeniden ölçer.
+   - **Alan ekle**, tanımanın kaçırdığı bir alanın içinde bir nokta seçmenizi sağlar: o noktayı çevreleyen kapalı alandaki çizgilere en uygun desen uydurulur.
+   - **Özgün çizgileri gizle** (varsayılan olarak açık), sonucu yerini aldığı çizgiler olmadan gösterir.
+5. Dönüştürmek için **Uygula**'ya tıklayın. **İptal** veya paleti kapatmak hiçbir şeyi değiştirmez.
+
+Bir tarama yalnızca yeniden çizildiğinde çizgilerini aynen oluşturuyorsa bulunur ve deseni değiştirdikten sonra da yalnızca taramanın tamamen yeniden çizdiği nesneler silinir. Desen ölçeği ve açısı çizim birimindedir; 1 ölçeğiyle içe aktarılan bir taramanın ölçeği küçük olur. Gerçek değerler için önce `pdfscale` çalıştırın.

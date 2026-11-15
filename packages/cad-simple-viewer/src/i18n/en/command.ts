@@ -93,6 +93,30 @@ export default {
       description: 'Copies selected entities by cloning them to new positions',
       prompt: 'Select entities'
     },
+    copybase: {
+      description:
+        'Copies selected objects to the clipboard with a specified base point',
+      prompt: 'Select entities'
+    },
+    copyclip: {
+      description: 'Copies selected objects to the clipboard',
+      prompt: 'Select entities'
+    },
+    cutclip: {
+      description:
+        'Copies selected objects to the clipboard and removes them from the drawing',
+      prompt: 'Select entities'
+    },
+    pasteblock: {
+      description: 'Pastes objects from the clipboard as a block'
+    },
+    pasteclip: {
+      description: 'Pastes objects from the clipboard into the current drawing'
+    },
+    pasteorig: {
+      description:
+        'Pastes objects from the clipboard using the coordinates of the original drawing'
+    },
     csvg: {
       description: 'Converts current drawing to SVG'
     },
@@ -135,6 +159,12 @@ export default {
     dwgname: {
       description: 'Stores the name of the current drawing file (read-only)'
     },
+    find: {
+      description: 'Opens the text search dock panel'
+    },
+    layer: {
+      description: 'Opens or closes the layer manager dock panel'
+    },
     loginname: {
       description: 'Displays the user\'s login name (read-only)'
     },
@@ -156,12 +186,12 @@ export default {
       description: 'Creates and manages saved sets of objects called groups'
     },
     '-bsearch': {
-      description: 'Finds identical geometry and converts it into blocks (command line)',
+      description:
+        'Finds identical geometry and converts it into blocks (command line)',
       prompt: 'Select objects to search for'
     },
     '-group': {
-      description:
-        'Creates and manages groups through command-line options'
+      description: 'Creates and manages groups through command-line options'
     },
     groupedit: {
       description: 'Adds and removes objects from a group, or renames a group'
@@ -221,6 +251,11 @@ export default {
     pdfdim: {
       description: 'Turns exploded PDF dimensions back into dimension objects',
       prompt: 'Select the area with dimensions'
+    },
+    pdfhatch: {
+      description:
+        'Turns the loose strokes of a PDF hatch back into a hatch object',
+      prompt: 'Select the hatched area with the lines around it'
     },
     pdfblock: {
       description: 'Turns repeated PDF geometry back into a block',
@@ -404,7 +439,8 @@ export default {
       description: 'Creates a multileader object'
     },
     mleaderedit: {
-      description: 'Adds leader lines to, or removes leader lines from, a multileader'
+      description:
+        'Adds leader lines to, or removes leader lines from, a multileader'
     },
     mleadereditremove: {
       description: 'Removes leader lines from a multileader'
@@ -553,6 +589,11 @@ export default {
       description: 'Rotates selected entities around a base point',
       prompt: 'Select entities'
     },
+    scale: {
+      description:
+        'Enlarges or reduces selected entities, keeping the proportions the same after scaling',
+      prompt: 'Select entities'
+    },
     select: {
       description: 'Selects entities'
     },
@@ -599,7 +640,8 @@ export default {
       description: 'Zooms to display the maximum extents of all entities'
     },
     view: {
-      description: 'Opens the View Manager to create, restore, and delete named views'
+      description:
+        'Opens the View Manager to create, restore, and delete named views'
     },
     newview: {
       description:

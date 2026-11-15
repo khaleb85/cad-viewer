@@ -1,4 +1,5 @@
 import {
+  AcDbDimension,
   AcDbEntity,
   AcDbObjectId,
   AcGePoint3dLike
@@ -14,7 +15,13 @@ import { AcEdGripPreviewJig } from './AcEdGripPreviewJig'
 export interface AcEdGripEditTarget {
   entityId: AcDbObjectId
   gripIndex: number
+  /** Grip base in the entity's native WCS (model space through a viewport). */
   gripBaseWcs: AcGePoint3dLike
+  /**
+   * Paper-space viewport the entity was selected through. When set, cursor
+   * and osnap points are converted paper↔model around this viewport.
+   */
+  viewportId?: AcDbObjectId
 }
 
 /**
@@ -58,7 +65,11 @@ export class AcEdGripEditSession {
   onMouseMove(e: MouseEvent) {
     const wcs = this.resolveWcs(e)
     this._jig.update(wcs)
-    this._jig.render()
+    // Viewport-drilled entities live in model WCS; a paper-layout transient
+    // would draw at the wrong place. Skip live preview and commit on mouseup.
+    if (this._target.viewportId == null) {
+      this._jig.render()
+    }
   }
 
   private onMouseUp(e: MouseEvent) {
@@ -74,6 +85,10 @@ export class AcEdGripEditSession {
       const entity = db.openEntityForWrite(this._entity)
       if (!entity || isEntityOnLockedLayer(db, entity)) return
       entity.subMoveGripPointsAt([this._target.gripIndex], offset)
+      // Dimensions draw from an anonymous block; regenerate it so the edited
+      // definition points, text and measurement show up (and undo restores
+      // the previous block reference).
+      if (entity instanceof AcDbDimension) entity.recomputeDimBlock()
     })
     this.finish()
   }
@@ -98,17 +113,36 @@ export class AcEdGripEditSession {
     this._onEnd()
   }
 
+  /**
+   * Resolves the drag point in the entity's native WCS.
+   *
+   * The active layout camera yields paper WCS. For viewport drill-through
+   * grips that must be compared against a model-space grip base, convert
+   * paper→model (and feed osnap paper coords so its own mapper stays coherent).
+   */
   private resolveWcs(e: MouseEvent): AcGePoint3dLike {
     const canvasPos = this._view.viewportToCanvas({
       x: e.clientX,
       y: e.clientY
     })
-    const wcs = this._view.screenToWorld(canvasPos)
-    const cursorWcs = { x: wcs.x, y: wcs.y, z: 0 }
+    const paper = this._view.screenToWorld(canvasPos)
+    const cursorPaper = { x: paper.x, y: paper.y, z: 0 }
+
+    const mapper =
+      this._target.viewportId != null
+        ? this._view.getViewportCoordinateMapper(this._target.viewportId)
+        : undefined
+
+    const lastPaper = mapper
+      ? (() => {
+          const p = mapper.modelToPaper(this._target.gripBaseWcs)
+          return { x: p.x, y: p.y, z: this._target.gripBaseWcs.z ?? 0 }
+        })()
+      : this._target.gripBaseWcs
 
     const snapPoint = this._view.osnapResolver.resolve({
-      cursorWcs,
-      lastPoint: this._target.gripBaseWcs
+      cursorWcs: cursorPaper,
+      lastPoint: lastPaper
     })
     this._osnapMarkerManager.setHintMarkers(
       AcEdOsnapResolver.displayCenterMarks(
@@ -117,15 +151,20 @@ export class AcEdGripEditSession {
       )
     )
 
+    let paperResult: AcGePoint3dLike
     if (snapPoint) {
       this._osnapMarkerManager.showOrRepositionMarker(
         snapPoint,
         AcEdOsnapResolver.osnapModeToMarkerType(snapPoint.type)
       )
-      return { x: snapPoint.x, y: snapPoint.y, z: snapPoint.z ?? 0 }
+      paperResult = { x: snapPoint.x, y: snapPoint.y, z: snapPoint.z ?? 0 }
+    } else {
+      this._osnapMarkerManager.hideMarker()
+      paperResult = cursorPaper
     }
 
-    this._osnapMarkerManager.hideMarker()
-    return cursorWcs
+    if (!mapper) return paperResult
+    const model = mapper.paperToModel(paperResult)
+    return { x: model.x, y: model.y, z: paperResult.z ?? 0 }
   }
 }

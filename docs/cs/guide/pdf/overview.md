@@ -13,8 +13,9 @@ Výkres v PDF uchovává jen to, co bylo vytištěno: křivky jsou Bézierovy ce
 | Obnovit text | `pdftext` | Převede rozložené tahy textu zpět na text |
 | Vytvořit blok | `pdfblock` | Převede opakovanou geometrii zpět na blok |
 | Obnovit kóty | `pdfdim` | Převede rozložené kóty zpět na kótovací objekty |
+| Obnovit šrafy | `pdfhatch` | Převede šrafu rozloženou na krátké čáry zpět na šrafu se vzorem |
 
-Příkazy vyžadují režim **Zápis**. Doporučené pořadí: `pdfimport` → `pdfscale` → `pdftext` → `pdfblock` → `pdfdim`.
+Příkazy vyžadují režim **Zápis**. Doporučené pořadí: `pdfimport` → `pdfscale` → `pdftext` → `pdfblock` → `pdfdim` → `pdfhatch`.
 
 ## Import (`pdfimport`)
 
@@ -75,15 +76,34 @@ Každý napsaný tvar znaku se zapamatuje v prohlížeči, takže pomůže i u d
 
 ## Obnovení kót (`pdfdim`)
 
-1. Vyberte oblast s kótami.
+1. Vyberte oblast s kótami. Text hodnoty může být TEXT, nebo stále rozložené tahy (před `pdftext`): číslice a CAD symboly se čtou vestavěnou šablonou lokálně, bez LLM. Pokud tahy nelze přečíst, lineární kóty použijí naměřenou délku.
 2. Rozpoznají se:
    - **Lineární kóty**: v libovolném úhlu, se šipkami uvnitř i vně, s architektonickými značkami i řetězové kóty.
    - **Kóty poloměru a průměru**: šipka dotýkající se kružnice s textem `R…` nebo `Ø…`.
    - **Úhlové kóty**: oblouk se šipkou na každém konci.
-3. Zvolte **Ano**, **Ne** nebo **Revize**, stejně jako u bloků.
+3. Panel **Obnovit kóty** se otevře v paletě a místo tahů ukáže náhled kót. Během otevření můžete posouvat a zoomovat.
+   - Upravte každou hodnotu, zrušte zaškrtnutí pro přeskočení kóty a vyberte nebo vytvořte styl kót (náhled ukáže obnovené velikosti s vzhledem zvoleného stylu).
+   - **Skrýt původní tahy** (ve výchozím stavu zapnuto) zobrazí výsledek bez nahrazovaných tahů.
+4. Klepnutím na **Použít** provedete převod. **Zrušit** nebo zavření palety nic nezmění.
 
-Kóty používají styl `PDF_DIM`, jehož výška textu a velikost šipek odpovídají PDF. Jeho lineární měřítko se rovná měřítku výkresu přečtenému z textů, takže výkres 1:100 stále ukazuje skutečné hodnoty. Texty, které se od měření liší nebo obsahují další symboly, zůstanou tak, jak byly napsány.
+Kóty používají styl `PDF_DIM` (nebo vámi vytvořený název) s papírovými velikostmi podle PDF; přepsání na entitě tato velikost uchová i při velkém DIMSCALE jiného stylu. Lineární měřítko se rovná měřítku výkresu přečtenému z textů, takže výkres 1:100 stále ukazuje skutečné hodnoty. Texty, které se od měření liší nebo obsahují další symboly, zůstanou tak, jak byly napsány.
 
 ::: tip
 Chcete-li geometrii ve skutečné velikosti, spusťte nejprve `pdfscale`. `pdfdim` pak zjistí měřítko 1:1.
 :::
+
+## Obnovení šraf (`pdfhatch`)
+
+PDF uchovává vzorovou šrafu jen jako mnoho krátkých čar, již oříznutých hranicí.
+
+1. Vyberte šrafovanou oblast i s čarami kolem ní. Stačí křížové okno přes oblast.
+2. Pravidelné čáry se nejprve porovnají se vzory `acadiso.pat` (ANSI31, ANSI36, AR-B816, ...), potom s uživatelskými jednoduchými nebo křížovými čarami. Když nic nesedí, změří se rozteč, posun a čárkování a šrafa dostane vlastní vzor `PDF_HATCH`.
+3. Hranice se vezme z uzavřených obrysů ve výběru nebo z oblasti, kterou uzavírají vybrané úsečky, oblouky a křivky, i když se kříží nebo přesahují. Ostrovy zůstanou otvory.
+4. V paletě se otevře panel **Obnovit šrafy** a šrafy se zobrazí v náhledu místo svých čar. Během otevřeného panelu můžete posouvat a zvětšovat.
+   - Seznam ukazuje u každé šrafy vzor, měřítko a úhel, míru shody a počet objektů, které nahradí. Šrafy, které své čáry dobře nepřekreslí, jsou označeny. Kliknutím na šrafu ji zobrazíte ve výkresu; zrušením zaškrtnutí ji vynecháte.
+   - Zvolíte-li jiný **vzor** (z `acadiso.pat` nebo uživatelské jednoduché či dvojité čáry), jeho měřítko a úhel se znovu změří z čar. **Měřítko** (nebo **rozteč**) a **úhel** můžete zadat i sami; **Automaticky přizpůsobit** je změří znovu.
+   - **Přidat oblast** určí bod uvnitř oblasti, kterou rozpoznání vynechalo: na čáry v uzavřené oblasti kolem bodu se použije nejlépe odpovídající vzor.
+   - **Skrýt původní čáry** (ve výchozím stavu zapnuto) ukáže výsledek bez čar, které nahradí.
+5. Klikněte na **Použít** pro převod. **Zrušit** nebo zavření palety nic nezmění.
+
+Šrafa se najde jen tehdy, když její nové vykreslení zopakuje původní čáry, a i po změně vzoru se smažou jen objekty, které šrafa vykreslí celé. Měřítko a úhel vzoru jsou v jednotkách výkresu, takže šrafa importovaná v měřítku 1 má malé měřítko; pro skutečné hodnoty nejprve spusťte `pdfscale`.

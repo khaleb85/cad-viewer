@@ -215,6 +215,7 @@ export default {
       draw: '그리기',
       dimension: '치수',
       modify: '수정',
+      clipboard: '클립보드',
       layer: '도면층',
       properties: '특성',
       groups: '그룹',
@@ -289,6 +290,8 @@ export default {
         '알려진 거리의 두 점으로 가져온 PDF 형상의 축척을 조정합니다 (PDFSCALE).',
       pdfDim:
         'PDF에서 분해된 치수(화살표 또는 사선, 치수선, 치수 보조선, 문자)를 치수 객체로 되돌립니다 (PDFDIM).',
+      pdfHatch:
+        'PDF에서 선분으로 분해된 해치를 패턴, 축척, 각도를 가진 해치로 되돌립니다 (PDFHATCH).',
       pdfBlock:
         'PDF의 반복 형상을 블록으로 만들고 각 사본을 블록 참조로 바꿉니다 (PDFBLOCK).',
       pdfText: 'PDF에서 분해된 문자 획을 문자 객체로 되돌립니다 (PDFTEXT).',
@@ -323,8 +326,18 @@ export default {
       mleaderRemove: '기존 다중 지시선에서 지시선을 제거합니다.',
       move: '선택한 객체를 새 위치로 이동합니다.',
       rotate: '선택한 객체를 기준점을 중심으로 회전합니다.',
-      copy: '선택한 객체를 새 위치에 복사합니다.',
+      scale:
+        '선택한 객체를 축척 후에도 비율이 유지되도록 확대 또는 축소합니다.',
       erase: '도면에서 선택한 객체를 지웁니다.',
+      pasteClip: '클립보드의 객체를 현재 도면에 붙여넣습니다(PASTECLIP).',
+      pasteOrig:
+        '원본 도면의 좌표를 사용하여 클립보드의 객체를 붙여넣습니다(PASTEORIG).',
+      pasteBlock:
+        '클립보드의 객체를 현재 도면에 블록으로 붙여넣습니다(PASTEBLOCK).',
+      cutClip: '선택한 객체를 지우고 클립보드에 복사합니다(CUTCLIP).',
+      copyClip: '선택한 객체를 클립보드에 복사합니다(COPYCLIP).',
+      copyBase:
+        '지정한 기준점을 사용하여 선택한 객체를 클립보드에 복사합니다(COPYBASE).',
       offset: '지정한 거리에 객체의 평행 사본을 작성합니다.',
       undo: '마지막 편집 작업을 명령 취소합니다.',
       redo: '마지막으로 취소한 편집 작업을 명령 복구합니다.',
@@ -430,6 +443,7 @@ export default {
       importPdf: 'PDF\n가져오기',
       pdfScale: '축척\n보정',
       pdfDim: '치수\n인식',
+      pdfHatch: '해치\n인식',
       pdfBlock: '블록\n만들기',
       pdfText: '문자\n인식',
       line: '선',
@@ -467,8 +481,14 @@ export default {
       mleaderRemove: '지시선 제거',
       move: '이동',
       rotate: '회전',
-      copy: '복사',
+      scale: '축척',
       erase: '지우기',
+      pasteClip: '붙여넣기',
+      pasteOrig: '원래 좌표에 붙여넣기',
+      pasteBlock: '블록으로 붙여넣기',
+      cutClip: '잘라내기',
+      copyClip: '복사',
+      copyBase: '기준점을 사용하여 복사',
       offset: '간격띄우기',
       undo: '명령 취소',
       redo: '명령 복구',

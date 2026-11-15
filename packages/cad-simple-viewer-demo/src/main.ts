@@ -106,6 +106,8 @@ class CadViewerApp {
           container: this.container,
           autoResize: true,
           baseUrl: '<!BASE_URL!>',
+          // The host app draws its own toolbar and panels.
+          simpleUi: false,
           webworkerFileUrls: {
             mtextRender: '/workers/mtext-renderer-worker.js',
             dwgParser: dwgParserUrl

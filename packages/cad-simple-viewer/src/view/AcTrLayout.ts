@@ -116,7 +116,8 @@ export class AcTrLayout {
   private _layers: Map<string, AcTrLayer>
   /**
    * INSERT object id → INSERT's own layer name. Used when freezing an INSERT
-   * layer to hide fragments that were bucketed onto other layers.
+   * layer to hide fragments that were bucketed onto other layers, and when
+   * HTML export reparents those fragments onto the INSERT layer.
    */
   private _insertLayerByObjectId: Map<AcDbObjectId, string>
   /** The flag indicating whether the layout is loaded/activated */
@@ -170,6 +171,16 @@ export class AcTrLayout {
    */
   get layers() {
     return this._layers
+  }
+
+  /**
+   * INSERT object id → INSERT's own layer name.
+   *
+   * Used by HTML export to reparent cross-layer INSERT fragments onto a frozen
+   * INSERT layer so the offline layer panel can show the whole reference.
+   */
+  get insertLayerByObjectId(): ReadonlyMap<AcDbObjectId, string> {
+    return this._insertLayerByObjectId
   }
 
   /**
@@ -394,6 +405,13 @@ export class AcTrLayout {
    */
   repaintForegroundMaterials(color: number) {
     this._layers.forEach(layer => layer.repaintForegroundMaterials(color))
+  }
+
+  /**
+   * Applies LWDISPLAY to owned batch material clones in this layout.
+   */
+  applyShowLineWeight(show: boolean) {
+    this._layers.forEach(layer => layer.applyShowLineWeight(show))
   }
 
   /**

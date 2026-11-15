@@ -9,6 +9,13 @@ export { AcApImportPdfCmd } from './AcApImportPdfCmd'
 export { AcApImportPdfPromptCmd } from './AcApImportPdfPromptCmd'
 export { AcApPdfBlockCmd } from './AcApPdfBlockCmd'
 export { AcApPdfDimCmd } from './AcApPdfDimCmd'
+export {
+  AcApPdfDimSession,
+  type AcApPdfDimSessionInput,
+  type PdfDimRow,
+  type PdfDimStyleNameError
+} from './AcApPdfDimSession'
+export { AcApPdfHatchCmd } from './AcApPdfHatchCmd'
 export { AcApPdfConvertor } from './AcApPdfConvertor'
 export { resolveViewerTextFont } from './AcApPdfFontResolver'
 export {
@@ -35,8 +42,11 @@ export { AcApPdfScaleCmd } from './AcApPdfScaleCmd'
 export { AcApPdfTextCmd } from './AcApPdfTextCmd'
 export {
   acapPdfCreateDimensions,
+  acapPdfDimStyleMetrics,
+  acapPdfDimStyleOverrides,
   acapPdfEnsureDimStyle,
   acapPdfNiceScale,
+  type AcApPdfDimStyleMetrics,
   PDF_DIM_STYLE,
   pdfEntitiesToDimInput
 } from './pdfDimensionConvert'
@@ -59,6 +69,7 @@ export {
   PDF_PT_TO_MM,
   remapPdfImportColor,
   type PdfImportExtractOptions,
+  type PdfImportOcgLayer,
   type PdfImportOps,
   type PdfImportPageContent,
   type PdfImportPaperTone,
@@ -92,6 +103,7 @@ export {
 export {
   parsePdfDimensionValue,
   pdfArrowFromPolygon,
+  pdfDimTextIds,
   type PdfAngularDimension,
   type PdfDimArc,
   type PdfDimCurve,
@@ -101,11 +113,24 @@ export {
   type PdfDimPolygon,
   type PdfDimSegment,
   type PdfDimText,
+  type PdfDimUnreadText,
   type PdfLinearDimension,
   type PdfRadialDimension,
   recognizePdfDimensions,
   suggestPdfDimensionScale
 } from './recognition/pdfDimensionPattern'
+export {
+  acapPdfAttachDimStrokeTexts,
+  acapPdfCollectDimStrokeLines,
+  acapPdfDimTextsFromStrokeLines,
+  acapPdfLookupDimStrokeTexts,
+  acapPdfPrepareDimStrokeTexts,
+  pdfDimTextPlacement
+} from './pdfDimStrokeTexts'
+export {
+  recognizePdfDimGlyph,
+  recognizePdfDimStrokeText
+} from './recognition/pdfDimDigitRecognition'
 export {
   buildPdfFormBlocks,
   type PdfFormBlock,
@@ -123,10 +148,36 @@ export {
   type PdfShapeMatchOptions
 } from './pdfDeprecatedMatching'
 export {
+  acapPdfCreateRecoveredHatch,
+  acapPdfHatchPatternLabel,
+  acapPdfRecoverHatches,
+  type PdfHatchInput,
+  type PdfHatchRecovery,
+  pdfEntitiesToHatchInput,
+  type PdfRecoveredHatch
+} from './pdfHatchRecover'
+export {
+  acapPdfFaceArrangement,
+  acapPdfFaceBoundary,
+  acapPdfFaceBoundaryIn,
+  acapPdfShapePolyline,
+  type PdfFaceArrangement,
+  type PdfFaceBoundaryOptions
+} from './recognition/pdfHatchFaces'
+export {
+  acapPdfBoundaryAt,
+  acapPdfFitHatch,
+  acapPdfMatchHatch,
   acapPdfRecognizeHatches,
+  CUSTOM_PATTERN_NAME,
   type PdfHatchDefinitionLine,
+  type PdfHatchFit,
+  type PdfHatchFitOptions,
+  type PdfHatchMatch,
+  type PdfHatchPatternRequest,
   type PdfHatchRecognitionOptions,
   type PdfHatchRecognitionResult,
+  type PdfHatchTrace,
   type PdfRecognizedHatch,
   type PdfRecognizedHatchPattern
 } from './recognition/pdfHatchRecognition'
@@ -135,6 +186,10 @@ export {
   type PdfTextRunMergeOptions
 } from './recognition/pdfTextRunMerge'
 export { PDF_PLUGIN_NAME, PDF_PLUGIN_TRIGGERS } from './register'
+export {
+  AcUiPdfDimPanel,
+  type AcUiPdfDimPanelOptions
+} from './ui/AcUiPdfDimPanel'
 export {
   AcUiPdfImportDialog,
   type AcUiPdfImportDialogOptions,

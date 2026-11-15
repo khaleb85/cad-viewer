@@ -217,6 +217,7 @@ export default {
       draw: 'Draw',
       dimension: 'Dimension',
       modify: 'Modify',
+      clipboard: 'Clipboard',
       layer: 'Layer',
       properties: 'Properties',
       groups: 'Groups',
@@ -291,6 +292,8 @@ export default {
         'Rescale imported PDF geometry from two points of a known distance (PDFSCALE).',
       pdfDim:
         'Turn exploded PDF dimensions (arrows or ticks, lines, extension lines and texts) back into dimension objects (PDFDIM).',
+      pdfHatch:
+        'Turn the loose strokes of a PDF hatch back into a hatch with its pattern, scale and angle (PDFHATCH).',
       pdfBlock:
         'Turn repeated PDF geometry into a block and replace every copy with a block reference (PDFBLOCK).',
       pdfText:
@@ -327,8 +330,20 @@ export default {
       mleaderRemove: 'Remove a leader line from an existing multileader.',
       move: 'Move selected objects to a new position.',
       rotate: 'Rotate selected objects around a base point.',
-      copy: 'Copy selected objects to a new location.',
+      scale:
+        'Enlarge or reduce selected objects, keeping the proportions the same after scaling.',
       erase: 'Delete selected objects from the drawing.',
+      pasteClip:
+        'Paste objects from the clipboard into the current drawing (PASTECLIP).',
+      pasteOrig:
+        'Paste clipboard objects using the coordinates from the original drawing (PASTEORIG).',
+      pasteBlock:
+        'Paste clipboard objects into the current drawing as a block (PASTEBLOCK).',
+      cutClip:
+        'Remove the selected objects and copy them to the clipboard (CUTCLIP).',
+      copyClip: 'Copy the selected objects to the clipboard (COPYCLIP).',
+      copyBase:
+        'Copy the selected objects to the clipboard with a specified base point (COPYBASE).',
       offset: 'Create a parallel copy of an object at a specified distance.',
       undo: 'Undo the last editing operation.',
       redo: 'Redo the last undone editing operation.',
@@ -456,6 +471,7 @@ export default {
       importPdf: 'Import\nPDF',
       pdfScale: 'Calibrate\nScale',
       pdfDim: 'Recover\nDims',
+      pdfHatch: 'Recover\nHatch',
       pdfBlock: 'Make\nBlock',
       pdfText: 'Recover\nText',
       line: 'Line',
@@ -493,8 +509,14 @@ export default {
       mleaderRemove: 'Remove Leader',
       move: 'Move',
       rotate: 'Rotate',
-      copy: 'Copy',
+      scale: 'Scale',
       erase: 'Erase',
+      pasteClip: 'Paste',
+      pasteOrig: 'Paste to Original Coordinates',
+      pasteBlock: 'Paste as Block',
+      cutClip: 'Cut',
+      copyClip: 'Copy',
+      copyBase: 'Copy with Base Point',
       offset: 'Offset',
       undo: 'Undo',
       redo: 'Redo',

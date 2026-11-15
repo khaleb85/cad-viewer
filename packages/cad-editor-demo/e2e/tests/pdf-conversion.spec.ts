@@ -261,14 +261,25 @@ test('pdfimport rebuilds repeated forms as blocks and pdfblock finds copies', as
   expect(Object.keys(counts)).toEqual(['BLOCKREFERENCE'])
 })
 
-test('pdfdim turns exploded dimensions into dimension objects', async ({
-  page
-}) => {
+/** Opens the dimensions fixture and runs PDFDIM over everything. */
+async function startPdfDim(page: Page) {
   await importPdf(page, 'pdf-dimensions.pdf')
   await preselect(page)
   await ribbonButton(page, 'cmd-pdfdim').click()
-  await waitForPrompt(page, /Found 5 dimensions \(drawing scale 1:100\)/)
-  await answer(page, '')
+  await expect(page.locator('.ml-pdfdim-row')).toHaveCount(5, {
+    timeout: 20_000
+  })
+}
+
+test('pdfdim turns exploded dimensions into dimension objects', async ({
+  page
+}) => {
+  await startPdfDim(page)
+  // Scope to the footer: the style-name "Create" button shares ml-pdfdim-btn.
+  await page
+    .locator('.ml-pdfdim-buttons .ml-pdfdim-btn:not(.is-secondary)')
+    .click()
+  await expect(page.locator('.ml-pdfdim-panel')).toHaveCount(0)
 
   await expect
     .poll(async () => (await entityTypes(page)).ROTATEDDIMENSION ?? 0, {
@@ -279,6 +290,24 @@ test('pdfdim turns exploded dimensions into dimension objects', async ({
   expect(counts.DIAMETRICDIMENSION).toBe(1)
   // The part outline and the circle stay; every dimension part is gone.
   expect(counts.TEXT ?? 0).toBe(0)
+})
+
+test('pdfdim changes nothing when the palette is cancelled', async ({
+  page
+}) => {
+  await startPdfDim(page)
+  const before = await entityTypes(page)
+
+  await page
+    .locator('.ml-pdfdim-buttons .ml-pdfdim-btn.is-secondary')
+    .click()
+  await expect(page.locator('.ml-pdfdim-panel')).toHaveCount(0)
+
+  const after = await entityTypes(page)
+  expect(after.ROTATEDDIMENSION ?? 0).toBe(0)
+  expect(after.DIAMETRICDIMENSION ?? 0).toBe(0)
+  expect(after.TEXT).toBe(before.TEXT)
+  expect(after.LINE).toBe(before.LINE)
 })
 
 test('pdfimport rebuilds pattern hatches from their strokes', async ({
@@ -296,4 +325,75 @@ test('pdfimport rebuilds pattern hatches from their strokes', async ({
   const counts = await entityTypes(page)
   expect(counts.POLYLINE).toBe(1)
   expect(counts.LINE ?? 0).toBe(0)
+})
+
+/** Opens the hatch strokes fixture and runs PDFHATCH over everything. */
+async function startPdfHatch(page: Page) {
+  // ANSI36 strokes (dots dropped) and the walls around them, as PDFIMPORT
+  // leaves them for a hatch in cathedral.pdf.
+  await page.goto('/')
+  await uploadFixture(page, fixture('pdf-hatch-strokes.dxf'), {
+    accessMode: 'Write'
+  })
+  await expect(page.locator('.ml-cad-container')).toBeVisible({
+    timeout: 30_000
+  })
+  await expect
+    .poll(async () => (await entityTypes(page)).LINE ?? 0, { timeout: 30_000 })
+    .toBeGreaterThan(200)
+  const before = await entityTypes(page)
+
+  await page.getByRole('tab', { name: 'AI' }).click()
+  await preselect(page)
+  await ribbonButton(page, 'cmd-pdfhatch').click()
+  // The review panel opens in the palette with one row per hatch.
+  await expect(page.locator('.ml-pdfhatch-row')).toHaveCount(1, {
+    timeout: 20_000
+  })
+  return before
+}
+
+test('pdfhatch rebuilds a hatch that a PDF left as strokes', async ({
+  page
+}) => {
+  const before = await startPdfHatch(page)
+  const row = page.locator('.ml-pdfhatch-row')
+  await expect(row).toContainText('ANSI36')
+  await expect(row).not.toHaveClass(/is-poor/)
+
+  // Another pattern is refitted and flagged; switching back restores it.
+  const pattern = page.locator('.ml-pdfhatch-pattern')
+  await pattern.selectOption('predefined:ANSI31')
+  await expect(row).toHaveClass(/is-poor/)
+  await pattern.selectOption('predefined:ANSI36')
+  await expect(row).not.toHaveClass(/is-poor/)
+
+  await page.locator('.ml-pdfhatch-btn:not(.is-secondary)').click()
+  await expect(page.locator('.ml-pdfhatch-panel')).toHaveCount(0)
+
+  await expect
+    .poll(async () => (await entityTypes(page)).HATCH ?? 0, {
+      timeout: 20_000
+    })
+    .toBe(1)
+  const after = await entityTypes(page)
+  // About 200 strokes go; the walls and column outlines stay.
+  expect(before.LINE - (after.LINE ?? 0)).toBeGreaterThan(150)
+  expect(after.LINE ?? 0).toBeGreaterThan(10)
+  expect(after.ARC).toBe(before.ARC)
+})
+
+test('pdfhatch changes nothing when the palette is cancelled', async ({
+  page
+}) => {
+  const before = await startPdfHatch(page)
+
+  await page
+    .locator('.ml-pdfhatch-buttons .ml-pdfhatch-btn.is-secondary')
+    .click()
+  await expect(page.locator('.ml-pdfhatch-panel')).toHaveCount(0)
+
+  const after = await entityTypes(page)
+  expect(after.HATCH ?? 0).toBe(0)
+  expect(after.LINE).toBe(before.LINE)
 })
