@@ -1,4 +1,4 @@
-import { AcApFontMapping } from './AcApSettingManager'
+import { AcApFontMapping } from './AcApSettingManager.js'
 
 /**
  * Baked-in font substitutions ("acad.fmp digital") applied automatically
